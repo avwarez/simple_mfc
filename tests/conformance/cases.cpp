@@ -533,8 +533,10 @@ static void TestCStdioFile()
 static void TestCMemFile()
 {
     CMemFile mf;
+    LineBool("DEBUG.checkpoint.afterCtor", true);
     const char payload[] = "in-memory payload";
     mf.Write(payload, sizeof(payload) - 1);
+    LineBool("DEBUG.checkpoint.afterWrite", true);
     LineInt("CMemFile.GetLength", static_cast<long long>(mf.GetLength()));
 
     mf.Seek(0, CFile::begin);
