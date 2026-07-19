@@ -511,6 +511,15 @@ static void TestCStdioFile()
 
     // Combined constructor (path + flags) + the LPTSTR/UINT ReadString
     // overload (the buffer-based one; CString& is already covered above).
+    //
+    // lineBuf is deliberately allocated much larger than nMax: CI showed
+    // real MFC's process dying with a *delayed* symptom (further, trivial
+    // statements past this point stopped executing) consistent with a
+    // one-element stack buffer overflow, not an immediate crash — likely
+    // an off-by-one in whether nMax counts the terminating null. Passing
+    // a buffer with generous headroom beyond nMax sidesteps the ambiguity
+    // entirely rather than relying on knowing real MFC's exact internal
+    // accounting.
     CString path2 = TempDir() + CString(L"simple_mfc_conformance_stdio2.txt");
     {
         CStdioFile ctorWrite(path2, CFile::modeCreate | CFile::modeWrite);
@@ -518,24 +527,18 @@ static void TestCStdioFile()
         SafeClose(ctorWrite);
 
         CStdioFile ctorRead(path2, CFile::modeRead);
-        wchar_t lineBuf[64]{};
+        wchar_t lineBuf[128]{};
         LPTSTR got = ctorRead.ReadString(lineBuf, 64);
         LineBool("CStdioFile.ReadString.buffer.nonNull", got != nullptr);
         Line("CStdioFile.ReadString.buffer.content", lineBuf);
-        LineBool("DEBUG.checkpoint.beforeClose", true);
         SafeClose(ctorRead);
-        LineBool("DEBUG.checkpoint.afterClose", true);
     }
-    LineBool("DEBUG.checkpoint.afterBlock", true);
     SafeRemoveFile(path2);
-    LineBool("DEBUG.checkpoint.afterRemove", true);
 }
 
 static void TestCMemFile()
 {
-    LineBool("DEBUG.checkpoint.enterTestCMemFile", true);
     CMemFile mf;
-    LineBool("DEBUG.checkpoint.afterCMemFileCtor", true);
     const char payload[] = "in-memory payload";
     mf.Write(payload, sizeof(payload) - 1);
     LineInt("CMemFile.GetLength", static_cast<long long>(mf.GetLength()));
