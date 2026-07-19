@@ -114,6 +114,26 @@ void LineInt(const char* name, long long value) { Line(name, std::to_string(valu
 // same relative ordering), only the sign is a meaningful, portable result.
 int Sign(int v) { return (v > 0) - (v < 0); }
 
+// Best-effort cleanup: CFile::Remove is documented to throw CFileException
+// on failure. On a shared CI runner, deleting a file immediately after
+// closing it can occasionally race with the OS/antivirus still holding a
+// transient handle (this suite found real MFC hit exactly that once, right
+// after closing a CStdioFile that used buffered FILE* I/O). Cleanup isn't
+// itself under test here, so failures are swallowed rather than allowed to
+// take down the whole probe. Calls whose outcome IS the assertion under
+// test call CFile::Remove directly instead of through this helper.
+void SafeRemoveFile(LPCTSTR path)
+{
+    try
+    {
+        CFile::Remove(path);
+    }
+    catch (CFileException* e)
+    {
+        e->Delete();
+    }
+}
+
 CString TempDir()
 {
     wchar_t buf[MAX_PATH]{};
@@ -442,7 +462,7 @@ static void TestCFile()
         LineInt("CFile.SetLength4.GetLength", static_cast<long long>(ctorFile.GetLength()));
         ctorFile.Abort();
     }
-    CFile::Remove(path2);
+    SafeRemoveFile(path2);
 }
 
 static void TestCStdioFile()
@@ -469,7 +489,7 @@ static void TestCStdioFile()
     Line("CStdioFile.ReadString.line2", line2);
     LineBool("CStdioFile.ReadString.line3PastEof.fails", got3 == FALSE);
 
-    CFile::Remove(path);
+    SafeRemoveFile(path);
 
     // Combined constructor (path + flags) + the LPTSTR/UINT ReadString
     // overload (the buffer-based one; CString& is already covered above).
@@ -486,7 +506,7 @@ static void TestCStdioFile()
         Line("CStdioFile.ReadString.buffer.content", lineBuf);
         ctorRead.Close();
     }
-    CFile::Remove(path2);
+    SafeRemoveFile(path2);
 }
 
 static void TestCMemFile()
@@ -568,7 +588,7 @@ static void TestCFileFind()
     }
 
     for (const wchar_t* name : names)
-        CFile::Remove(dir + CString(name));
+        SafeRemoveFile(dir + CString(name));
     RemoveDirectoryW(dir);
 }
 
