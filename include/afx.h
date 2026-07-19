@@ -361,6 +361,7 @@ private:
     bool AdvanceToNextMatch();
 
     std::filesystem::path m_dir;
+    std::wstring m_root;
     std::wstring m_pattern;
     std::filesystem::directory_iterator m_it;
     std::optional<std::filesystem::directory_entry> m_pending;

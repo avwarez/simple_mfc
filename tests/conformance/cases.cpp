@@ -114,6 +114,9 @@ std::string Escape(const std::string& s)
     {
         switch (c)
         {
+        case '\\': out += "\\\\"; break; // paths contain backslashes; escaping
+                                         // them keeps a trailing '\' from
+                                         // corrupting the line-based diff
         case '\r': out += "\\r"; break;
         case '\n': out += "\\n"; break;
         case '\t': out += "\\t"; break;

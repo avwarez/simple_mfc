@@ -364,7 +364,11 @@ ULONGLONG CFile::Seek(LONGLONG lOff, UINT nFrom)
     auto dir = nFrom == begin ? std::ios::beg : nFrom == end ? std::ios::end : std::ios::cur;
     m_stream.clear();
     m_stream.seekg(static_cast<std::streamoff>(lOff), dir);
-    m_stream.seekp(static_cast<std::streamoff>(lOff), dir);
+    // Sync the put pointer to the SAME absolute position just resolved by
+    // seekg. Re-issuing the seek with a current/end-relative offset would
+    // move the shared file position a second time (doubling current-origin
+    // seeks); seek the put pointer to the resolved absolute offset instead.
+    m_stream.seekp(m_stream.tellg());
     return GetPosition();
 }
 
@@ -522,6 +526,14 @@ BOOL CFileFind::FindFile(LPCTSTR pstrName, DWORD /*dwUnused*/)
     std::wstring pattern = spec.filename().wstring();
     if (pattern.empty()) pattern = L"*";
 
+    // Real MFC's GetRoot returns the search string with the file-name part
+    // stripped but the trailing path separator KEPT (e.g. "C:\dir\"). Derive
+    // it from the original spec rather than m_dir (whose parent_path() drops
+    // the separator).
+    std::wstring specStr = spec.wstring();
+    std::wstring fname = spec.filename().wstring();
+    m_root = specStr.substr(0, specStr.size() - fname.size());
+
     std::error_code ec;
     m_it = std::filesystem::directory_iterator(m_dir, ec);
     m_pending.reset();
@@ -578,6 +590,6 @@ ULONGLONG CFileFind::GetLength() const
 }
 
 // Real MFC's GetRoot returns the directory that is being searched (the
-// path stripped of the file-name/wildcard part), NOT the filesystem root
-// (C:\). m_dir holds exactly that, captured in FindFile.
-CString CFileFind::GetRoot() const { return CString(m_dir.wstring().c_str()); }
+// search string with the file-name/wildcard part stripped but the trailing
+// separator kept), NOT the filesystem root (C:\). Captured in FindFile.
+CString CFileFind::GetRoot() const { return CString(m_root.c_str()); }
