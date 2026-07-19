@@ -422,12 +422,17 @@ void CFile::Rename(LPCTSTR lpszOldName, LPCTSTR lpszNewName)
 // std::wfstream is not used here (the file is opened in binary mode): we
 // read line by line as a sequence of raw wchar_t (consistent with the
 // typical use of CStdioFile on UTF-16/ASCII text files written by the
-// application itself, not external system files). Only '\n' terminates a
-// line, matching real MFC's own binary-mode behavior — a preceding '\r'
-// (from a "\r\n" terminator) is NOT stripped and stays part of the
-// returned line unless the file was opened with the typeText flag (not
-// implemented as a distinct code path here, since simple_mfc never
-// requests OS-level CRLF translation either).
+// application itself, not external system files). A preceding '\r' (from
+// a "\r\n" terminator) is NOT stripped in either overload below and stays
+// part of the returned line, unless the file was opened with the
+// typeText flag (not implemented as a distinct code path here, since
+// simple_mfc never requests OS-level CRLF translation either).
+//
+// The two overloads differ in what they do with '\n' itself — confirmed
+// against real MFC via the conformance suite (tests/conformance/): the
+// LPTSTR/UINT overload is fgets()-like and keeps '\n' as the last
+// character written into the buffer (if it fits), while the CString&
+// overload parses a line and strips '\n' from the result.
 LPTSTR CStdioFile::ReadString(LPTSTR lpsz, UINT nMax)
 {
     wchar_t ch;
@@ -436,8 +441,8 @@ LPTSTR CStdioFile::ReadString(LPTSTR lpsz, UINT nMax)
     while (count + 1 < nMax && m_stream.read(reinterpret_cast<char*>(&ch), sizeof(wchar_t)))
     {
         any = true;
-        if (ch == L'\n') break;
         lpsz[count++] = ch;
+        if (ch == L'\n') break;
     }
     lpsz[count] = L'\0';
     return any ? lpsz : nullptr;
