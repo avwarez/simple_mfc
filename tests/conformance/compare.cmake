@@ -35,9 +35,10 @@ if (simple_out STREQUAL real_out)
     return()
 endif()
 
-# Outputs differ: report the first mismatching line for a readable diff
-# instead of dumping both full outputs. Strip a trailing newline first so
-# it doesn't turn into a spurious empty trailing list element.
+# Outputs differ: report EVERY mismatching line (not just the first), so a
+# single CI round surfaces all divergences at once instead of one per run.
+# Strip a trailing newline first so it doesn't turn into a spurious empty
+# trailing list element.
 string(REGEX REPLACE "\n+$" "" simple_trimmed "${simple_out}")
 string(REGEX REPLACE "\n+$" "" real_trimmed "${real_out}")
 string(REPLACE "\n" ";" simple_lines "${simple_trimmed}")
@@ -49,9 +50,12 @@ set(n_max ${n_simple})
 if (n_real GREATER n_max)
     set(n_max ${n_real})
 endif()
+
+set(report "")
+set(n_mismatch 0)
 if (n_max GREATER 0)
-    math(EXPR n_max "${n_max} - 1")
-    foreach(i RANGE ${n_max})
+    math(EXPR n_max_idx "${n_max} - 1")
+    foreach(i RANGE ${n_max_idx})
         set(sl "<no line>")
         set(rl "<no line>")
         if (i LESS n_simple)
@@ -61,9 +65,12 @@ if (n_max GREATER 0)
             list(GET real_lines ${i} rl)
         endif()
         if (NOT sl STREQUAL rl)
-            message(FATAL_ERROR "Conformance mismatch at line ${i}:\n  simple_mfc: ${sl}\n  real MFC:   ${rl}")
+            math(EXPR n_mismatch "${n_mismatch} + 1")
+            string(APPEND report "  line ${i}:\n    simple_mfc: ${sl}\n    real MFC:   ${rl}\n")
         endif()
     endforeach()
 endif()
 
-message(FATAL_ERROR "Outputs differ (simple_mfc: ${n_simple} lines, real MFC: ${n_real} lines) but no single differing line was found — likely a trailing-line count mismatch.")
+message(FATAL_ERROR
+    "Conformance mismatch: ${n_mismatch} differing line(s) "
+    "(simple_mfc: ${n_simple} lines, real MFC: ${n_real} lines)\n${report}")

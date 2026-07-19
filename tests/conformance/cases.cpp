@@ -434,6 +434,40 @@ static void TestCString()
     // operator<
     LineBool("CString.operatorLess.true", CString(L"a") < CString(L"b"));
     LineBool("CString.operatorLess.false", CString(L"b") < CString(L"a"));
+
+    // --- Higher-variability inputs -------------------------------------
+    // Format: more conversions/flags than the single "%d-%s-%02d" above.
+    CString fmtHex; fmtHex.Format(L"%08X", 0xDEADu);
+    Line("CString.Format.hex", fmtHex);
+    CString fmtChar; fmtChar.Format(L"%c|%c", L'Z', L'9');
+    Line("CString.Format.char", fmtChar);
+    CString fmtFloat; fmtFloat.Format(L"%.3f", 3.14159265);
+    Line("CString.Format.float", fmtFloat);
+    CString fmtWidth; fmtWidth.Format(L"[%5d][%-5d][%+d]", 42, 42, 42);
+    Line("CString.Format.width", fmtWidth);
+    CString fmtPercent; fmtPercent.Format(L"100%% done");
+    Line("CString.Format.percent", fmtPercent);
+
+    // Empty-string edge cases.
+    CString empty;
+    empty.Trim();
+    LineBool("CString.Empty.TrimStaysEmpty", empty.IsEmpty() != FALSE);
+    LineInt("CString.Empty.FindMissing", empty.Find(L"x"));
+    LineInt("CString.Empty.Length", empty.GetLength());
+
+    // Left/Right/Mid boundary values (all in valid, non-UB range).
+    CString abc = L"abc";
+    Line("CString.Left0", abc.Left(0));
+    Line("CString.LeftBeyond", abc.Left(100));   // clamps to whole string
+    Line("CString.Right0", abc.Right(0));
+    Line("CString.RightBeyond", abc.Right(100));
+    Line("CString.MidAtEnd", abc.Mid(3));         // iFirst == length -> empty
+    Line("CString.MidBeyondCount", abc.Mid(1, 100));
+
+    // Find with a non-zero start index, and ReverseFind of a missing char.
+    CString haystack = L"abcabcabc";
+    LineInt("CString.Find.fromIndex", haystack.Find(L"abc", 1));
+    LineInt("CString.ReverseFind.missing", haystack.ReverseFind(L'z'));
 }
 
 // ---------------------------------------------------------------------
@@ -464,6 +498,16 @@ static void TestCFile()
     char seekBuf[6]{};
     f2.Read(seekBuf, 5);
     Line("CFile.ReadAfterSeek", std::string(seekBuf, 5));
+
+    // Seek relative to the current position (origin=current), which the
+    // rest of the suite never exercises (only begin/end).
+    f2.SeekToBegin();
+    f2.Seek(3, CFile::current);
+    LineInt("CFile.Seek.current.after3", static_cast<long long>(f2.GetPosition()));
+    f2.Seek(2, CFile::current);
+    LineInt("CFile.Seek.current.after3plus2", static_cast<long long>(f2.GetPosition()));
+    f2.Seek(-1, CFile::current);
+    LineInt("CFile.Seek.current.backward", static_cast<long long>(f2.GetPosition()));
 
     f2.SeekToBegin();
     LineInt("CFile.SeekToBegin.position", static_cast<long long>(f2.GetPosition()));
@@ -569,6 +613,19 @@ static void TestCMemFile()
 
     mf.Seek(3, CFile::begin);
     LineInt("CMemFile.Seek.position", static_cast<long long>(mf.GetPosition()));
+
+    // Seek relative to current and to end (never exercised elsewhere).
+    mf.Seek(0, CFile::begin);
+    mf.Seek(5, CFile::current);
+    LineInt("CMemFile.Seek.current", static_cast<long long>(mf.GetPosition()));
+    mf.Seek(-3, CFile::end);
+    LineInt("CMemFile.Seek.end.minus3", static_cast<long long>(mf.GetPosition()));
+
+    // SetLength grows/shrinks the in-memory buffer.
+    mf.SetLength(4);
+    LineInt("CMemFile.SetLength4.GetLength", static_cast<long long>(mf.GetLength()));
+    mf.SetLength(10);
+    LineInt("CMemFile.SetLength10.GetLength", static_cast<long long>(mf.GetLength()));
 }
 
 // ---------------------------------------------------------------------
@@ -628,7 +685,7 @@ static void TestCFileFind()
         Line("CFileFind.Single.GetFilePath", single.GetFilePath());
         LineInt("CFileFind.Single.GetLength", static_cast<long long>(single.GetLength()));
         LineBool("CFileFind.Single.IsDirectory", single.IsDirectory() != FALSE);
-        LineBool("CFileFind.Single.GetRoot.nonEmpty", !single.GetRoot().IsEmpty());
+        Line("CFileFind.Single.GetRoot", single.GetRoot());
         SafeClose(single);
     }
 
@@ -1139,6 +1196,16 @@ static void TestCMapTemplate()
     CMap<CString, LPCTSTR, int, int> map2(20);
     map2.SetAt(L"only", 1);
     LineInt("CMap.ExplicitBlockSizeCtor.GetCount", map2.GetCount());
+
+    // SetAt on an already-present key must overwrite (not insert a
+    // duplicate): count stays 1, value updates.
+    CMap<CString, LPCTSTR, int, int> ov;
+    ov.SetAt(L"k", 1);
+    ov.SetAt(L"k", 99);
+    LineInt("CMap.SetAt.overwrite.count", ov.GetCount());
+    int ovv = 0;
+    ov.Lookup(L"k", ovv);
+    LineInt("CMap.SetAt.overwrite.value", ovv);
 }
 
 // ---------------------------------------------------------------------
@@ -1206,6 +1273,30 @@ static void TestTime()
     LineInt("CTimeSpan.operatorPlus.GetTotalMinutes", static_cast<long long>(spanSum.GetTotalMinutes()));
     CTimeSpan spanDiff = spanA - spanB;
     LineInt("CTimeSpan.operatorMinus.GetTotalMinutes", static_cast<long long>(spanDiff.GetTotalMinutes()));
+
+    // --- Higher-variability dates -------------------------------------
+    // A second, structurally different date (leap year, midnight, first of
+    // the year) plus additional numeric-only Format patterns. Weekday/month
+    // *names* (%A/%B/%p) are deliberately avoided: they are locale-dependent
+    // and not the subject of this comparison.
+    CTime t2000(2000, 1, 1, 0, 0, 0);
+    LineInt("CTime.2000.GetYear", t2000.GetYear());
+    LineInt("CTime.2000.GetMonth", t2000.GetMonth());
+    LineInt("CTime.2000.GetDay", t2000.GetDay());
+    LineInt("CTime.2000.GetDayOfWeek", t2000.GetDayOfWeek());
+    Line("CTime.2000.Format", t2000.Format(L"%Y/%m/%d %H:%M:%S day%j"));
+
+    CTime tLeap(2024, 2, 29, 23, 59, 59); // valid only in a leap year
+    LineInt("CTime.Leap.GetMonth", tLeap.GetMonth());
+    LineInt("CTime.Leap.GetDay", tLeap.GetDay());
+    LineInt("CTime.Leap.GetDayOfWeek", tLeap.GetDayOfWeek());
+    Line("CTime.Leap.Format", tLeap.Format(L"%y-%m-%dT%H:%M:%S"));
+
+    // A negative span (earlier minus later) exercises the sign handling of
+    // every accessor.
+    CTimeSpan neg = t1 - t2; // t1 < t2, so this is negative
+    LineInt("CTimeSpan.negative.GetTotalSeconds", static_cast<long long>(neg.GetTotalSeconds()));
+    LineInt("CTimeSpan.negative.GetDays", neg.GetDays());
 }
 
 // ---------------------------------------------------------------------

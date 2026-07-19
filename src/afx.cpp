@@ -577,4 +577,7 @@ ULONGLONG CFileFind::GetLength() const
     return ec ? 0 : sz;
 }
 
-CString CFileFind::GetRoot() const { return CString(m_current.path().root_path().wstring().c_str()); }
+// Real MFC's GetRoot returns the directory that is being searched (the
+// path stripped of the file-name/wildcard part), NOT the filesystem root
+// (C:\). m_dir holds exactly that, captured in FindFile.
+CString CFileFind::GetRoot() const { return CString(m_dir.wstring().c_str()); }
