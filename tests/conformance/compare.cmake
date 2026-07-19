@@ -10,19 +10,23 @@ endif()
 execute_process(
     COMMAND "${SIMPLE_EXE}"
     OUTPUT_VARIABLE simple_out
+    ERROR_VARIABLE simple_err
     RESULT_VARIABLE simple_rc
 )
+message(STATUS "simple_mfc_probe: result='${simple_rc}' stderr='${simple_err}'")
 if (NOT simple_rc EQUAL 0)
-    message(FATAL_ERROR "simple_mfc_probe exited with code ${simple_rc}:\n${simple_out}")
+    message(FATAL_ERROR "simple_mfc_probe exited with code ${simple_rc}:\nstdout:\n${simple_out}\nstderr:\n${simple_err}")
 endif()
 
 execute_process(
     COMMAND "${REAL_EXE}"
     OUTPUT_VARIABLE real_out
+    ERROR_VARIABLE real_err
     RESULT_VARIABLE real_rc
 )
+message(STATUS "real_mfc_probe: result='${real_rc}' stderr='${real_err}'")
 if (NOT real_rc EQUAL 0)
-    message(FATAL_ERROR "real_mfc_probe exited with code ${real_rc}:\n${real_out}")
+    message(FATAL_ERROR "real_mfc_probe exited with code ${real_rc}:\nstdout:\n${real_out}\nstderr:\n${real_err}")
 endif()
 
 if (simple_out STREQUAL real_out)
