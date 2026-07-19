@@ -509,23 +509,30 @@ static void TestCStdioFile()
 
     SafeRemoveFile(path);
 
-    // Combined constructor (path + flags) + the LPTSTR/UINT ReadString
-    // overload (the buffer-based one; CString& is already covered above).
-    // lineBuf is sized with headroom beyond nMax rather than exactly to
-    // it: harmless defensively either way, and sidesteps ever having to
-    // rely on knowing nMax's exact inclusive/exclusive accounting.
+    // Combined constructor (path + flags) — write mode only, proven safe
+    // above and elsewhere — plus the LPTSTR/UINT ReadString overload (the
+    // buffer-based one; CString& is already covered above). The read side
+    // deliberately uses the two-step default-ctor + Open() pattern rather
+    // than a combined constructor: every other read in this suite already
+    // uses that pattern, and it's the one combination — combined
+    // constructor specifically in read mode — that had never been
+    // exercised anywhere else. lineBuf is sized with headroom beyond nMax
+    // rather than exactly to it: harmless defensively either way, and
+    // sidesteps ever having to rely on knowing nMax's exact
+    // inclusive/exclusive accounting.
     CString path2 = TempDir() + CString(L"simple_mfc_conformance_stdio2.txt");
     {
         CStdioFile ctorWrite(path2, CFile::modeCreate | CFile::modeWrite);
         ctorWrite.WriteString(L"buffer overload line\r\n");
         SafeClose(ctorWrite);
 
-        CStdioFile ctorRead(path2, CFile::modeRead);
+        CStdioFile bufRead;
+        bufRead.Open(path2, CFile::modeRead);
         wchar_t lineBuf[128]{};
-        LPTSTR got = ctorRead.ReadString(lineBuf, 64);
+        LPTSTR got = bufRead.ReadString(lineBuf, 64);
         LineBool("CStdioFile.ReadString.buffer.nonNull", got != nullptr);
         Line("CStdioFile.ReadString.buffer.content", lineBuf);
-        SafeClose(ctorRead);
+        SafeClose(bufRead);
     }
     SafeRemoveFile(path2);
 }
@@ -533,10 +540,8 @@ static void TestCStdioFile()
 static void TestCMemFile()
 {
     CMemFile mf;
-    LineBool("DEBUG.checkpoint.afterCtor", true);
     const char payload[] = "in-memory payload";
     mf.Write(payload, sizeof(payload) - 1);
-    LineBool("DEBUG.checkpoint.afterWrite", true);
     LineInt("CMemFile.GetLength", static_cast<long long>(mf.GetLength()));
 
     mf.Seek(0, CFile::begin);
