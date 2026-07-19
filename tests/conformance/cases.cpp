@@ -102,6 +102,10 @@ std::string Utf8(const wchar_t* w)
 void Line(const char* name, const std::string& value)
 {
     std::printf("%03d %s = %s\n", ++g_index, name, value.c_str());
+    // Flush immediately: if the process later ends earlier than expected
+    // (crash, or anything else), every line printed so far must already
+    // be visible to whoever captured stdout, not stuck in a buffer.
+    std::fflush(stdout);
 }
 void Line(const char* name, const wchar_t* value) { Line(name, Utf8(value)); }
 void Line(const char* name, const CString& value) { Line(name, Utf8((LPCTSTR)value)); }
@@ -518,14 +522,20 @@ static void TestCStdioFile()
         LPTSTR got = ctorRead.ReadString(lineBuf, 64);
         LineBool("CStdioFile.ReadString.buffer.nonNull", got != nullptr);
         Line("CStdioFile.ReadString.buffer.content", lineBuf);
+        LineBool("DEBUG.checkpoint.beforeClose", true);
         SafeClose(ctorRead);
+        LineBool("DEBUG.checkpoint.afterClose", true);
     }
+    LineBool("DEBUG.checkpoint.afterBlock", true);
     SafeRemoveFile(path2);
+    LineBool("DEBUG.checkpoint.afterRemove", true);
 }
 
 static void TestCMemFile()
 {
+    LineBool("DEBUG.checkpoint.enterTestCMemFile", true);
     CMemFile mf;
+    LineBool("DEBUG.checkpoint.afterCMemFileCtor", true);
     const char payload[] = "in-memory payload";
     mf.Write(payload, sizeof(payload) - 1);
     LineInt("CMemFile.GetLength", static_cast<long long>(mf.GetLength()));
