@@ -636,7 +636,13 @@ static void TestCListTemplate()
 
 static void TestCMapTemplate()
 {
-    CMap<CString, const CString&, int, int> map;
+    // ARG_KEY must be LPCTSTR, not "const CString&": real MFC only
+    // provides a HashKey(LPCTSTR) overload, and with ARG_KEY=const
+    // CString& the generic fallback template (which casts the key to
+    // `long`) is an exact match and gets picked instead, which doesn't
+    // compile for a class type. CMap<CString, LPCTSTR, ...> is the
+    // standard, documented MFC idiom for CString-keyed maps.
+    CMap<CString, LPCTSTR, int, int> map;
     map.SetAt(L"one", 1);
     map.SetAt(L"two", 2);
     map.SetAt(L"three", 3);
