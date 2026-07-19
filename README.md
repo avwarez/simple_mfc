@@ -67,12 +67,9 @@ plus the `simple_mfc_smoke_test` executable (disable with
 `-DSIMPLE_MFC_BUILD_SMOKE_TEST=OFF`). `cmake --install build --prefix <dir>`
 installs the headers + library for use as an external dependency.
 
-Verified: GCC 14 / Linux (clean build, zero warnings with
-`-Wall -Wextra -Wpedantic`). `CMakeLists.txt` also includes the flags and
-`#define`s needed for MSVC (`/EHsc`, `/permissive-`,
-`_CRT_SECURE_NO_WARNINGS` for `std::localtime`/`vswprintf`...), but it has
-not yet been built on a real Windows machine — if MSVC-specific errors
-come up, please report them.
+Verified in CI on both GCC 14 / Linux and MSVC / Windows (`windows-latest`
+GitHub Actions runner) — clean builds, zero warnings with
+`-Wall -Wextra -Wpedantic` / `/W4`. See `.github/workflows/msvc.yml`.
 
 ### Manual (without CMake)
 
@@ -113,6 +110,67 @@ g++ -std=c++17 -Wall -Wextra -Wpedantic -Iinclude -c src/atltime.cpp -o atltime.
 - **`CMap::GetHashTableSize()`** is implemented (`bucket_count()`), while
   `PGetFirstAssoc`/`PGetNextAssoc`/`PLookup` are also implemented as
   temporary-view accessors over the underlying `std::unordered_map` node.
+
+## Conformance test suite (simple_mfc vs. real MFC)
+
+`tests/conformance/` runs the exact same call sequence — same class, same
+method, same input — against simple_mfc's native implementation and
+against the actual Visual Studio MFC libraries (statically linked), then
+diffs the two runs' output byte-for-byte. It's the strongest verification
+this project has: not "does it compile," but "does it behave and return
+the same thing as real MFC."
+
+It only runs on MSVC with the "MFC and ATL" Visual Studio component
+installed (CI installs it explicitly — see
+`.github/workflows/msvc.yml`, job `conformance`), since real MFC doesn't
+exist anywhere else:
+
+```sh
+cmake -S . -B build -DSIMPLE_MFC_BUILD_CONFORMANCE_TESTS=ON
+cmake --build build --config Release
+ctest --test-dir build -C Release --output-on-failure
+```
+
+It covers RTTI/`IsKindOf`, `CString`, the `CFile` family, `CFileFind`,
+every collection class (concrete and template), `CTime`/`CTimeSpan`, and
+behavioral tests (not just return values) for the synchronization
+primitives — e.g. that an auto-reset `CEvent` wakes exactly one waiter,
+that a manual-reset one stays signaled until `ResetEvent()`, that N
+threads incrementing a counter through a `CCriticalSection` never lose an
+update.
+
+### What building this suite found
+
+Running the same code against real MFC surfaced a few genuine gaps,
+fixed in the library itself (not just in the test):
+
+- **`CFileException::m_strFileName`** was a `std::wstring` internally;
+  real MFC's is a `CString`. Now matches.
+- **`CStdioFile::ReadString`** was stripping `\r` unconditionally. Real
+  MFC — when the file is opened without the `typeText` flag, as
+  simple_mfc always does — only splits on `\n` and leaves a `\r` from a
+  `"\r\n"` terminator as the last character of the line. Now matches.
+- **`CMap<CString, ...>`** needs `ARG_KEY = LPCTSTR`, not
+  `const CString&` — real MFC only ships a `HashKey(LPCTSTR)` overload,
+  and `const CString&` is an exact match for the generic (`long`-casting)
+  fallback template instead, which doesn't compile for a class type. This
+  is also simply the standard, documented MFC idiom for CString-keyed
+  maps.
+
+And a few things that are **not** conformance bugs, just properties of
+testing outside a running GUI app (documented inline in `cases.cpp` at
+each point they matter):
+
+- `CFileException`/`CMemoryException::GetErrorMessage()`'s exact *text*
+  is never compared: real MFC builds it from MFC's own string resources
+  plus the OS's localized `FormatMessage` output, while simple_mfc uses
+  fixed English text.
+- In a bare console harness with no `CWinApp` (by design — these are the
+  non-GUI classes), real MFC's resource-string lookup itself fails:
+  `CFileException::GetErrorMessage` still returns `TRUE` but with an
+  empty message; `CMemoryException::GetErrorMessage` — whose message
+  comes *only* from a resource string, no `FormatMessage` fallback —
+  returns `FALSE` outright. Neither is compared for that reason.
 
 ## RTTI
 

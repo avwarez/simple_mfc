@@ -62,7 +62,7 @@ endif()
 # --- Smoke test (optional) -------------------------------------------------
 option(SIMPLE_MFC_BUILD_SMOKE_TEST "Build the smoke-test executable" ON)
 if (SIMPLE_MFC_BUILD_SMOKE_TEST)
-    add_executable(simple_mfc_smoke_test test/smoke_test.cpp)
+    add_executable(simple_mfc_smoke_test tests/smoke_test.cpp)
     target_link_libraries(simple_mfc_smoke_test PRIVATE simple_mfc::simple_mfc)
 
     enable_testing()
