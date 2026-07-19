@@ -99,9 +99,33 @@ std::string Utf8(const wchar_t* w)
     return out;
 }
 
+// A handful of values under test (CStdioFile::ReadString results in
+// particular) legitimately contain a raw '\r' — that's the exact behavior
+// being verified. Escape control characters rather than printing them
+// literally: the canonical output line must always end in exactly one
+// real '\n', so nothing about the *value* can ever interact with the
+// pipe/CRT text-mode translation of the line terminator itself. The
+// escaped form still lets a byte-for-byte diff catch any real difference.
+std::string Escape(const std::string& s)
+{
+    std::string out;
+    out.reserve(s.size());
+    for (char c : s)
+    {
+        switch (c)
+        {
+        case '\r': out += "\\r"; break;
+        case '\n': out += "\\n"; break;
+        case '\t': out += "\\t"; break;
+        default: out += c; break;
+        }
+    }
+    return out;
+}
+
 void Line(const char* name, const std::string& value)
 {
-    std::printf("%03d %s = %s\n", ++g_index, name, value.c_str());
+    std::printf("%03d %s = %s\n", ++g_index, name, Escape(value).c_str());
     // Flush immediately: if the process later ends earlier than expected
     // (crash, or anything else), every line printed so far must already
     // be visible to whoever captured stdout, not stuck in a buffer.
@@ -509,20 +533,11 @@ static void TestCStdioFile()
 
     SafeRemoveFile(path);
 
-    // Combined constructor (path + flags) — write mode only, proven safe
-    // above and elsewhere — plus the LPTSTR/UINT ReadString overload (the
-    // buffer-based one; CString& is already covered above). The read side
-    // deliberately uses the two-step default-ctor + Open() pattern rather
-    // than a combined constructor: every other read in this suite already
-    // uses that pattern, and it's the one combination — combined
-    // constructor specifically in read mode — that had never been
-    // exercised anywhere else. lineBuf is sized with headroom beyond nMax
-    // rather than exactly to it: harmless defensively either way, and
-    // sidesteps ever having to rely on knowing nMax's exact
-    // inclusive/exclusive accounting.
+    // Combined constructor (path + flags) — write mode only — plus the
+    // LPTSTR/UINT ReadString overload (the buffer-based one; CString& is
+    // already covered above). The read side uses the two-step default-ctor
+    // + Open() pattern, matching every other read in this suite.
     CString path2 = TempDir() + CString(L"simple_mfc_conformance_stdio2.txt");
-    bool caughtUnexpected = false;
-    try
     {
         CStdioFile ctorWrite(path2, CFile::modeCreate | CFile::modeWrite);
         ctorWrite.WriteString(L"buffer overload line\r\n");
@@ -530,23 +545,12 @@ static void TestCStdioFile()
 
         CStdioFile bufRead;
         bufRead.Open(path2, CFile::modeRead);
-        // Deliberately huge relative to nMax=64, to rule out any overflow
-        // theory with overwhelming margin as a diagnostic step.
-        wchar_t lineBuf[1024]{};
+        wchar_t lineBuf[128]{};
         LPTSTR got = bufRead.ReadString(lineBuf, 64);
         LineBool("CStdioFile.ReadString.buffer.nonNull", got != nullptr);
         Line("CStdioFile.ReadString.buffer.content", lineBuf);
         SafeClose(bufRead);
     }
-    catch (...)
-    {
-        // Diagnostic: does something throw here that our CFileException*
-        // catches upstream don't handle? A caught-and-swallowed exception
-        // of an unexpected type would otherwise look identical to silent
-        // output truncation.
-        caughtUnexpected = true;
-    }
-    LineBool("DEBUG.caughtUnexpectedException", caughtUnexpected);
     SafeRemoveFile(path2);
 }
 
