@@ -118,6 +118,8 @@ static void TestRTTI()
     LineBool("RTTI.CFileException.IsKindOf.CObject", fileEx->IsKindOf(RUNTIME_CLASS(CObject)) != FALSE);
     LineBool("RTTI.CFileException.IsKindOf.CMemoryException", fileEx->IsKindOf(RUNTIME_CLASS(CMemoryException)) != FALSE);
     Line("RTTI.CFileException.ClassName", std::string(fileEx->GetRuntimeClass()->m_lpszClassName));
+    fileEx->AssertValid(); // no printable output; exercises the call (no-op/ASSERT-only in Release)
+    LineBool("RTTI.CFileException.IsSerializable", fileEx->IsSerializable() != FALSE);
     delete fileEx;
 
     CObject* memEx = new CMemoryException();
@@ -161,11 +163,50 @@ static void TestExceptions()
     BOOL ok = fe.GetErrorMessage(buf, 256);
     LineBool("CFileException.GetErrorMessage.returns_true", ok != FALSE);
     LineInt("CFileException.m_cause", fe.m_cause);
+    LineInt("CFileException.m_lOsError", fe.m_lOsError);
     Line("CFileException.m_strFileName", fe.m_strFileName);
 
     CMemoryException me;
     wchar_t mbuf[256]{};
     me.GetErrorMessage(mbuf, 256); // outcome not compared, see comment above
+
+    // CException::Delete(): the real MFC pointer+Delete() pattern. Safe to
+    // call (no UI). CFileException's constructor always passes
+    // bAutoDelete=TRUE to CException, so Delete() actually frees *this —
+    // read m_cause before calling it.
+    CFileException* heapEx = new CFileException(CFileException::badPath, ERROR_BAD_PATHNAME, L"x");
+    LineInt("CFileException.Delete.m_cause_before", heapEx->m_cause);
+    heapEx->Delete();
+
+    // AfxThrowFileException / AfxThrowMemoryException: throw by pointer,
+    // caught the same way real MFC code does (catch (CFileException* e),
+    // then e->Delete()). AfxAbort() is intentionally NOT exercised here:
+    // it terminates the process outright (real MFC's equivalent of
+    // std::abort()), leaving nothing to print and no "rest of the suite"
+    // to run afterward in this same-process harness. CException::ReportError()
+    // is also intentionally NOT exercised: on the real-MFC side it opens a
+    // genuine Win32 MessageBox, which would hang a non-interactive CI
+    // runner waiting for a dismissal that never comes.
+    try
+    {
+        AfxThrowFileException(CFileException::diskFull, ERROR_DISK_FULL, L"y.dat");
+        Line("AfxThrowFileException.caught", std::string("NEVER (did not throw)"));
+    }
+    catch (CFileException* e)
+    {
+        LineInt("AfxThrowFileException.caught.m_cause", e->m_cause);
+        e->Delete();
+    }
+
+    try
+    {
+        AfxThrowMemoryException();
+        Line("AfxThrowMemoryException.caught", std::string("NEVER (did not throw)"));
+    }
+    catch (CMemoryException* e)
+    {
+        LineBool("AfxThrowMemoryException.caught", e != nullptr);
+    }
 }
 
 // ---------------------------------------------------------------------
@@ -283,6 +324,36 @@ static void TestCString()
     CString emptied = L"not empty";
     emptied.Empty();
     LineBool("CString.Empty.IsEmptyAfter", emptied.IsEmpty() != FALSE);
+
+    // Char-repeat constructor
+    CString repeated(L'x', 5);
+    Line("CString.CharRepeatCtor", repeated);
+
+    // GetBuffer() with no argument
+    CString noarg = L"abc";
+    wchar_t* pna = noarg.GetBuffer();
+    Line("CString.GetBuffer_NoArg", CString(pna));
+
+    // TrimRight with a multi-character set (not a single char)
+    CString trimRightSet = L"hello##--";
+    trimRightSet.TrimRight(L"#-");
+    Line("CString.TrimRight.set", trimRightSet);
+
+    // operator[]
+    CString idx = L"index";
+    LineInt("CString.operatorIndex2", idx[2]);
+
+    // operator+= (CString and single wchar_t)
+    CString plusEqStr = L"foo";
+    plusEqStr += CString(L"bar");
+    Line("CString.operatorPlusEqString", plusEqStr);
+    CString plusEqChar = L"foo";
+    plusEqChar += L'!';
+    Line("CString.operatorPlusEqChar", plusEqChar);
+
+    // operator<
+    LineBool("CString.operatorLess.true", CString(L"a") < CString(L"b"));
+    LineBool("CString.operatorLess.false", CString(L"b") < CString(L"a"));
 }
 
 // ---------------------------------------------------------------------
@@ -313,6 +384,17 @@ static void TestCFile()
     char seekBuf[6]{};
     f2.Read(seekBuf, 5);
     Line("CFile.ReadAfterSeek", std::string(seekBuf, 5));
+
+    f2.SeekToBegin();
+    LineInt("CFile.SeekToBegin.position", static_cast<long long>(f2.GetPosition()));
+    f2.SeekToEnd();
+    LineInt("CFile.SeekToEnd.position", static_cast<long long>(f2.GetPosition()));
+    Line("CFile.GetFileName", f2.GetFileName());
+    Line("CFile.GetFilePath", f2.GetFilePath());
+
+    CFileStatus instStatus{};
+    LineBool("CFile.GetStatus.instance.ok", f2.GetStatus(instStatus) != FALSE);
+    LineInt("CFile.GetStatus.instance.size", static_cast<long long>(instStatus.m_size));
     f2.Close();
 
     CFileStatus status{};
@@ -328,6 +410,21 @@ static void TestCFile()
     CFile::Remove(renamedPath);
     CFileStatus statusAfterRemove{};
     LineBool("CFile.Remove.thenGetStatus.fails", CFile::GetStatus(renamedPath, statusAfterRemove) == FALSE);
+
+    // Combined constructor (path + flags) + SetLength + Flush + Abort, on
+    // a fresh dedicated path so it doesn't disturb the read-back checks above.
+    CString path2 = TempDir() + CString(L"simple_mfc_conformance_file2.bin");
+    {
+        CFile ctorFile(path2, CFile::modeCreate | CFile::modeWrite);
+        const char data2[] = "ctor-opened-file";
+        ctorFile.Write(data2, sizeof(data2) - 1);
+        ctorFile.Flush();
+        LineInt("CFile.CtorOpen.GetLength", static_cast<long long>(ctorFile.GetLength()));
+        ctorFile.SetLength(4);
+        LineInt("CFile.SetLength4.GetLength", static_cast<long long>(ctorFile.GetLength()));
+        ctorFile.Abort();
+    }
+    CFile::Remove(path2);
 }
 
 static void TestCStdioFile()
@@ -355,6 +452,23 @@ static void TestCStdioFile()
     LineBool("CStdioFile.ReadString.line3PastEof.fails", got3 == FALSE);
 
     CFile::Remove(path);
+
+    // Combined constructor (path + flags) + the LPTSTR/UINT ReadString
+    // overload (the buffer-based one; CString& is already covered above).
+    CString path2 = TempDir() + CString(L"simple_mfc_conformance_stdio2.txt");
+    {
+        CStdioFile ctorWrite(path2, CFile::modeCreate | CFile::modeWrite);
+        ctorWrite.WriteString(L"buffer overload line\r\n");
+        ctorWrite.Close();
+
+        CStdioFile ctorRead(path2, CFile::modeRead);
+        wchar_t lineBuf[64]{};
+        LPTSTR got = ctorRead.ReadString(lineBuf, 64);
+        LineBool("CStdioFile.ReadString.buffer.nonNull", got != nullptr);
+        Line("CStdioFile.ReadString.buffer.content", lineBuf);
+        ctorRead.Close();
+    }
+    CFile::Remove(path2);
 }
 
 static void TestCMemFile()
@@ -387,6 +501,8 @@ static void TestCFileFind()
     {
         CFile f;
         f.Open(dir + CString(name), CFile::modeCreate | CFile::modeWrite);
+        const char payload[] = "x"; // non-empty, so CFileFind::GetLength() is meaningfully non-zero
+        f.Write(payload, sizeof(payload) - 1);
         f.Close();
     }
 
@@ -416,6 +532,21 @@ static void TestCFileFind()
     {
         std::string label = "CFileFind.Match." + std::to_string(i);
         Line(label.c_str(), matched[i]);
+    }
+
+    // A find on a single, known file (not a wildcard) to exercise
+    // GetFilePath/GetLength/IsDirectory/GetRoot/Close deterministically.
+    {
+        CFileFind single;
+        BOOL foundOne = single.FindFile(dir + CString(L"alpha.txt"));
+        BOOL hasMore = SIMPLE_MFC_FIND_NEXT_FILE(single);
+        (void)hasMore;
+        LineBool("CFileFind.Single.foundOne", foundOne != FALSE);
+        Line("CFileFind.Single.GetFilePath", single.GetFilePath());
+        LineInt("CFileFind.Single.GetLength", static_cast<long long>(single.GetLength()));
+        LineBool("CFileFind.Single.IsDirectory", single.IsDirectory() != FALSE);
+        LineBool("CFileFind.Single.GetRoot.nonEmpty", !single.GetRoot().IsEmpty());
+        single.Close();
     }
 
     for (const wchar_t* name : names)
@@ -469,6 +600,38 @@ static void TestCObList()
     CObject* removedHead = list.RemoveHead();
     LineInt("CObList.RemoveHead.value", static_cast<IntBox*>(removedHead)->v);
     LineInt("CObList.CountAfterRemoveHead", list.GetCount());
+    // list is now [a(1), b(2)]
+
+    POSITION tailPos = list.GetTailPosition();
+    LineInt("CObList.GetTailPosition.value", static_cast<IntBox*>(list.GetAt(tailPos))->v);
+    CObject* prevVal = list.GetPrev(tailPos); // returns the tail's own value, then moves position backward
+    LineInt("CObList.GetPrev.value", static_cast<IntBox*>(prevVal)->v);
+
+    IntBox d(999);
+    POSITION headPos2 = list.GetHeadPosition();
+    list.SetAt(headPos2, &d); // [d(999), b(2)]
+    LineInt("CObList.SetAt.value", static_cast<IntBox*>(list.GetHead())->v);
+
+    IntBox e(111), g(222);
+    POSITION afterHead = list.GetHeadPosition();
+    list.InsertAfter(afterHead, &e); // [d(999), e(111), b(2)]
+    POSITION beforeTail = list.FindIndex(2);
+    list.InsertBefore(beforeTail, &g); // [d(999), e(111), g(222), b(2)]
+    LineInt("CObList.CountAfterInserts", list.GetCount());
+    std::string order2;
+    POSITION p2 = list.GetHeadPosition();
+    while (p2)
+    {
+        CObject* o = list.GetNext(p2);
+        order2 += std::to_string(static_cast<IntBox*>(o)->v);
+        if (p2) order2 += ",";
+    }
+    Line("CObList.IterationOrderAfterInserts", order2);
+
+    list.RemoveAt(list.FindIndex(0)); // removes d(999): [e(111), g(222), b(2)]
+    LineInt("CObList.CountAfterRemoveAt", list.GetCount());
+    LineInt("CObList.RemoveTail.value", static_cast<IntBox*>(list.RemoveTail())->v);
+    LineInt("CObList.CountAfterRemoveTail", list.GetCount());
 
     list.RemoveAll();
     LineBool("CObList.IsEmptyAfterRemoveAll", list.IsEmpty() != FALSE);
@@ -485,6 +648,10 @@ static void TestCPtrList()
     list.AddHead(p3); // order: 33, 11, 22
 
     LineInt("CPtrList.GetCount", list.GetCount());
+    LineBool("CPtrList.IsEmpty", list.IsEmpty() != FALSE);
+    LineInt("CPtrList.GetHead", reinterpret_cast<intptr_t>(list.GetHead()));
+    LineInt("CPtrList.GetTail", reinterpret_cast<intptr_t>(list.GetTail()));
+
     std::string order;
     POSITION pos = list.GetHeadPosition();
     while (pos)
@@ -495,8 +662,30 @@ static void TestCPtrList()
     }
     Line("CPtrList.IterationOrder", order);
 
+    void* p4 = reinterpret_cast<void*>(static_cast<intptr_t>(44));
+    LineBool("CPtrList.Find.found", list.Find(p2) != nullptr);
+    LineBool("CPtrList.Find.notFound", list.Find(p4) != nullptr);
+    // CPtrList has no GetAt (matching real MFC: only CObList does), so read
+    // the found index via GetNext, which returns the current element before
+    // advancing the position.
+    POSITION idxPos = list.FindIndex(1);
+    LineInt("CPtrList.FindIndex1", reinterpret_cast<intptr_t>(list.GetNext(idxPos)));
+
+    POSITION tailPos = list.GetTailPosition();
+    LineInt("CPtrList.GetTailPosition", reinterpret_cast<intptr_t>(list.GetPrev(tailPos)));
+
+    list.InsertAfter(list.GetHeadPosition(), p4); // [33, 44, 11, 22]
+    LineInt("CPtrList.CountAfterInsertAfter", list.GetCount());
+    list.InsertBefore(list.FindIndex(3), p1); // insert 11 again before index 3 (22): [33, 44, 11, 11, 22]
+    LineInt("CPtrList.CountAfterInsertBefore", list.GetCount());
+
+    LineInt("CPtrList.RemoveHead.value", reinterpret_cast<intptr_t>(list.RemoveHead()));
+    LineInt("CPtrList.CountAfterRemoveHead", list.GetCount());
     LineInt("CPtrList.RemoveTail.value", reinterpret_cast<intptr_t>(list.RemoveTail()));
     LineInt("CPtrList.CountAfterRemoveTail", list.GetCount());
+
+    list.RemoveAll();
+    LineBool("CPtrList.IsEmptyAfterRemoveAll", list.IsEmpty() != FALSE);
 }
 
 static void TestCStringList()
@@ -507,6 +696,10 @@ static void TestCStringList()
     list.AddHead(L"zero"); // order: zero, one, two
 
     LineInt("CStringList.GetCount", list.GetCount());
+    LineBool("CStringList.IsEmpty", list.IsEmpty() != FALSE);
+    Line("CStringList.GetHead", list.GetHead());
+    Line("CStringList.GetTail", list.GetTail());
+
     std::string order;
     POSITION pos = list.GetHeadPosition();
     while (pos)
@@ -522,6 +715,11 @@ static void TestCStringList()
 
     Line("CStringList.RemoveHead.value", list.RemoveHead());
     LineInt("CStringList.CountAfterRemoveHead", list.GetCount());
+    Line("CStringList.RemoveTail.value", list.RemoveTail());
+    LineInt("CStringList.CountAfterRemoveTail", list.GetCount());
+
+    list.RemoveAll();
+    LineBool("CStringList.IsEmptyAfterRemoveAll", list.IsEmpty() != FALSE);
 }
 
 // ---------------------------------------------------------------------
@@ -551,6 +749,31 @@ static void TestCObArray()
     LineInt("CObArray.CountAfterRemoveAt0", arr.GetCount());
     LineInt("CObArray.GetUpperBound", static_cast<long long>(arr.GetUpperBound()));
 
+    LineInt("CObArray.ElementAt0.value", static_cast<IntBox*>(arr.ElementAt(0))->v);
+    CObject** data = arr.GetData();
+    LineInt("CObArray.GetData.first.value", static_cast<IntBox*>(data[0])->v);
+    arr.FreeExtra(); // no printable effect beyond exercising the call
+    LineInt("CObArray.CountAfterFreeExtra", arr.GetCount());
+
+    IntBox f(77);
+    arr.SetAtGrow(5, &f);
+    LineInt("CObArray.CountAfterSetAtGrow5", arr.GetCount());
+    LineInt("CObArray.GetAt5.value", static_cast<IntBox*>(arr.GetAt(5))->v);
+
+    CObArray src;
+    IntBox g(88);
+    src.Add(&g);
+    INT_PTR appendedResult = arr.Append(src);
+    LineInt("CObArray.Append.result", static_cast<long long>(appendedResult));
+    LineInt("CObArray.CountAfterAppend", arr.GetCount());
+
+    CObArray copyDst;
+    copyDst.Copy(arr);
+    LineInt("CObArray.Copy.count", copyDst.GetCount());
+
+    arr.SetSize(2);
+    LineInt("CObArray.CountAfterSetSize2", arr.GetCount());
+
     arr.RemoveAll();
     LineBool("CObArray.IsEmptyAfterRemoveAll", arr.IsEmpty() != FALSE);
 }
@@ -562,9 +785,37 @@ static void TestCPtrArray()
     arr.Add(reinterpret_cast<void*>(static_cast<intptr_t>(200)));
     LineInt("CPtrArray.GetCount", arr.GetCount());
     LineInt("CPtrArray.GetAt0", reinterpret_cast<intptr_t>(arr.GetAt(0)));
+    LineInt("CPtrArray.GetUpperBound", static_cast<long long>(arr.GetUpperBound()));
     arr.SetAtGrow(5, reinterpret_cast<void*>(static_cast<intptr_t>(500)));
     LineInt("CPtrArray.CountAfterSetAtGrow5", arr.GetCount());
     LineInt("CPtrArray.GetAt5", reinterpret_cast<intptr_t>(arr.GetAt(5)));
+
+    arr.SetAt(0, reinterpret_cast<void*>(static_cast<intptr_t>(999)));
+    LineInt("CPtrArray.GetAt0AfterSetAt", reinterpret_cast<intptr_t>(arr.GetAt(0)));
+
+    arr.InsertAt(0, reinterpret_cast<void*>(static_cast<intptr_t>(1)));
+    LineInt("CPtrArray.CountAfterInsertAt0", arr.GetCount());
+    LineInt("CPtrArray.GetAt0AfterInsert", reinterpret_cast<intptr_t>(arr.GetAt(0)));
+
+    arr.RemoveAt(0);
+    LineInt("CPtrArray.CountAfterRemoveAt0", arr.GetCount());
+
+    CPtrArray src;
+    src.Add(reinterpret_cast<void*>(static_cast<intptr_t>(777)));
+    INT_PTR appendedResult = arr.Append(src);
+    LineInt("CPtrArray.Append.result", static_cast<long long>(appendedResult));
+    LineInt("CPtrArray.CountAfterAppend", arr.GetCount());
+
+    CPtrArray copyDst;
+    copyDst.Copy(arr);
+    LineInt("CPtrArray.Copy.count", copyDst.GetCount());
+
+    arr.SetSize(2);
+    LineInt("CPtrArray.CountAfterSetSize2", arr.GetCount());
+    LineBool("CPtrArray.IsEmpty", arr.IsEmpty() != FALSE);
+
+    arr.RemoveAll();
+    LineBool("CPtrArray.IsEmptyAfterRemoveAll", arr.IsEmpty() != FALSE);
 }
 
 static void TestCStringArray()
@@ -580,6 +831,18 @@ static void TestCStringArray()
     arr.RemoveAt(0);
     LineInt("CStringArray.CountAfterRemoveAt0", arr.GetCount());
     Line("CStringArray.GetAt0AfterRemove", arr.GetAt(0));
+    LineInt("CStringArray.GetSize", static_cast<long long>(arr.GetSize()));
+    LineBool("CStringArray.IsEmpty", arr.IsEmpty() != FALSE);
+
+    arr.InsertAt(0, L"zz");
+    LineInt("CStringArray.CountAfterInsertAt0", arr.GetCount());
+    Line("CStringArray.GetAt0AfterInsert", arr.GetAt(0));
+
+    arr.SetSize(1);
+    LineInt("CStringArray.CountAfterSetSize1", arr.GetCount());
+
+    arr.RemoveAll();
+    LineBool("CStringArray.IsEmptyAfterRemoveAll", arr.IsEmpty() != FALSE);
 }
 
 static void TestCByteArray()
@@ -622,6 +885,35 @@ static void TestCArrayTemplate()
     LineInt("CArray_int.GetAt0AfterInsert", arr.GetAt(0));
     arr.RemoveAt(0);
     LineInt("CArray_int.CountAfterRemoveAt0", arr.GetCount());
+
+    LineInt("CArray_int.GetUpperBound", static_cast<long long>(arr.GetUpperBound()));
+    const int* data = arr.GetData();
+    LineInt("CArray_int.GetData.first", data[0]);
+    arr.FreeExtra(); // no printable effect beyond exercising the call
+    LineInt("CArray_int.CountAfterFreeExtra", arr.GetCount());
+
+    arr.SetAt(0, 999);
+    LineInt("CArray_int.GetAt0AfterSetAt", arr.GetAt(0));
+    arr.SetAtGrow(5, 555);
+    LineInt("CArray_int.CountAfterSetAtGrow5", arr.GetCount());
+    LineInt("CArray_int.GetAt5", arr.GetAt(5));
+
+    CArray<int> src;
+    src.Add(777);
+    INT_PTR appendedResult = arr.Append(src);
+    LineInt("CArray_int.Append.result", static_cast<long long>(appendedResult));
+    LineInt("CArray_int.CountAfterAppend", arr.GetCount());
+
+    CArray<int> copyDst;
+    copyDst.Copy(arr);
+    LineInt("CArray_int.Copy.count", copyDst.GetCount());
+
+    arr.SetSize(2);
+    LineInt("CArray_int.CountAfterSetSize2", arr.GetCount());
+    LineBool("CArray_int.IsEmpty", arr.IsEmpty() != FALSE);
+
+    arr.RemoveAll();
+    LineBool("CArray_int.IsEmptyAfterRemoveAll", arr.IsEmpty() != FALSE);
 }
 
 static void TestCListTemplate()
@@ -631,6 +923,9 @@ static void TestCListTemplate()
     list.AddTail(L"y");
     list.AddHead(L"w"); // order: w, x, y
     LineInt("CList_CString.GetCount", list.GetCount());
+    LineBool("CList_CString.IsEmpty", list.IsEmpty() != FALSE);
+    Line("CList_CString.GetHead", list.GetHead());
+    Line("CList_CString.GetTail", list.GetTail());
 
     std::string order;
     POSITION pos = list.GetHeadPosition();
@@ -641,8 +936,45 @@ static void TestCListTemplate()
         if (pos) order += ",";
     }
     Line("CList_CString.IterationOrder", order);
+
+    LineBool("CList_CString.Find.found", list.Find(L"x") != nullptr);
+    LineBool("CList_CString.Find.notFound", list.Find(L"missing") != nullptr);
+    POSITION idxPos = list.FindIndex(1);
+    Line("CList_CString.FindIndex1.value", list.GetAt(idxPos));
+
+    POSITION tailPos = list.GetTailPosition();
+    Line("CList_CString.GetTailPosition.value", list.GetAt(tailPos));
+    Line("CList_CString.GetPrev.value", list.GetPrev(tailPos));
+
+    POSITION headPos = list.GetHeadPosition();
+    list.SetAt(headPos, L"W2");
+    Line("CList_CString.SetAt.value", list.GetHead());
+
+    list.InsertAfter(list.GetHeadPosition(), L"inserted");
+    LineInt("CList_CString.CountAfterInsertAfter", list.GetCount());
+    list.InsertBefore(list.FindIndex(2), L"beforeThird");
+    LineInt("CList_CString.CountAfterInsertBefore", list.GetCount());
+
+    std::string order2;
+    POSITION p2 = list.GetHeadPosition();
+    while (p2)
+    {
+        CString v = list.GetNext(p2);
+        order2 += Utf8((LPCTSTR)v);
+        if (p2) order2 += ",";
+    }
+    Line("CList_CString.IterationOrderAfterInserts", order2);
+
+    list.RemoveAt(list.FindIndex(0));
+    LineInt("CList_CString.CountAfterRemoveAt", list.GetCount());
+
     Line("CList_CString.RemoveHead.value", list.RemoveHead());
     LineInt("CList_CString.CountAfterRemoveHead", list.GetCount());
+    Line("CList_CString.RemoveTail.value", list.RemoveTail());
+    LineInt("CList_CString.CountAfterRemoveTail", list.GetCount());
+
+    list.RemoveAll();
+    LineBool("CList_CString.IsEmptyAfterRemoveAll", list.IsEmpty() != FALSE);
 }
 
 static void TestCMapTemplate()
@@ -687,6 +1019,43 @@ static void TestCMapTemplate()
     LineBool("CMap.PLookup.found", map.PLookup(L"three") != nullptr);
     if (const auto* pair = map.PLookup(L"three"))
         LineInt("CMap.PLookup.value", pair->value);
+
+    LineInt("CMap.GetSize", static_cast<long long>(map.GetSize()));
+    LineBool("CMap.IsEmpty", map.IsEmpty() != FALSE);
+
+    // InitHashTable is conventionally called right after construction,
+    // before any entries are added (some implementations may not
+    // guarantee preserving existing entries otherwise) — exercised here
+    // on a fresh map, not the already-populated one above.
+    CMap<CString, LPCTSTR, int, int> freshMap;
+    freshMap.InitHashTable(64);
+    LineBool("CMap.GetHashTableSize.nonZero", freshMap.GetHashTableSize() > 0);
+    freshMap.SetAt(L"k", 1);
+    LineInt("CMap.CountAfterInitHashTableThenSetAt", freshMap.GetCount());
+
+    // PGetFirstAssoc/PGetNextAssoc: like GetStartPosition/GetNextAssoc
+    // above, hash-table iteration order is unspecified and WILL differ
+    // between std::unordered_map and real MFC's own hash table, so only
+    // the aggregate (count/sum) is compared, never per-position order.
+    int pCount = 0;
+    int pSum = 0;
+    for (const auto* p = map.PGetFirstAssoc(); p; p = map.PGetNextAssoc(p))
+    {
+        ++pCount;
+        pSum += p->value;
+    }
+    LineInt("CMap.PIteration.count", pCount);
+    LineInt("CMap.PIteration.sum", pSum);
+
+    map.RemoveAll();
+    LineBool("CMap.IsEmptyAfterRemoveAll", map.IsEmpty() != FALSE);
+    LineInt("CMap.CountAfterRemoveAll", map.GetCount());
+
+    // Constructor with an explicit nBlockSize argument (vs. the default
+    // used by `map` above).
+    CMap<CString, LPCTSTR, int, int> map2(20);
+    map2.SetAt(L"only", 1);
+    LineInt("CMap.ExplicitBlockSizeCtor.GetCount", map2.GetCount());
 }
 
 // ---------------------------------------------------------------------
@@ -726,6 +1095,34 @@ static void TestTime()
     LineInt("CTimeSpan.ctor.GetTotalMinutes", static_cast<long long>(span.GetTotalMinutes()));
 
     Line("CTime.Format", t1.Format(L"%Y-%m-%d %H:%M:%S"));
+    LineInt("CTime.GetTime", static_cast<long long>(t1.GetTime()));
+
+    // Default and explicit(__time64_t) constructors.
+    CTime defaultTime;
+    LineInt("CTime.defaultCtor.GetTime", static_cast<long long>(defaultTime.GetTime()));
+    CTime fromEpoch(static_cast<__time64_t>(t1.GetTime()));
+    LineBool("CTime.explicitEpochCtor.equalsT1", fromEpoch == t1);
+
+    // GetCurrentTime(): the exact instant is inherently non-deterministic
+    // (the two probes run moments apart, not simultaneously), so only a
+    // structural property is compared, never the raw value.
+    CTime now = CTime::GetCurrentTime();
+    LineBool("CTime.GetCurrentTime.plausibleYear", now.GetYear() >= 2020);
+
+    // Default and explicit(long long) CTimeSpan constructors, plus
+    // operator+/operator- between two spans.
+    CTimeSpan defaultSpan;
+    LineInt("CTimeSpan.defaultCtor.GetTotalSeconds", static_cast<long long>(defaultSpan.GetTotalSeconds()));
+    CTimeSpan fromSeconds(3661); // 1h 1m 1s
+    LineInt("CTimeSpan.explicitSecondsCtor.GetHours", fromSeconds.GetHours());
+    LineInt("CTimeSpan.explicitSecondsCtor.GetTotalSeconds", static_cast<long long>(fromSeconds.GetTotalSeconds()));
+
+    CTimeSpan spanA(0, 1, 0, 0);  // 1 hour
+    CTimeSpan spanB(0, 0, 30, 0); // 30 minutes
+    CTimeSpan spanSum = spanA + spanB;
+    LineInt("CTimeSpan.operatorPlus.GetTotalMinutes", static_cast<long long>(spanSum.GetTotalMinutes()));
+    CTimeSpan spanDiff = spanA - spanB;
+    LineInt("CTimeSpan.operatorMinus.GetTotalMinutes", static_cast<long long>(spanDiff.GetTotalMinutes()));
 }
 
 // ---------------------------------------------------------------------
@@ -749,6 +1146,16 @@ static void TestCriticalSection()
     t3.join();
     t4.join();
     LineInt("CCriticalSection.counter_after_4x5000", counter);
+
+    // Direct (uncontended) Lock()/Unlock() calls, not just through
+    // CSingleLock, plus the Lock(DWORD) overload with an explicit timeout.
+    BOOL directLocked = cs.Lock();
+    LineBool("CCriticalSection.Lock.direct", directLocked != FALSE);
+    BOOL directUnlocked = cs.Unlock();
+    LineBool("CCriticalSection.Unlock.direct", directUnlocked != FALSE);
+    BOOL directLockedTimeout = cs.Lock(1000);
+    LineBool("CCriticalSection.LockWithTimeout.direct", directLockedTimeout != FALSE);
+    cs.Unlock();
 }
 
 static void TestEventAutoReset()
@@ -776,6 +1183,31 @@ static void TestEventManualReset()
     LineBool("CEvent.ManualReset.thirdLockTimesOut", third == FALSE);
 }
 
+static void TestEventPulseAndUnlock()
+{
+    CEvent ev(FALSE, FALSE); // not signaled, auto-reset
+
+    // CEvent::Unlock(): a documented no-op on real MFC (events have no
+    // true "unlock" concept) — just verify it returns TRUE, matching.
+    LineBool("CEvent.Unlock.noop", ev.Unlock() != FALSE);
+
+    // PulseEvent: signals waiters then immediately un-signals again,
+    // unlike SetEvent (which stays signaled until consumed/reset). Real
+    // Win32 PulseEvent has a well-known, documented race: a waiter only
+    // catches the pulse if it is already blocked in the wait *and* gets
+    // scheduled before the un-signal happens right after — this is
+    // exactly why Microsoft deprecated it. Since that race exists on real
+    // MFC too (not just here), whether a given waiter catches a given
+    // pulse is not a fair byte-for-byte comparison; only PulseEvent's
+    // deterministic return value and its guaranteed after-effect (not
+    // left signaled) are compared.
+    BOOL pulseResult = ev.PulseEvent();
+    LineBool("CEvent.PulseEvent.returns_true", pulseResult != FALSE);
+
+    BOOL afterPulse = ev.Lock(200); // must time out: not left signaled
+    LineBool("CEvent.AfterPulse.timesOut", afterPulse == FALSE);
+}
+
 static void TestMutex()
 {
     CMutex mtx;
@@ -783,6 +1215,12 @@ static void TestMutex()
     LineBool("CMutex.SingleLock.locked", lk.IsLocked() != FALSE);
     lk.Unlock();
     LineBool("CMutex.SingleLock.unlockedAfterUnlock", lk.IsLocked() == FALSE);
+
+    // CSingleLock::Unlock(LONG, LONG*): the release-count overload.
+    CSingleLock lk2(&mtx, TRUE);
+    LONG prevCount = -1;
+    BOOL unlockedWithCount = lk2.Unlock(1, &prevCount);
+    LineBool("CSingleLock.Unlock2Arg", unlockedWithCount != FALSE);
 }
 
 // ---------------------------------------------------------------------
@@ -810,6 +1248,7 @@ int main()
     TestCriticalSection();
     TestEventAutoReset();
     TestEventManualReset();
+    TestEventPulseAndUnlock();
     TestMutex();
     return 0;
 }
