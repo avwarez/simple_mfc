@@ -142,7 +142,15 @@ static void TestExceptions()
     // legitimately different strings, not a conformance bug. We only
     // compare the parts that ARE meant to be identical: success/failure
     // and "some non-empty message was produced".
-    CFileException fe(CFileException::fileNotFound, -1, L"missing_file.dat");
+    //
+    // lOsError must be a real Win32 error code here, not the -1 "no OS
+    // error" sentinel: real MFC's FormatMessage(-1) legitimately produces
+    // an EMPTY string (nothing to look up), which is real MFC's genuine
+    // behavior for that input, not a bug — found by this very suite. Using
+    // ERROR_FILE_NOT_FOUND (2) instead exercises the representative case
+    // (an OS error was actually recorded), where both sides do produce
+    // non-empty, if differently worded, text.
+    CFileException fe(CFileException::fileNotFound, ERROR_FILE_NOT_FOUND, L"missing_file.dat");
     wchar_t buf[256]{};
     BOOL ok = fe.GetErrorMessage(buf, 256);
     LineBool("CFileException.GetErrorMessage.returns_true", ok != FALSE);
