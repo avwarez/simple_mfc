@@ -419,23 +419,28 @@ void CFile::Rename(LPCTSTR lpszOldName, LPCTSTR lpszNewName)
 // ---------------------------------------------------------------------
 // CStdioFile
 // ---------------------------------------------------------------------
+// std::wfstream is not used here (the file is opened in binary mode): we
+// read line by line as a sequence of raw wchar_t (consistent with the
+// typical use of CStdioFile on UTF-16/ASCII text files written by the
+// application itself, not external system files). Only '\n' terminates a
+// line, matching real MFC's own binary-mode behavior — a preceding '\r'
+// (from a "\r\n" terminator) is NOT stripped and stays part of the
+// returned line unless the file was opened with the typeText flag (not
+// implemented as a distinct code path here, since simple_mfc never
+// requests OS-level CRLF translation either).
 LPTSTR CStdioFile::ReadString(LPTSTR lpsz, UINT nMax)
 {
-    if (!m_stream.getline(reinterpret_cast<char*>(lpsz), 0)) {}
-    // std::wfstream is not used here (the file is opened in binary mode):
-    // we read line by line as a sequence of raw wchar_t (consistent with
-    // the typical use of CStdioFile on UTF-16/ASCII text files written by
-    // the application itself, not external system files).
-    std::wstring line;
     wchar_t ch;
     UINT count = 0;
+    bool any = false;
     while (count + 1 < nMax && m_stream.read(reinterpret_cast<char*>(&ch), sizeof(wchar_t)))
     {
+        any = true;
         if (ch == L'\n') break;
-        if (ch != L'\r') lpsz[count++] = ch;
+        lpsz[count++] = ch;
     }
     lpsz[count] = L'\0';
-    return count > 0 || m_stream.good() ? lpsz : nullptr;
+    return any ? lpsz : nullptr;
 }
 
 BOOL CStdioFile::ReadString(CString& rString)
@@ -447,7 +452,7 @@ BOOL CStdioFile::ReadString(CString& rString)
     {
         any = true;
         if (ch == L'\n') break;
-        if (ch != L'\r') line += ch;
+        line += ch;
     }
     rString = line.c_str();
     return any ? TRUE : FALSE;
