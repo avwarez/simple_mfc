@@ -521,6 +521,8 @@ static void TestCStdioFile()
     // sidesteps ever having to rely on knowing nMax's exact
     // inclusive/exclusive accounting.
     CString path2 = TempDir() + CString(L"simple_mfc_conformance_stdio2.txt");
+    bool caughtUnexpected = false;
+    try
     {
         CStdioFile ctorWrite(path2, CFile::modeCreate | CFile::modeWrite);
         ctorWrite.WriteString(L"buffer overload line\r\n");
@@ -528,12 +530,23 @@ static void TestCStdioFile()
 
         CStdioFile bufRead;
         bufRead.Open(path2, CFile::modeRead);
-        wchar_t lineBuf[128]{};
+        // Deliberately huge relative to nMax=64, to rule out any overflow
+        // theory with overwhelming margin as a diagnostic step.
+        wchar_t lineBuf[1024]{};
         LPTSTR got = bufRead.ReadString(lineBuf, 64);
         LineBool("CStdioFile.ReadString.buffer.nonNull", got != nullptr);
         Line("CStdioFile.ReadString.buffer.content", lineBuf);
         SafeClose(bufRead);
     }
+    catch (...)
+    {
+        // Diagnostic: does something throw here that our CFileException*
+        // catches upstream don't handle? A caught-and-swallowed exception
+        // of an unexpected type would otherwise look identical to silent
+        // output truncation.
+        caughtUnexpected = true;
+    }
+    LineBool("DEBUG.caughtUnexpectedException", caughtUnexpected);
     SafeRemoveFile(path2);
 }
 
