@@ -58,12 +58,17 @@
 
 // windows.h also #defines the zero-argument GetCurrentTime() to
 // GetTickCount() (a legacy 16-bit-Windows compatibility shim in
-// winuser.h). Unlike FindNextFile, this one does NOT affect real MFC's
-// own CTime::GetCurrentTime declaration (confirmed by CI: only the
-// native side's call site broke), so a single unconditional #undef
-// before any call site is enough for both branches.
-#ifdef GetCurrentTime
-    #undef GetCurrentTime
+// winuser.h). Exactly like FindNextFile above: real MFC's own
+// ATL::CTime::GetCurrentTime is ALSO declared under the substituted name
+// (confirmed by CI — a blanket #undef broke the real-MFC side instead),
+// so this needs the same per-branch dispatch, not a plain #undef.
+#if defined(SIMPLE_MFC_USE_NATIVE)
+    #ifdef GetCurrentTime
+        #undef GetCurrentTime
+    #endif
+    #define SIMPLE_MFC_GET_CURRENT_TIME() CTime::GetCurrentTime()
+#else
+    #define SIMPLE_MFC_GET_CURRENT_TIME() CTime::GetTickCount()
 #endif
 
 #include <atomic>
@@ -1119,7 +1124,7 @@ static void TestTime()
     // GetCurrentTime(): the exact instant is inherently non-deterministic
     // (the two probes run moments apart, not simultaneously), so only a
     // structural property is compared, never the raw value.
-    CTime now = CTime::GetCurrentTime();
+    CTime now = SIMPLE_MFC_GET_CURRENT_TIME();
     LineBool("CTime.GetCurrentTime.plausibleYear", now.GetYear() >= 2020);
 
     // Default and explicit(long long) CTimeSpan constructors, plus
