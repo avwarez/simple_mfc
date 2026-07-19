@@ -69,6 +69,17 @@ if (SIMPLE_MFC_BUILD_SMOKE_TEST)
     add_test(NAME smoke_test COMMAND simple_mfc_smoke_test)
 endif()
 
+# --- Conformance tests vs. real MFC (optional, MSVC + ATL/MFC only) --------
+# Compares simple_mfc's behavior/results against the actual Visual Studio
+# MFC libraries, method by method, with identical inputs. Off by default:
+# it requires the "MFC and ATL" VS component, which is not installed
+# everywhere. See tests/conformance/ and .github/workflows/msvc.yml.
+option(SIMPLE_MFC_BUILD_CONFORMANCE_TESTS "Build the real-MFC conformance test suite (requires MSVC + ATL/MFC)" OFF)
+if (SIMPLE_MFC_BUILD_CONFORMANCE_TESTS)
+    enable_testing()
+    add_subdirectory(tests/conformance)
+endif()
+
 # --- Install (optional, for use as an external library) --------------------
 include(GNUInstallDirs)
 install(TARGETS simple_mfc

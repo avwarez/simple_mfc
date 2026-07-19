@@ -24,3 +24,41 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build -C ${{ matrix.build_type }} --output-on-failure
+
+  conformance:
+    # Runs the conformance suite: every simple_mfc method exercised with
+    # the same input against the real Visual Studio MFC libraries, output
+    # compared byte-for-byte. Requires the "MFC and ATL" VS component,
+    # which is not guaranteed to be preinstalled on the runner image, so
+    # it is installed explicitly below. Real MFC is statically linked
+    # (CMAKE_MFC_FLAG), so no redistributable DLLs are needed.
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install the MFC and ATL Visual Studio component
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installerDir = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
+          $vsPath = & "$installerDir\vswhere.exe" -latest -property installationPath
+          Write-Host "Visual Studio install path: $vsPath"
+          $proc = Start-Process -FilePath "$installerDir\vs_installer.exe" -ArgumentList @(
+            'modify',
+            '--installPath', "`"$vsPath`"",
+            '--add', 'Microsoft.VisualStudio.Component.VC.ATLMFC',
+            '--quiet', '--norestart'
+          ) -Wait -PassThru
+          if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010) {
+            throw "vs_installer.exe failed with exit code $($proc.ExitCode)"
+          }
+
+      - name: Configure (conformance tests enabled)
+        run: cmake -S . -B build -DSIMPLE_MFC_BUILD_CONFORMANCE_TESTS=ON
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Run conformance suite (simple_mfc vs. real MFC)
+        run: ctest --test-dir build -C Release --output-on-failure
