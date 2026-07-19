@@ -156,6 +156,22 @@ fixed in the library itself (not just in the test):
   fallback template instead, which doesn't compile for a class type. This
   is also simply the standard, documented MFC idiom for CString-keyed
   maps.
+- **`CStdioFile::ReadString(LPTSTR, UINT)`** (the buffer overload) was
+  dropping the trailing `\n`. Real MFC's is `fgets`-like: it keeps the
+  `\n` (and the preceding `\r`, since the file is opened as binary) as the
+  last characters written into the buffer. The `CString&` overload strips
+  the `\n` but keeps the `\r`. Now both match.
+- **Array `Append` (`CObArray`/`CPtrArray`/`CArray<>`)** returned the new
+  total size; real MFC returns the **index of the first appended element**
+  (the old size). Now matches.
+- **`CFile::Seek` with origin `current`** doubled the offset (it applied
+  the relative offset to both the get and put pointer of the single shared
+  file position). It now syncs the put pointer to the absolute position
+  resolved by the get seek. `begin`/`end` were unaffected (absolute, so
+  idempotent), which is why only current-origin seeks were wrong.
+- **`CFileFind::GetRoot`** returned the filesystem root (`C:\`); real MFC
+  returns the searched directory with the trailing separator kept
+  (e.g. `C:\dir\`). Now matches.
 
 And a few things that are **not** conformance bugs, just properties of
 testing outside a running GUI app (documented inline in `cases.cpp` at
@@ -171,6 +187,31 @@ each point they matter):
   empty message; `CMemoryException::GetErrorMessage` — whose message
   comes *only* from a resource string, no `FormatMessage` fallback —
   returns `FALSE` outright. Neither is compared for that reason.
+
+### Known conformance gaps (deliberately not exercised yet)
+
+These are real behavioral differences from MFC that the suite intentionally
+does **not** exercise for now, because a faithful match is hard or
+impossible in pure standard C++17. They are documented here so they are not
+mistaken for "verified equivalent." **To be refined, near the end of the
+project, with the best available solution:**
+
+- **`CFileFind` dot entries (`.` and `..`).** `std::filesystem::directory_iterator`
+  skips the `.`/`..` pseudo-entries, whereas real MFC's `FindFile`/`FindNextFile`
+  (over the Win32 `FindFirstFile` API) enumerates them. A wildcard search
+  such as `*` would therefore return two extra entries under real MFC, and
+  `IsDots()` never observes a `TRUE` result under simple_mfc. The suite
+  currently searches `*.txt` (which the dot entries never match) to avoid
+  the divergence. A faithful fix would synthesize the two entries during
+  enumeration.
+- **Non-ASCII case conversion / case-insensitive compare.**
+  `CString::MakeUpper`/`MakeLower`/`CompareNoCase` use the C runtime
+  (`towupper`/`towlower`), which in practice only case-folds ASCII, while
+  real MFC uses the Win32 `CharUpperBuff`/`CharLowerBuff` API with full
+  Unicode case mapping. Results diverge for accented/non-ASCII characters.
+  The suite currently uses ASCII-only inputs for these methods. A faithful
+  fix would require a Unicode case-mapping table (outside the standard
+  library).
 
 ## RTTI
 
