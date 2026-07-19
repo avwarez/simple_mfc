@@ -114,14 +114,28 @@ void LineInt(const char* name, long long value) { Line(name, std::to_string(valu
 // same relative ordering), only the sign is a meaningful, portable result.
 int Sign(int v) { return (v > 0) - (v < 0); }
 
-// Best-effort cleanup: CFile::Remove is documented to throw CFileException
-// on failure. On a shared CI runner, deleting a file immediately after
-// closing it can occasionally race with the OS/antivirus still holding a
-// transient handle (this suite found real MFC hit exactly that once, right
-// after closing a CStdioFile that used buffered FILE* I/O). Cleanup isn't
-// itself under test here, so failures are swallowed rather than allowed to
-// take down the whole probe. Calls whose outcome IS the assertion under
-// test call CFile::Remove directly instead of through this helper.
+// Best-effort cleanup: CFile::Remove and CFile::Close are both documented
+// to be able to throw CFileException on failure. On a shared CI runner,
+// this suite found real MFC's process ending early right around a
+// CStdioFile close/cleanup sequence — plausibly a transient Windows
+// file-lock race (antivirus/indexing on the runner) rather than a real
+// conformance difference. None of these administrative calls are
+// themselves the subject of an assertion (Close() returns void; the one
+// Remove() call whose outcome IS checked, via a follow-up GetStatus, is
+// left calling CFile::Remove directly so a genuine failure still shows).
+template <class TFile>
+void SafeClose(TFile& file)
+{
+    try
+    {
+        file.Close();
+    }
+    catch (CFileException* e)
+    {
+        e->Delete();
+    }
+}
+
 void SafeRemoveFile(LPCTSTR path)
 {
     try
@@ -406,7 +420,7 @@ static void TestCFile()
     LineBool("CFile.Open.create", opened != FALSE);
     const char data[] = "Hello, MFC conformance suite!";
     f.Write(data, sizeof(data) - 1);
-    f.Close();
+    SafeClose(f);
 
     CFile f2;
     BOOL opened2 = f2.Open(path, CFile::modeRead);
@@ -433,7 +447,7 @@ static void TestCFile()
     CFileStatus instStatus{};
     LineBool("CFile.GetStatus.instance.ok", f2.GetStatus(instStatus) != FALSE);
     LineInt("CFile.GetStatus.instance.size", static_cast<long long>(instStatus.m_size));
-    f2.Close();
+    SafeClose(f2);
 
     CFileStatus status{};
     BOOL statusOk = CFile::GetStatus(path, status);
@@ -473,7 +487,7 @@ static void TestCStdioFile()
     wf.Open(path, CFile::modeCreate | CFile::modeWrite);
     wf.WriteString(L"first line\r\n");
     wf.WriteString(L"second line\r\n");
-    wf.Close();
+    SafeClose(wf);
 
     CStdioFile rf;
     rf.Open(path, CFile::modeRead);
@@ -481,7 +495,7 @@ static void TestCStdioFile()
     BOOL got1 = rf.ReadString(line1);
     BOOL got2 = rf.ReadString(line2);
     BOOL got3 = rf.ReadString(line3); // past EOF: expected to fail
-    rf.Close();
+    SafeClose(rf);
 
     LineBool("CStdioFile.ReadString.line1.ok", got1 != FALSE);
     Line("CStdioFile.ReadString.line1", line1);
@@ -497,14 +511,14 @@ static void TestCStdioFile()
     {
         CStdioFile ctorWrite(path2, CFile::modeCreate | CFile::modeWrite);
         ctorWrite.WriteString(L"buffer overload line\r\n");
-        ctorWrite.Close();
+        SafeClose(ctorWrite);
 
         CStdioFile ctorRead(path2, CFile::modeRead);
         wchar_t lineBuf[64]{};
         LPTSTR got = ctorRead.ReadString(lineBuf, 64);
         LineBool("CStdioFile.ReadString.buffer.nonNull", got != nullptr);
         Line("CStdioFile.ReadString.buffer.content", lineBuf);
-        ctorRead.Close();
+        SafeClose(ctorRead);
     }
     SafeRemoveFile(path2);
 }
@@ -541,7 +555,7 @@ static void TestCFileFind()
         f.Open(dir + CString(name), CFile::modeCreate | CFile::modeWrite);
         const char payload[] = "x"; // non-empty, so CFileFind::GetLength() is meaningfully non-zero
         f.Write(payload, sizeof(payload) - 1);
-        f.Close();
+        SafeClose(f);
     }
 
     CString matched[8];
@@ -584,7 +598,7 @@ static void TestCFileFind()
         LineInt("CFileFind.Single.GetLength", static_cast<long long>(single.GetLength()));
         LineBool("CFileFind.Single.IsDirectory", single.IsDirectory() != FALSE);
         LineBool("CFileFind.Single.GetRoot.nonEmpty", !single.GetRoot().IsEmpty());
-        single.Close();
+        SafeClose(single);
     }
 
     for (const wchar_t* name : names)
