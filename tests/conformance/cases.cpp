@@ -531,16 +531,23 @@ static void TestCStdioFile()
         LPTSTR got = ctorRead.ReadString(lineBuf, 64);
         LineBool("CStdioFile.ReadString.buffer.nonNull", got != nullptr);
         Line("CStdioFile.ReadString.buffer.content", lineBuf);
+        LineBool("DEBUG.checkpoint.afterContentPrint", true);
         SafeClose(ctorRead);
+        LineBool("DEBUG.checkpoint.afterClose2", true);
     }
+    LineBool("DEBUG.checkpoint.afterScope2", true);
     SafeRemoveFile(path2);
+    LineBool("DEBUG.checkpoint.afterRemove2", true);
 }
 
 static void TestCMemFile()
 {
+    LineBool("DEBUG.checkpoint.enterTestCMemFile", true);
     CMemFile mf;
+    LineBool("DEBUG.checkpoint.afterCMemFileCtor", true);
     const char payload[] = "in-memory payload";
     mf.Write(payload, sizeof(payload) - 1);
+    LineBool("DEBUG.checkpoint.afterWrite", true);
     LineInt("CMemFile.GetLength", static_cast<long long>(mf.GetLength()));
 
     mf.Seek(0, CFile::begin);
