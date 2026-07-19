@@ -56,6 +56,16 @@
     #define SIMPLE_MFC_FIND_NEXT_FILE(finder) (finder).FindNextFileW()
 #endif
 
+// windows.h also #defines the zero-argument GetCurrentTime() to
+// GetTickCount() (a legacy 16-bit-Windows compatibility shim in
+// winuser.h). Unlike FindNextFile, this one does NOT affect real MFC's
+// own CTime::GetCurrentTime declaration (confirmed by CI: only the
+// native side's call site broke), so a single unconditional #undef
+// before any call site is enough for both branches.
+#ifdef GetCurrentTime
+    #undef GetCurrentTime
+#endif
+
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -118,7 +128,10 @@ static void TestRTTI()
     LineBool("RTTI.CFileException.IsKindOf.CObject", fileEx->IsKindOf(RUNTIME_CLASS(CObject)) != FALSE);
     LineBool("RTTI.CFileException.IsKindOf.CMemoryException", fileEx->IsKindOf(RUNTIME_CLASS(CMemoryException)) != FALSE);
     Line("RTTI.CFileException.ClassName", std::string(fileEx->GetRuntimeClass()->m_lpszClassName));
-    fileEx->AssertValid(); // no printable output; exercises the call (no-op/ASSERT-only in Release)
+    // CObject::AssertValid() is intentionally NOT exercised: real MFC
+    // compiles it (like Dump()) only under #ifdef _DEBUG — it doesn't
+    // exist at all as a member in a Release build, which is what this
+    // conformance job builds (found by this very suite).
     LineBool("RTTI.CFileException.IsSerializable", fileEx->IsSerializable() != FALSE);
     delete fileEx;
 
