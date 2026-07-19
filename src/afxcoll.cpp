@@ -1,0 +1,10 @@
+#include "afxcoll.h"
+
+IMPLEMENT_DYNAMIC(CObList, CObject)
+IMPLEMENT_DYNAMIC(CPtrList, CObject)
+IMPLEMENT_DYNAMIC(CStringList, CObject)
+IMPLEMENT_DYNAMIC(CObArray, CObject)
+IMPLEMENT_DYNAMIC(CPtrArray, CObject)
+IMPLEMENT_DYNAMIC(CStringArray, CObject)
+IMPLEMENT_DYNAMIC(CByteArray, CObject)
+IMPLEMENT_DYNAMIC(CUIntArray, CObject)
