@@ -33,14 +33,28 @@
 
 #include <windows.h>
 
-// windows.h #defines FindNextFile to FindNextFileW (UNICODE builds), which
-// would otherwise rewrite every `finder.FindNextFile()` call below into a
-// call to a nonexistent `CFileFind::FindNextFileW`. Real MFC headers
-// happen to dodge this because they include windows.h *before* declaring
-// CFileFind, so the declaration itself picks up the same substitution;
-// simple_mfc's afx.h deliberately never includes windows.h, so here the
-// macro must be removed explicitly before it can bite.
-#undef FindNextFile
+// windows.h #defines FindNextFile to FindNextFileW under UNICODE builds.
+// Real MFC's own headers include windows.h *before* declaring CFileFind,
+// so real MFC's method is itself compiled under the substituted name
+// (CFileFind::FindNextFileW) — the call site below must match that.
+// simple_mfc's afx.h deliberately never includes windows.h, so its
+// CFileFind keeps the literal FindNextFile name, and the call site must
+// NOT be macro-substituted there. Same source line, opposite requirement
+// per branch: dispatch through a macro instead of calling the method
+// name directly.
+#if defined(SIMPLE_MFC_USE_NATIVE)
+    // Macro expansion is rescanned for further substitution, so simply
+    // writing FindNextFile in the replacement text below would still get
+    // rewritten to FindNextFileW by the still-active windows.h macro.
+    // Remove it first: simple_mfc's own CFileFind keeps the literal name
+    // since afx.h never includes windows.h.
+    #ifdef FindNextFile
+        #undef FindNextFile
+    #endif
+    #define SIMPLE_MFC_FIND_NEXT_FILE(finder) (finder).FindNextFile()
+#else
+    #define SIMPLE_MFC_FIND_NEXT_FILE(finder) (finder).FindNextFileW()
+#endif
 
 #include <atomic>
 #include <chrono>
@@ -371,7 +385,7 @@ static void TestCFileFind()
     BOOL working = finder.FindFile(dir + CString(L"*.txt"));
     while (working)
     {
-        working = finder.FindNextFile();
+        working = SIMPLE_MFC_FIND_NEXT_FILE(finder);
         if (finder.IsDots()) continue;
         if (matchCount < 8) matched[matchCount++] = finder.GetFileName();
     }
