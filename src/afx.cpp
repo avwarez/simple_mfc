@@ -66,10 +66,10 @@ BOOL CFileException::GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pnH
         case sharingViolation: msg = L"Sharing violation."; break;
         default: msg = L"File error."; break;
     }
-    if (!m_strFileName.empty())
+    if (!m_strFileName.IsEmpty())
     {
         msg += L" (";
-        msg += m_strFileName;
+        msg += m_strFileName.AsStdString();
         msg += L")";
     }
     size_t n = std::min<size_t>(nMaxError - 1, msg.size());

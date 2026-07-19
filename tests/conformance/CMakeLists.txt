@@ -21,8 +21,17 @@ target_link_libraries(simple_mfc_probe PRIVATE simple_mfc::simple_mfc)
 # directory-scoped variable read by the Visual Studio generator at
 # add_executable() time, so it must be set immediately before this target
 # and cleared right after, to avoid affecting simple_mfc_probe above/below.
+# Statically-linked MFC (CMAKE_MFC_FLAG 1) requires the static CRT
+# (/MT[d]): real MFC's own afx.h hard-errors ("requires MFC shared dll
+# version") if it sees the default dynamic CRT (/MD[d]) instead. This only
+# affects real_mfc_probe — simple_mfc_probe keeps CMake's default dynamic
+# CRT, matching how the simple_mfc library itself is built, since the two
+# executables share no binary linkage.
 set(CMAKE_MFC_FLAG 1)
 add_executable(real_mfc_probe cases.cpp)
+set_target_properties(real_mfc_probe PROPERTIES
+    MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
+)
 target_compile_definitions(real_mfc_probe PRIVATE SIMPLE_MFC_USE_REAL_MFC UNICODE _UNICODE)
 unset(CMAKE_MFC_FLAG)
 

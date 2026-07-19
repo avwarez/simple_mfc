@@ -33,6 +33,15 @@
 
 #include <windows.h>
 
+// windows.h #defines FindNextFile to FindNextFileW (UNICODE builds), which
+// would otherwise rewrite every `finder.FindNextFile()` call below into a
+// call to a nonexistent `CFileFind::FindNextFileW`. Real MFC headers
+// happen to dodge this because they include windows.h *before* declaring
+// CFileFind, so the declaration itself picks up the same substitution;
+// simple_mfc's afx.h deliberately never includes windows.h, so here the
+// macro must be removed explicitly before it can bite.
+#undef FindNextFile
+
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -125,7 +134,7 @@ static void TestExceptions()
     LineBool("CFileException.GetErrorMessage.returns_true", ok != FALSE);
     LineBool("CFileException.GetErrorMessage.non_empty", buf[0] != L'\0');
     LineInt("CFileException.m_cause", fe.m_cause);
-    Line("CFileException.m_strFileName", fe.m_strFileName.c_str());
+    Line("CFileException.m_strFileName", fe.m_strFileName);
 
     CMemoryException me;
     wchar_t mbuf[256]{};
@@ -308,17 +317,17 @@ static void TestCStdioFile()
 
     CStdioFile rf;
     rf.Open(path, CFile::modeRead);
-    CString line1, line2;
+    CString line1, line2, line3;
     BOOL got1 = rf.ReadString(line1);
     BOOL got2 = rf.ReadString(line2);
-    BOOL got3 = rf.ReadString(CString()); // dummy, just to probe EOF via a 3rd read below
+    BOOL got3 = rf.ReadString(line3); // past EOF: expected to fail
     rf.Close();
 
     LineBool("CStdioFile.ReadString.line1.ok", got1 != FALSE);
     Line("CStdioFile.ReadString.line1", line1);
     LineBool("CStdioFile.ReadString.line2.ok", got2 != FALSE);
     Line("CStdioFile.ReadString.line2", line2);
-    (void)got3;
+    LineBool("CStdioFile.ReadString.line3PastEof.fails", got3 == FALSE);
 
     CFile::Remove(path);
 }

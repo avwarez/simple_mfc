@@ -111,79 +111,10 @@ public:
 };
 
 // ---------------------------------------------------------------------
-// CException — real hierarchy, genuine C++ exceptions (used with standard
-// throw/catch, not with the original MFC pointer+Delete() pattern, even
-// though Delete() is still available for interface compatibility with
-// code written against real MFC).
-// ---------------------------------------------------------------------
-class CException : public CObject
-{
-    DECLARE_DYNAMIC(CException)
-public:
-    explicit CException(BOOL bAutoDelete) : m_bAutoDelete(bAutoDelete) {}
-    void Delete() { if (m_bAutoDelete) delete this; }
-    virtual int ReportError(UINT nType = 0, UINT nMessageID = 0);
-
-private:
-    BOOL m_bAutoDelete;
-};
-
-// Abstract base for "resource-critical" exceptions. In real MFC
-// GetErrorMessage is virtual with a body (not pure); here it is made pure
-// to enforce abstractness at compile time (an explicit design choice), so
-// every concrete subclass must provide its own override.
-class CSimpleException : public CException
-{
-    DECLARE_DYNAMIC(CSimpleException)
-public:
-    CSimpleException() : CException(FALSE) {}
-    explicit CSimpleException(BOOL bAutoDelete) : CException(bAutoDelete) {}
-    virtual BOOL GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pnHelpContext = nullptr) const = 0;
-};
-
-class CMemoryException : public CSimpleException
-{
-    DECLARE_DYNAMIC(CMemoryException)
-public:
-    CMemoryException() : CSimpleException(FALSE) {}
-    BOOL GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pnHelpContext = nullptr) const override;
-};
-
-class CFileException : public CException
-{
-    DECLARE_DYNAMIC(CFileException)
-public:
-    enum Cause
-    {
-        none, genericException, fileNotFound, badPath, tooManyOpenFiles,
-        accessDenied, invalidFile, removeCurrentDir, directoryFull, badSeek,
-        hardIO, sharingViolation, lockViolation, diskFull, endOfFile
-    };
-
-    explicit CFileException(int cause = none, LONG lOsError = -1, LPCTSTR lpszFileName = nullptr)
-        : CException(TRUE), m_cause(cause), m_lOsError(lOsError),
-          m_strFileName(lpszFileName ? lpszFileName : L"") {}
-
-    BOOL GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pnHelpContext = nullptr) const;
-
-    int m_cause;
-    LONG m_lOsError;
-    std::wstring m_strFileName;
-};
-
-// Global exception-throwing functions. In real MFC, AfxThrowInvalidArgException,
-// AfxThrowNotSupportedException, AfxThrowResourceException and
-// AfxThrowUserException throw classes (CInvalidArgException, etc.) that are
-// not implemented here — see ../README.md for why only the two below are
-// provided.
-[[noreturn]] void AfxThrowFileException(int cause, LONG lOsError = -1, LPCTSTR lpszFileName = nullptr);
-[[noreturn]] void AfxThrowMemoryException();
-[[noreturn]] void AfxAbort();
-
-// ---------------------------------------------------------------------
 // CString — a real wrapper around std::wstring exposing the standard MFC
 // interface. LoadString (PE .rc resources) is omitted: no standard C++
-// equivalent, see ../README.md.
+// equivalent, see ../README.md. Declared here, before CException, because
+// CFileException::m_strFileName is a CString (matching real MFC).
 // ---------------------------------------------------------------------
 class CString
 {
@@ -257,6 +188,76 @@ struct hash<CString>
     size_t operator()(const CString& s) const noexcept { return std::hash<std::wstring>{}(s.AsStdString()); }
 };
 } // namespace std
+
+// ---------------------------------------------------------------------
+// CException — real hierarchy, genuine C++ exceptions (used with standard
+// throw/catch, not with the original MFC pointer+Delete() pattern, even
+// though Delete() is still available for interface compatibility with
+// code written against real MFC).
+// ---------------------------------------------------------------------
+class CException : public CObject
+{
+    DECLARE_DYNAMIC(CException)
+public:
+    explicit CException(BOOL bAutoDelete) : m_bAutoDelete(bAutoDelete) {}
+    void Delete() { if (m_bAutoDelete) delete this; }
+    virtual int ReportError(UINT nType = 0, UINT nMessageID = 0);
+
+private:
+    BOOL m_bAutoDelete;
+};
+
+// Abstract base for "resource-critical" exceptions. In real MFC
+// GetErrorMessage is virtual with a body (not pure); here it is made pure
+// to enforce abstractness at compile time (an explicit design choice), so
+// every concrete subclass must provide its own override.
+class CSimpleException : public CException
+{
+    DECLARE_DYNAMIC(CSimpleException)
+public:
+    CSimpleException() : CException(FALSE) {}
+    explicit CSimpleException(BOOL bAutoDelete) : CException(bAutoDelete) {}
+    virtual BOOL GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pnHelpContext = nullptr) const = 0;
+};
+
+class CMemoryException : public CSimpleException
+{
+    DECLARE_DYNAMIC(CMemoryException)
+public:
+    CMemoryException() : CSimpleException(FALSE) {}
+    BOOL GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pnHelpContext = nullptr) const override;
+};
+
+class CFileException : public CException
+{
+    DECLARE_DYNAMIC(CFileException)
+public:
+    enum Cause
+    {
+        none, genericException, fileNotFound, badPath, tooManyOpenFiles,
+        accessDenied, invalidFile, removeCurrentDir, directoryFull, badSeek,
+        hardIO, sharingViolation, lockViolation, diskFull, endOfFile
+    };
+
+    explicit CFileException(int cause = none, LONG lOsError = -1, LPCTSTR lpszFileName = nullptr)
+        : CException(TRUE), m_cause(cause), m_lOsError(lOsError),
+          m_strFileName(lpszFileName ? lpszFileName : L"") {}
+
+    BOOL GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pnHelpContext = nullptr) const;
+
+    int m_cause;
+    LONG m_lOsError;
+    CString m_strFileName;
+};
+
+// Global exception-throwing functions. In real MFC, AfxThrowInvalidArgException,
+// AfxThrowNotSupportedException, AfxThrowResourceException and
+// AfxThrowUserException throw classes (CInvalidArgException, etc.) that are
+// not implemented here — see ../README.md for why only the two below are
+// provided.
+[[noreturn]] void AfxThrowFileException(int cause, LONG lOsError = -1, LPCTSTR lpszFileName = nullptr);
+[[noreturn]] void AfxThrowMemoryException();
+[[noreturn]] void AfxAbort();
 
 // ---------------------------------------------------------------------
 // CFile / CStdioFile / CMemFile — built on std::fstream / an in-memory
