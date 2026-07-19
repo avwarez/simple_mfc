@@ -104,7 +104,14 @@ class ArrayImpl
 {
 public:
     INT_PTR Add(T v) { m_v.push_back(std::move(v)); return static_cast<INT_PTR>(m_v.size()) - 1; }
-    INT_PTR Append(const ArrayImpl& src) { m_v.insert(m_v.end(), src.m_v.begin(), src.m_v.end()); return static_cast<INT_PTR>(m_v.size()); }
+    INT_PTR Append(const ArrayImpl& src)
+    {
+        // Real MFC returns the index of the FIRST appended element (i.e. the
+        // old size), not the new total size.
+        INT_PTR oldSize = static_cast<INT_PTR>(m_v.size());
+        m_v.insert(m_v.end(), src.m_v.begin(), src.m_v.end());
+        return oldSize;
+    }
     void Copy(const ArrayImpl& src) { m_v = src.m_v; }
     T& ElementAt(INT_PTR i) { return m_v.at(static_cast<size_t>(i)); }
     void FreeExtra() { m_v.shrink_to_fit(); }
