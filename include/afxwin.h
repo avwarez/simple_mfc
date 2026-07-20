@@ -340,6 +340,28 @@ public:
     void FillRect(LPCRECT lpRect, CBrush* pBrush);
 };
 
+// Device-context helpers (header afxwin.h). Real MFC derives each from CDC
+// and wires up/tears down the DC in ctor/dtor; eMule only ever constructs
+// them from a CWnd* ("CPaintDC dc(this);") and uses them as a CDC, so a
+// declaration-only CWnd* constructor is all that is needed here.
+class CPaintDC : public CDC
+{
+public:
+    explicit CPaintDC(CWnd* pWnd);
+};
+
+class CClientDC : public CDC
+{
+public:
+    explicit CClientDC(CWnd* pWnd);
+};
+
+class CWindowDC : public CDC
+{
+public:
+    explicit CWindowDC(CWnd* pWnd);
+};
+
 // ---------------------------------------------------------------------
 // CWnd — base of all windows/controls (header afxwin.h). Methods below
 // are only the ones actually called on CWnd*/CWnd& in eMule/srchybrid
@@ -657,6 +679,12 @@ public:
 // which afxwin.h includes below (as in real MFC: a single
 // #include "afxwin.h" also exposes the ON_* macros).
 // ---------------------------------------------------------------------
+// afx_msg is real MFC's marker keyword on every message-handler declaration
+// (`afx_msg void OnPaint();`). It expands to nothing -- but it MUST be defined,
+// otherwise `afx_msg void Foo();` parses as two adjacent declarations and every
+// handler line becomes a C2144 syntax error. eMule uses it 816 times, so its
+// absence alone was cascading through 150+ files.
+#define afx_msg
 #define DECLARE_MESSAGE_MAP()
 #define BEGIN_MESSAGE_MAP(theClass, baseClass)
 #define END_MESSAGE_MAP()
