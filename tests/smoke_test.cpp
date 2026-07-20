@@ -21,6 +21,7 @@
 
 #include <cassert>
 #include <cstdio>
+#include <sstream>
 
 int main()
 {
@@ -47,6 +48,27 @@ int main()
     CTime t = CTime::GetCurrentTime();
     (void)t;
 
+    // CObject::Dump / CDumpContext (found via the qualified-call blind-spot
+    // rescan: CObject::Dump(dc) super-calls in eMule/srchybrid).
+    std::wostringstream oss;
+    CDumpContext dcTest(oss);
+    CObject dumpObj;
+    dumpObj.Dump(dcTest);
+    assert(oss.str() == L"CObject");
+
+    // CFileException::ThrowOsError (static factory, found the same way).
+    try
+    {
+        CFileException::ThrowOsError(2 /*ERROR_FILE_NOT_FOUND*/, L"missing.txt");
+        assert(false && "ThrowOsError must throw");
+    }
+    catch (CFileException* e)
+    {
+        assert(e->m_cause == CFileException::fileNotFound);
+        assert(e->m_strFileName == CString(L"missing.txt"));
+        e->Delete();
+    }
+
     CWnd* w = nullptr; (void)w;
     CDC* dc = nullptr; (void)dc;
     CRect* r = nullptr; (void)r;
@@ -56,6 +78,11 @@ int main()
     COleDropTarget* dropTarget = nullptr; (void)dropTarget;
     CDHtmlDialog* dhtml = nullptr; (void)dhtml;
     CAsyncSocket* sock = nullptr; (void)sock;
+    // CPalette went from an incomplete forward declaration to a real
+    // class definition during the FRONTEND/GDI blind-spot pass (see
+    // ../../mfc_scan_srchybrid.md addendum) — checked here like the
+    // other declaration-only GUI/GDI classes above.
+    CPalette* pal = nullptr; (void)pal;
 
     std::printf("simple_mfc smoke test: ALL OK\n");
     return 0;

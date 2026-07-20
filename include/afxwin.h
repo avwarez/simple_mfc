@@ -15,6 +15,7 @@ class CBitmap;
 class CRgn;
 class CPalette;
 class CCreateContext;
+class CDataExchange;
 struct SECURITY_ATTRIBUTES;
 typedef long (*AFX_THREADPROC)(void*);
 
@@ -45,6 +46,26 @@ using LONG_PTR = std::intptr_t;
 using WPARAM = UINT_PTR;
 using LPARAM = LONG_PTR;
 using LRESULT = LONG_PTR;
+
+// ---------------------------------------------------------------------
+// Additional Win32 primitive stand-ins (FRONTEND/GDI blind-spot pass,
+// see ../../mfc_scan_srchybrid.md addendum): needed only by the CWnd
+// message-handler declarations below, which real code reaches through
+// qualified super-calls (e.g. CDialog::DoDataExchange(),
+// CWnd::OnDestroy()) invisible to a plain ".Method("/"->Method(" scan.
+// All incomplete/forward-declared: only ever used by pointer here.
+// ---------------------------------------------------------------------
+struct tagMSG;
+using MSG = tagMSG;
+using LPMSG = MSG*;
+struct tagCREATESTRUCT;
+using CREATESTRUCT = tagCREATESTRUCT;
+using LPCREATESTRUCT = CREATESTRUCT*;
+struct HELPINFO;
+struct TOOLINFO;
+struct tagMEASUREITEMSTRUCT;
+using LPMEASUREITEMSTRUCT = tagMEASUREITEMSTRUCT*;
+class CScrollBar; // real header afxwin.h too; only used here as a pointer parameter
 
 // Real MFC's CWnd-derived classes intentionally hide the base Create()
 // overload set with their own Create() (different signature per class):
@@ -150,6 +171,25 @@ public:
     BOOL CreateDIBPatternBrush(const void* lpPackedDIB, UINT nUsage);
 };
 
+struct tagLOGPALETTE;
+using LOGPALETTE = tagLOGPALETTE;
+using LPLOGPALETTE = LOGPALETTE*;
+
+// CPalette (header afxwin.h, deriva da CGdiObject). Was previously only
+// forward-declared (used as an incomplete pointer-only type in
+// CDC::SelectObject/SelectPalette); given a real definition here because
+// eMule/srchybrid genuinely instantiates and uses one (ColourPopup.cpp:
+// m_Palette.CreatePalette(pLogPalette)/.DeleteObject()/pDC->SelectPalette(
+// &m_Palette, FALSE), m_Palette declared as a plain CPalette member in
+// ColourPopup.h) — found during the FRONTEND/GDI blind-spot pass, see
+// ../../mfc_scan_srchybrid.md addendum. DeleteObject is inherited from
+// CGdiObject, not redeclared here.
+class CPalette : public CGdiObject
+{
+public:
+    BOOL CreatePalette(LPLOGPALETTE lpLogPalette);
+};
+
 // CBitmap (header afxwin.h, deriva da CGdiObject)
 class CBitmap : public CGdiObject
 {
@@ -181,6 +221,8 @@ public:
 class CDC : public CObject
 {
 public:
+    static CDC* FromHandle(HDC hDC);
+
     CGdiObject* SelectObject(CGdiObject* pObject);
     CDC* SelectObject(CFont* pFont);
     CDC* SelectObject(CBrush* pBrush);
@@ -220,7 +262,16 @@ public:
     CPalette* SelectPalette(CPalette* pPalette, BOOL bForceBackground);
     BOOL GetTextMetrics(struct tagTEXTMETRIC* lpMetrics);
     int GetClipBox(LPRECT lpRect);
-    BOOL DrawState(CPoint pt, CSize size, LPCTSTR lpszText, UINT nFlags, BOOL bPrefixText = TRUE, int nTextLen = 0, HBRUSH hBrush = nullptr);
+    // Both overloads below fixed/added during the FRONTEND/GDI blind-spot
+    // pass (see ../../mfc_scan_srchybrid.md addendum): real eMule usage
+    // (TrayMenuBtn.cpp:114, TrayMenuBtn.cpp:105, ListBoxST.cpp:252) passes
+    // a CBrush* (e.g. "(CBrush*)NULL"), not an HBRUSH, as the trailing
+    // parameter — the text overload's last-parameter type was wrong, and
+    // the HICON overload was entirely missing (verified against
+    // Microsoft Learn's CDC::DrawState page: the CBrush*-taking overloads
+    // are the ones with no matching HBITMAP overload actually used here).
+    BOOL DrawState(CPoint pt, CSize size, LPCTSTR lpszText, UINT nFlags, BOOL bPrefixText = TRUE, int nTextLen = 0, CBrush* pBrush = nullptr);
+    BOOL DrawState(CPoint pt, CSize size, HICON hIcon, UINT nFlags, CBrush* pBrush = nullptr);
     UINT RealizePalette();
     BOOL Polygon(LPPOINT lpPoints, int nCount);
     int SetMapMode(int nMapMode);
@@ -302,6 +353,85 @@ public:
                        UINT flags = RDW_INVALIDATE | RDW_UPDATENOW | RDW_ERASE);
     CWnd* SetCapture();
     void InvalidateRect(LPCRECT lpRect, BOOL bErase = TRUE);
+
+    // -----------------------------------------------------------------
+    // Everything below was added during the FRONTEND/GDI blind-spot pass
+    // (see ../../mfc_scan_srchybrid.md addendum): a plain textual
+    // ".Method("/"->Method(" scan cannot see (a) static methods, which
+    // are only ever called as "CWnd::Method(...)", or (b) qualified
+    // super-calls like "CWnd::OnDestroy()" made by a derived class's own
+    // override to reach the base behavior — both are pervasive in
+    // eMule/srchybrid. Signatures verified against Microsoft Learn's
+    // CWnd Class reference page.
+    // -----------------------------------------------------------------
+    static CWnd* FromHandle(HWND hWnd);
+    static CWnd* FromHandlePermanent(HWND hWnd);
+    static CWnd* GetDesktopWindow();
+    static CWnd* WindowFromPoint(POINT point);
+
+    virtual BOOL CreateEx(DWORD dwExStyle, LPCTSTR lpszClassName, LPCTSTR lpszWindowName,
+                           DWORD dwStyle, int x, int y, int nWidth, int nHeight,
+                           HWND hWndParent, HMENU nIDorHMenu, LPVOID lpParam = nullptr);
+    virtual BOOL CreateEx(DWORD dwExStyle, LPCTSTR lpszClassName, LPCTSTR lpszWindowName,
+                           DWORD dwStyle, const RECT& rect, CWnd* pParentWnd, UINT nID,
+                           LPVOID lpParam = nullptr);
+
+    virtual BOOL PreTranslateMessage(MSG* pMsg);
+    virtual void PreSubclassWindow();
+    virtual void PostNcDestroy();
+    virtual LRESULT WindowProc(UINT message, WPARAM wParam, LPARAM lParam);
+    virtual LRESULT DefWindowProc(UINT message, WPARAM wParam, LPARAM lParam);
+    virtual void DoDataExchange(CDataExchange* pDX);
+    virtual int OnToolHitTest(CPoint point, TOOLINFO* pTI) const;
+    virtual BOOL OnWndMsg(UINT message, WPARAM wParam, LPARAM lParam, LRESULT* pResult);
+    virtual BOOL OnChildNotify(UINT message, WPARAM wParam, LPARAM lParam, LRESULT* pResult);
+    virtual BOOL OnNotify(WPARAM wParam, LPARAM lParam, LRESULT* pResult);
+    virtual BOOL OnCommand(WPARAM wParam, LPARAM lParam);
+
+    // WM_* message handlers actually reached via a qualified super-call
+    // somewhere in eMule/srchybrid (e.g. CDialog::OnInitDialog() calling
+    // through to CWnd, CStatic::OnPaint(), CTreeCtrl::OnMouseWheel(), ...).
+    // Real MFC declares essentially all of these directly on CWnd, which
+    // is what makes such super-calls valid regardless of which derived
+    // class in the hierarchy actually names them in the call.
+    virtual void OnPaint();
+    virtual void OnDestroy();
+    virtual void OnClose();
+    virtual int OnCreate(LPCREATESTRUCT lpCreateStruct);
+    virtual void OnSysColorChange();
+    virtual BOOL OnHelpInfo(HELPINFO* pHelpInfo);
+    virtual void OnContextMenu(CWnd* pWnd, CPoint point);
+    virtual void OnTimer(UINT_PTR nIDEvent);
+    virtual void OnMouseMove(UINT nFlags, CPoint point);
+    virtual BOOL OnMouseWheel(UINT nFlags, short zDelta, CPoint pt);
+    virtual void OnLButtonUp(UINT nFlags, CPoint point);
+    virtual void OnLButtonDown(UINT nFlags, CPoint point);
+    virtual void OnLButtonDblClk(UINT nFlags, CPoint point);
+    virtual void OnRButtonDown(UINT nFlags, CPoint point);
+    virtual void OnMButtonUp(UINT nFlags, CPoint point);
+    virtual void OnNcLButtonDblClk(UINT nHitTest, CPoint point);
+    virtual void OnNcDestroy();
+    virtual void OnSize(UINT nType, int cx, int cy);
+    virtual HBRUSH OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor);
+    virtual void OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags);
+    virtual void OnChar(UINT nChar, UINT nRepCnt, UINT nFlags);
+    virtual BOOL OnEraseBkgnd(CDC* pDC);
+    virtual void OnSetFocus(CWnd* pOldWnd);
+    virtual void OnKillFocus(CWnd* pNewWnd);
+    virtual void OnActivateApp(BOOL bActive, DWORD dwThreadID);
+    virtual BOOL OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message);
+    virtual BOOL OnQueryNewPalette();
+    virtual void OnPaletteChanged(CWnd* pFocusWnd);
+    virtual void OnHScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar);
+    virtual void OnVScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar);
+    virtual void OnSysCommand(UINT nID, LPARAM lParam);
+    virtual void OnShowWindow(BOOL bShow, UINT nStatus);
+    virtual void OnSettingChange(UINT uFlags, LPCTSTR lpszSection);
+    virtual UINT OnGetDlgCode();
+    virtual void OnCaptureChanged(CWnd* pWnd);
+    virtual void OnMenuSelect(UINT nItemID, UINT nFlags, HMENU hSysMenu);
+    virtual void OnInitMenuPopup(CMenu* pPopupMenu, UINT nIndex, BOOL bSysMenu);
+    virtual void OnCancelMode();
 };
 
 class CDialog : public CWnd
@@ -362,6 +492,15 @@ public:
     int GetText(int nIndex, LPTSTR lpszBuffer) const;
     void GetText(int nIndex, CString& rString) const;
     int DeleteString(UINT nIndex);
+    // Added during the FRONTEND/GDI blind-spot pass (see
+    // ../../mfc_scan_srchybrid.md addendum): ListBoxST.cpp calls these
+    // exclusively as "CListBox::GetItemDataPtr(...)"/etc. (qualified
+    // super-calls from CListBoxST : public CListBox), invisible to the
+    // original ".Method("/"->Method(" scan, which had marked all three
+    // as "0 occurrences". Signatures verified against Microsoft Learn.
+    void* GetItemDataPtr(int nIndex) const;
+    int SetItemDataPtr(int nIndex, void* pData);
+    int InsertString(int nIndex, LPCTSTR lpszItem);
 };
 
 class CComboBox : public CWnd
@@ -413,6 +552,17 @@ public:
     BOOL LoadMenu(UINT nIDResource);
     CMenu* GetSubMenu(int nPos) const;
     BOOL ModifyMenu(UINT nPosition, UINT nFlags, UINT_PTR nIDNewItem = 0, LPCTSTR lpszNewItem = nullptr);
+
+    // Added during the FRONTEND/GDI blind-spot pass (see
+    // ../../mfc_scan_srchybrid.md addendum): CTitledMenu (TitledMenu.h),
+    // an owner-draw CMenu subclass, overrides MeasureItem and calls
+    // "CMenu::MeasureItem(lpMIS)" (TitledMenu.cpp:132) for the default
+    // behavior — a qualified super-call, invisible to the original
+    // ".Method("/"->Method(" scan. DrawItem is also overridden there but
+    // never super-called, so it is intentionally NOT added (same
+    // "framework-invoked only, no super-call found" rule already applied
+    // elsewhere in this document, e.g. CDialog::OnOK originally).
+    virtual void MeasureItem(LPMEASUREITEMSTRUCT lpMeasureItemStruct);
 };
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -422,7 +572,16 @@ public:
 #pragma warning(pop)
 #endif
 
-class CDocument : public CCmdTarget {};
+class CDocument : public CCmdTarget
+{
+public:
+    // Added during the FRONTEND/GDI blind-spot pass (see
+    // ../../mfc_scan_srchybrid.md addendum): EmuleDlg.h:321 overrides and
+    // super-calls "CDocument::OnNewDocument()" — same pattern already
+    // noted for CDocument in the BACKEND group ("probably an
+    // architectural container without real application logic").
+    virtual BOOL OnNewDocument();
+};
 
 // CControlBar and CDialogBar are NOT declared here: they really belong to
 // the afxext.h header (per Microsoft Learn), see afxext.h.

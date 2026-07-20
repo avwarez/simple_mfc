@@ -20,6 +20,25 @@ IMPLEMENT_DYNAMIC(CMemFile, CFile)
 IMPLEMENT_DYNAMIC(CFileFind, CObject)
 
 // ---------------------------------------------------------------------
+// CDumpContext / CObject::Dump
+// ---------------------------------------------------------------------
+CDumpContext afxDump;
+
+CDumpContext& CDumpContext::operator<<(const char* lpsz) { if (lpsz) m_os << lpsz; return *this; }
+CDumpContext& CDumpContext::operator<<(LPCTSTR lpsz) { if (lpsz) m_os << lpsz; return *this; }
+CDumpContext& CDumpContext::operator<<(const CObject* pOb) { if (pOb) pOb->Dump(*this); else m_os << L"(null)"; return *this; }
+CDumpContext& CDumpContext::operator<<(int n) { m_os << n; return *this; }
+CDumpContext& CDumpContext::operator<<(unsigned int u) { m_os << u; return *this; }
+CDumpContext& CDumpContext::operator<<(long l) { m_os << l; return *this; }
+CDumpContext& CDumpContext::operator<<(double d) { m_os << d; return *this; }
+CDumpContext& CDumpContext::operator<<(const void* lp) { m_os << lp; return *this; }
+
+void CObject::Dump(CDumpContext& dc) const
+{
+    dc << GetRuntimeClass()->m_lpszClassName;
+}
+
+// ---------------------------------------------------------------------
 // CException
 // ---------------------------------------------------------------------
 int CException::ReportError(UINT /*nType*/, UINT /*nMessageID*/)
@@ -76,6 +95,40 @@ BOOL CFileException::GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pnH
     std::wmemcpy(lpszError, msg.c_str(), n);
     lpszError[n] = L'\0';
     return TRUE;
+}
+
+// Best-effort mapping from a Win32 GetLastError()-style OS error code to a
+// CFileException::Cause, covering the common, well-documented codes real
+// MFC's own (closed-source) internal table maps; anything else falls back
+// to genericException, matching the documented fallback behavior of real
+// MFC's CFileException::OsErrorToException/ThrowOsError. Literal values
+// used instead of <windows.h> macros to keep this file portable (same
+// convention already used in afxsock.h for socket constants).
+namespace
+{
+int OsErrorToCause(LONG lOsError)
+{
+    switch (lOsError)
+    {
+        case 2: return CFileException::fileNotFound;         // ERROR_FILE_NOT_FOUND
+        case 3: return CFileException::badPath;               // ERROR_PATH_NOT_FOUND
+        case 4: return CFileException::tooManyOpenFiles;      // ERROR_TOO_MANY_OPEN_FILES
+        case 5: return CFileException::accessDenied;          // ERROR_ACCESS_DENIED
+        case 6: return CFileException::invalidFile;           // ERROR_INVALID_HANDLE
+        case 19: return CFileException::accessDenied;         // ERROR_WRITE_PROTECT
+        case 32: return CFileException::sharingViolation;     // ERROR_SHARING_VIOLATION
+        case 33: return CFileException::lockViolation;        // ERROR_LOCK_VIOLATION
+        case 38: return CFileException::endOfFile;             // ERROR_HANDLE_EOF
+        case 39: return CFileException::diskFull;              // ERROR_HANDLE_DISK_FULL
+        case 112: return CFileException::diskFull;             // ERROR_DISK_FULL
+        default: return CFileException::genericException;
+    }
+}
+} // namespace
+
+[[noreturn]] void CFileException::ThrowOsError(LONG lOsError, LPCTSTR lpszFileName)
+{
+    throw new CFileException(OsErrorToCause(lOsError), lOsError, lpszFileName);
 }
 
 // ---------------------------------------------------------------------

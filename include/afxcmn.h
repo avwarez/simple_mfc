@@ -18,7 +18,9 @@ class CArchive; // real header afxx.h family; not implemented (see afx.h), only 
 // ---------------------------------------------------------------------
 using HIMAGELIST = void*;
 using HTREEITEM = void*;
-using LPMSG = void*;
+// LPMSG comes from afxwin.h (included above): a real MSG/LPMSG pair was
+// added there during the FRONTEND/GDI blind-spot pass (needed by
+// CWnd::PreTranslateMessage), so it is no longer aliased to void* here.
 using POSITION = void*; // same alias as afxcoll.h's (identical redefinition is legal, avoids depending on it)
 #define LPSTR_TEXTCALLBACK ((LPTSTR)-1)
 
@@ -34,6 +36,8 @@ using LPTVINSERTSTRUCT = TVINSERTSTRUCT*;
 struct TVHITTESTINFO;
 
 struct TCHITTESTINFO;
+struct TCITEM;
+using TC_ITEM = TCITEM; // older-SDK alias, used interchangeably with TCITEM in eMule/srchybrid
 
 struct TBBUTTON;
 using LPTBBUTTON = TBBUTTON*;
@@ -72,6 +76,18 @@ public:
     HIMAGELIST GetSafeHandle() const;
     BOOL Attach(HIMAGELIST hImageList);
     HIMAGELIST Detach();
+
+    // Added during the FRONTEND/GDI blind-spot pass (see
+    // ../../mfc_scan_srchybrid.md addendum): these are all *static*
+    // methods, only ever called as "CImageList::Method(...)"
+    // (SharedDirsTreeCtrl.cpp:1083-1140) — structurally invisible to the
+    // original ".Method("/"->Method(" scan, which only sees instance
+    // calls. BeginDrag/DragEnter are NOT added: no call site of any kind
+    // (qualified or not) was found for either.
+    static BOOL DragShowNolock(BOOL bShow);
+    static BOOL DragMove(CPoint pt);
+    static BOOL DragLeave(CWnd* pWndLock);
+    static void EndDrag();
 };
 
 // Real MFC's CWnd-derived control classes below intentionally hide
@@ -166,6 +182,10 @@ public:
     UINT GetItemState(int nItem, UINT nMask) const;
     BOOL SortItems(PFNLVCOMPARE pfnCompare, DWORD_PTR dwData);
     BOOL DeleteColumn(int nCol);
+    // Added during the FRONTEND/GDI blind-spot pass (see
+    // ../../mfc_scan_srchybrid.md addendum): MuleListCtrl.h:81 calls
+    // "CListCtrl::GetColumn(iColumn, &lvcol)" — a qualified super-call.
+    BOOL GetColumn(int nCol, LVCOLUMN* pColumn) const;
 };
 
 // ---------------------------------------------------------------------
@@ -196,7 +216,13 @@ class CTabCtrl : public CWnd
 {
 public:
     // Doc: "6 overload, il più semplice: ..." — only this simplest one
-    // was captured with a full signature; the other 5 are not declared.
+    // was captured with a full signature; the other 5 are not declared,
+    // except the TCITEM* overload below (added: FRONTEND/GDI blind-spot
+    // pass, see ../../mfc_scan_srchybrid.md addendum — TabCtrl.cpp:298
+    // and IrcChannelTabCtrl.cpp:293 both call InsertItem with a
+    // TCITEM*/TC_ITEM* argument, the fixed-signature struct overload,
+    // not the simple-string one).
+    LONG InsertItem(int nItem, TCITEM* pTabCtrlItem);
     LONG InsertItem(int nItem, LPCTSTR lpszItem);
     int GetCurSel() const;
     int SetCurSel(int nItem);
@@ -222,6 +248,11 @@ public:
     UINT CommandToIndex(UINT nID) const;
     BOOL EnableButton(int nID, BOOL bEnable = TRUE);
     BOOL GetButton(int nIndex, LPTBBUTTON lpButton) const;
+    // Added during the FRONTEND/GDI blind-spot pass (see
+    // ../../mfc_scan_srchybrid.md addendum): both are called via
+    // qualified super-call in a CToolBarCtrl-derived class.
+    CSize GetMaxSize();
+    BOOL AutoSize();
 };
 
 // ---------------------------------------------------------------------

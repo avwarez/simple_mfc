@@ -15,6 +15,13 @@ class CPropertyPage : public CDialog
 public:
     void SetModified(BOOL bChanged = TRUE);
     virtual BOOL OnSetActive();
+    // Added during the FRONTEND/GDI blind-spot pass (see
+    // ../../mfc_scan_srchybrid.md addendum): OnApply (15 qualified
+    // super-calls, e.g. "CPropertyPage::OnApply()") and OnKillActive (3)
+    // are genuinely reached this way across eMule/srchybrid's property
+    // pages, invisible to the original ".Method("/"->Method(" scan.
+    virtual BOOL OnApply();
+    virtual BOOL OnKillActive();
 };
 
 // ---------------------------------------------------------------------
@@ -49,6 +56,12 @@ public:
     void RemovePage(int nPage);
     void EndDialog(int nEndID);
     void SetWizardButtons(DWORD dwFlags);
+    // Added during the FRONTEND/GDI blind-spot pass (see
+    // ../../mfc_scan_srchybrid.md addendum): unlike CDialog, real MFC
+    // declares OnInitDialog directly on CPropertySheet too (it does not
+    // derive from CDialog), and MiniMule-style code super-calls it as
+    // "CPropertySheet::OnInitDialog()".
+    virtual BOOL OnInitDialog();
 };
 
 #if defined(__GNUC__) || defined(__clang__)

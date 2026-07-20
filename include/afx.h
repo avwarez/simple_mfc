@@ -18,6 +18,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -55,6 +56,7 @@ using LPTSTR = wchar_t*;
 // at runtime). Pure standard C++ constructs, no Windows dependency.
 // ---------------------------------------------------------------------
 class CObject;
+class CDumpContext; // full definition below, after CObject (needed for CObject::Dump)
 
 struct CRuntimeClass
 {
@@ -106,9 +108,53 @@ public:
     virtual CRuntimeClass* GetRuntimeClass() const { return const_cast<CRuntimeClass*>(&classCRuntimeClass); }
     BOOL IsKindOf(const CRuntimeClass* pClass) const { return GetRuntimeClass()->IsDerivedFrom(pClass) ? TRUE : FALSE; }
     virtual void AssertValid() const {}
+    // Real MFC: prints the class name if the class uses IMPLEMENT_DYNAMIC/
+    // IMPLEMENT_DYNCREATE/IMPLEMENT_SERIAL, otherwise prints "CObject". Here
+    // GetRuntimeClass() always resolves to a real CRuntimeClass (RTTI is
+    // unconditionally available in this port, see IMPLEMENT_DYNAMIC above),
+    // so the class name is always printed. Unlike real MFC, not gated on
+    // _DEBUG (same design choice already made for AssertValid).
+    virtual void Dump(CDumpContext& dc) const;
     virtual BOOL IsSerializable() const { return FALSE; }
     virtual ~CObject() = default;
 };
+
+// ---------------------------------------------------------------------
+// CDumpContext — diagnostic dump support for CObject::Dump. On top of
+// std::wostream (defaults to std::wcerr: real MFC describes afxDump's
+// output as "conceptually similar to the cerr stream"). Real MFC's
+// constructor instead binds to a CFile* destination (afxDump is built for
+// you); not implemented here since nothing in the covered eMule call
+// sites ever constructs its own CDumpContext or writes to afxDump
+// directly — only the Dump(dc) super-call chain is exercised, which just
+// needs a working destination to forward to.
+// ---------------------------------------------------------------------
+class CDumpContext
+{
+public:
+    explicit CDumpContext(std::wostream& os = std::wcerr) : m_os(os) {}
+
+    void SetDepth(int nNewDepth) noexcept { m_nDepth = nNewDepth; }
+    int GetDepth() const noexcept { return m_nDepth; }
+
+    CDumpContext& operator<<(const char* lpsz);
+    CDumpContext& operator<<(LPCTSTR lpsz);
+    CDumpContext& operator<<(const CObject* pOb);
+    CDumpContext& operator<<(const CObject& ob) { return *this << &ob; }
+    CDumpContext& operator<<(int n);
+    CDumpContext& operator<<(unsigned int u);
+    CDumpContext& operator<<(long l);
+    CDumpContext& operator<<(double d);
+    CDumpContext& operator<<(const void* lp);
+
+private:
+    std::wostream& m_os;
+    int m_nDepth = 0;
+};
+
+// Real MFC's predeclared global dump context (Debug-only there; always
+// available here, consistent with Dump/AssertValid above).
+extern CDumpContext afxDump;
 
 // ---------------------------------------------------------------------
 // CString — a real wrapper around std::wstring exposing the standard MFC
@@ -244,6 +290,15 @@ public:
           m_strFileName(lpszFileName ? lpszFileName : L"") {}
 
     BOOL GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pnHelpContext = nullptr) const;
+
+    // Static factory: maps an OS-specific error code to a Cause (falling
+    // back to genericException for anything not recognized, matching real
+    // MFC's documented fallback) and throws the resulting CFileException by
+    // pointer, exactly like AfxThrowFileException. Real MFC also exposes
+    // OsErrorToException/ErrnoToException/ThrowErrno as separate public
+    // static methods; not added here since eMule/srchybrid only ever calls
+    // ThrowOsError itself (see mfc_scan_srchybrid.md blind-spot findings).
+    [[noreturn]] static void ThrowOsError(LONG lOsError, LPCTSTR lpszFileName = nullptr);
 
     int m_cause;
     LONG m_lOsError;
