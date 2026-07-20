@@ -5,6 +5,12 @@
 // Microsoft Learn documentation for the subset of methods actually used
 // by eMule/srchybrid (see ../../mfc_scan_srchybrid.md).
 #pragma once
+// Real MFC's afxwin.h defines this include guard, and downstream headers
+// (e.g. eMule's Emule.h) #error out with "include 'stdafx.h' before ..."
+// unless it is set -- it is their proxy for "the MFC core headers are in".
+#ifndef __AFXWIN_H__
+#define __AFXWIN_H__
+#endif
 #include "afx.h"
 #include "atltypes.h"
 // Real MFC makes the template collections (CArray/CList/CMap and the

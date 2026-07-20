@@ -14,6 +14,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cassert>
 #include <cctype>
 #include <cstdarg>
 #include <cstdint>
@@ -39,6 +40,7 @@
 #define AFXAPI __stdcall
 
 using UINT = unsigned int;
+using WORD = unsigned short;
 using DWORD = unsigned long;
 using LONG = long;
 using LONGLONG = long long;
@@ -70,9 +72,79 @@ constexpr BOOL FALSE_ = 0;
 #define _UNICODE
 #endif
 #include <windows.h>
+// <windows.h> does NOT pull in <tchar.h>, so _T()/TCHAR/_tcs* would be
+// missing on a real Windows build too -- real MFC gets them because its own
+// afx.h includes <tchar.h>. Match that. Under the forced _UNICODE above,
+// _T maps to the L"" prefix and _tcs* to the wcs* family, matching our
+// unconditionally-wide CString.
+#include <tchar.h>
 #else
 using LPCTSTR = const wchar_t*;
 using LPTSTR = wchar_t*;
+// Portable (non-Windows) stand-ins for the <tchar.h> generic-text macros
+// real MFC relies on. We are unconditionally a wide/UNICODE build, so these
+// map to the wide-char forms.
+#ifndef _T
+#define _T(x) L##x
+#endif
+#ifndef _TEXT
+#define _TEXT(x) L##x
+#endif
+using TCHAR = wchar_t;
+using _TCHAR = wchar_t;
+using PTSTR = wchar_t*;
+using PCTSTR = const wchar_t*;
+#endif
+
+// ---------------------------------------------------------------------
+// MFC diagnostic macros (ASSERT/VERIFY/TRACE/...). Real MFC defines these
+// in its own afx.h; <windows.h> does NOT, so they are missing on a real
+// Windows build unless we provide them. Semantics mirror real MFC: active
+// only under _DEBUG, no-ops in a release/NDEBUG build (which is how the
+// conformance and eMule-compile-check builds run). VERIFY still evaluates
+// its argument in release; ASSERT/TRACE fully vanish.
+// ---------------------------------------------------------------------
+#ifdef _DEBUG
+#ifndef ASSERT
+#define ASSERT(f) assert(f)
+#endif
+#ifndef VERIFY
+#define VERIFY(f) ASSERT(f)
+#endif
+#else
+#ifndef ASSERT
+#define ASSERT(f) ((void)0)
+#endif
+#ifndef VERIFY
+#define VERIFY(f) ((void)(f))
+#endif
+#endif
+#ifndef ASSERT_VALID
+#define ASSERT_VALID(p) ((void)0)
+#endif
+#ifndef ASSERT_KINDOF
+#define ASSERT_KINDOF(class_name, object) ((void)0)
+#endif
+#ifndef ENSURE
+#define ENSURE(f) ASSERT(f)
+#endif
+#ifndef ENSURE_ARG
+#define ENSURE_ARG(f) ASSERT(f)
+#endif
+#ifndef TRACE
+#define TRACE(...) ((void)0)
+#endif
+#ifndef TRACE0
+#define TRACE0(sz) ((void)0)
+#endif
+#ifndef TRACE1
+#define TRACE1(sz, p1) ((void)0)
+#endif
+#ifndef TRACE2
+#define TRACE2(sz, p1, p2) ((void)0)
+#endif
+#ifndef TRACE3
+#define TRACE3(sz, p1, p2, p3) ((void)0)
 #endif
 
 // ---------------------------------------------------------------------

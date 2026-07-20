@@ -257,6 +257,8 @@ public:
     void SetAt(INT_PTR i, CObject* e) { m_impl.SetAt(i, e); }
     void SetAtGrow(INT_PTR i, CObject* e) { m_impl.SetAtGrow(i, e); }
     void SetSize(INT_PTR nNewSize, INT_PTR nGrowBy = -1) { m_impl.SetSize(nNewSize, nGrowBy); }
+    CObject* operator[](INT_PTR i) const { return m_impl.GetAt(i); }
+    CObject*& operator[](INT_PTR i) { return m_impl.ElementAt(i); }
 
 private:
     mfc_detail::ArrayImpl<CObject*> m_impl;
@@ -282,6 +284,8 @@ public:
     void SetAt(INT_PTR i, void* e) { m_impl.SetAt(i, e); }
     void SetAtGrow(INT_PTR i, void* e) { m_impl.SetAtGrow(i, e); }
     void SetSize(INT_PTR nNewSize, INT_PTR nGrowBy = -1) { m_impl.SetSize(nNewSize, nGrowBy); }
+    void* operator[](INT_PTR i) const { return m_impl.GetAt(i); }
+    void*& operator[](INT_PTR i) { return m_impl.ElementAt(i); }
 
 private:
     mfc_detail::ArrayImpl<void*> m_impl;
@@ -292,41 +296,59 @@ class CStringArray : public CObject
     DECLARE_DYNAMIC(CStringArray)
 public:
     INT_PTR Add(const CString& e) { return m_impl.Add(e); }
+    INT_PTR Append(const CStringArray& src) { return m_impl.Append(src.m_impl); }
+    void Copy(const CStringArray& src) { m_impl.Copy(src.m_impl); }
+    CString& ElementAt(INT_PTR i) { return m_impl.ElementAt(i); }
     const CString& GetAt(INT_PTR i) const { return m_impl.GetAt(i); }
     INT_PTR GetCount() const { return m_impl.GetCount(); }
     INT_PTR GetSize() const { return m_impl.GetSize(); }
+    INT_PTR GetUpperBound() const { return m_impl.GetUpperBound(); }
     void InsertAt(INT_PTR i, const CString& e, INT_PTR nCount = 1) { m_impl.InsertAt(i, e, nCount); }
     BOOL IsEmpty() const { return m_impl.IsEmpty() ? TRUE : FALSE; }
     void RemoveAll() { m_impl.RemoveAll(); }
     void RemoveAt(INT_PTR i, INT_PTR nCount = 1) { m_impl.RemoveAt(i, nCount); }
     void SetAt(INT_PTR i, const CString& e) { m_impl.SetAt(i, e); }
+    void SetAtGrow(INT_PTR i, const CString& e) { m_impl.SetAtGrow(i, e); }
     void SetSize(INT_PTR nNewSize, INT_PTR nGrowBy = -1) { m_impl.SetSize(nNewSize, nGrowBy); }
+    const CString& operator[](INT_PTR i) const { return m_impl.GetAt(i); }
+    CString& operator[](INT_PTR i) { return m_impl.ElementAt(i); }
 
 private:
     mfc_detail::ArrayImpl<CString> m_impl;
 };
 
-class CByteArray : public CObject
-{
-    DECLARE_DYNAMIC(CByteArray)
-public:
-    INT_PTR Add(unsigned char e) { return m_impl.Add(e); }
-    unsigned char GetAt(INT_PTR i) const { return m_impl.GetAt(i); }
-    INT_PTR GetSize() const { return m_impl.GetSize(); }
-    void SetSize(INT_PTR nNewSize, INT_PTR nGrowBy = -1) { m_impl.SetSize(nNewSize, nGrowBy); }
-
-private:
-    mfc_detail::ArrayImpl<unsigned char> m_impl;
+// Numeric arrays. Real MFC generates these from the same CArray template, so
+// they share the full array surface (Add/operator[]/ElementAt/SetAtGrow/...).
+#define SIMPLE_MFC_DECLARE_NUM_ARRAY(ClassName, ElemType)                        \
+class ClassName : public CObject                                                 \
+{                                                                               \
+    DECLARE_DYNAMIC(ClassName)                                                   \
+public:                                                                          \
+    INT_PTR Add(ElemType e) { return m_impl.Add(e); }                           \
+    INT_PTR Append(const ClassName& src) { return m_impl.Append(src.m_impl); }   \
+    void Copy(const ClassName& src) { m_impl.Copy(src.m_impl); }                 \
+    ElemType& ElementAt(INT_PTR i) { return m_impl.ElementAt(i); }               \
+    void FreeExtra() { m_impl.FreeExtra(); }                                     \
+    ElemType GetAt(INT_PTR i) const { return m_impl.GetAt(i); }                  \
+    INT_PTR GetCount() const { return m_impl.GetCount(); }                       \
+    ElemType* GetData() { return m_impl.GetData(); }                            \
+    const ElemType* GetData() const { return m_impl.GetData(); }                \
+    INT_PTR GetSize() const { return m_impl.GetSize(); }                         \
+    INT_PTR GetUpperBound() const { return m_impl.GetUpperBound(); }             \
+    void InsertAt(INT_PTR i, ElemType e, INT_PTR nCount = 1) { m_impl.InsertAt(i, e, nCount); } \
+    BOOL IsEmpty() const { return m_impl.IsEmpty() ? TRUE : FALSE; }             \
+    void RemoveAll() { m_impl.RemoveAll(); }                                     \
+    void RemoveAt(INT_PTR i, INT_PTR nCount = 1) { m_impl.RemoveAt(i, nCount); } \
+    void SetAt(INT_PTR i, ElemType e) { m_impl.SetAt(i, e); }                    \
+    void SetAtGrow(INT_PTR i, ElemType e) { m_impl.SetAtGrow(i, e); }            \
+    void SetSize(INT_PTR nNewSize, INT_PTR nGrowBy = -1) { m_impl.SetSize(nNewSize, nGrowBy); } \
+    ElemType operator[](INT_PTR i) const { return m_impl.GetAt(i); }             \
+    ElemType& operator[](INT_PTR i) { return m_impl.ElementAt(i); }              \
+private:                                                                         \
+    mfc_detail::ArrayImpl<ElemType> m_impl;                                      \
 };
 
-class CUIntArray : public CObject
-{
-    DECLARE_DYNAMIC(CUIntArray)
-public:
-    INT_PTR Add(UINT e) { return m_impl.Add(e); }
-    UINT GetAt(INT_PTR i) const { return m_impl.GetAt(i); }
-    INT_PTR GetSize() const { return m_impl.GetSize(); }
-
-private:
-    mfc_detail::ArrayImpl<UINT> m_impl;
-};
+SIMPLE_MFC_DECLARE_NUM_ARRAY(CByteArray, unsigned char)
+SIMPLE_MFC_DECLARE_NUM_ARRAY(CWordArray, WORD)
+SIMPLE_MFC_DECLARE_NUM_ARRAY(CDWordArray, DWORD)
+SIMPLE_MFC_DECLARE_NUM_ARRAY(CUIntArray, UINT)
