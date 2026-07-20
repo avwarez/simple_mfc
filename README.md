@@ -24,11 +24,15 @@ separate "stub" copy and "native" copy.
 | `afxtempl.h` | ✅ | *(header-only)* | **Implemented** — `CArray<>`/`CList<>`/`CMap<>` |
 | `afxmt.h` | ✅ | `afxmt.cpp` | **Implemented** — `CCriticalSection`/`CEvent`/`CMutex`/`CSingleLock` |
 | `atltime.h` | ✅ | `atltime.cpp` | **Implemented** — `CTime`/`CTimeSpan` |
-| `afxwin.h` | ✅ | — | **Stub only** — `CWnd` and the GUI hierarchy, `CWinThread`/`CWinApp`, message-map macros |
+| `afxwin.h` | ✅ | — | **Stub only** — `CWnd`/`CDialog`/`CFrameWnd`/`CStatic`/`CEdit`/`CListBox`/`CComboBox`/`CButton`/`CMenu`, `CWinThread`/`CWinApp`, core GDI (`CGdiObject`/`CBitmap`/`CPen`/`CBrush`/`CFont`/`CDC`), message-map macros |
 | `afxext.h` | ✅ | — | **Stub only** — `CControlBar`/`CDialogBar` |
 | `afxdlgs.h` | ✅ | — | **Stub only** — `CPropertyPage`/`CPropertySheet` |
-| `afxmsg_.h` | ✅ | — | **Stub only** — `ON_COMMAND`/`ON_MESSAGE`/`ON_CONTROL`/... macros |
+| `afxmsg_.h` | ✅ | — | **Stub only** — `ON_COMMAND`/`ON_MESSAGE`/`ON_CONTROL`/`ON_WM_*` (51 variants)/... macros |
 | `afxdd_.h` | ✅ | — | **Stub only** — `DDX_*`/`DDV_*` (uses `CDataExchange`, declared in `afxwin.h`) |
+| `afxcmn.h` | ✅ | — | **Stub only** — `CImageList`/`CTreeCtrl`/`CListCtrl`/`CRichEditCtrl`/`CTabCtrl`/`CToolBarCtrl`/`CStatusBarCtrl`/`CToolTipCtrl` |
+| `afxole.h` | ✅ | — | **Stub only** — `COleDropTarget` |
+| `afxdhtml.h` | ✅ | — | **Stub only** — `CDHtmlDialog` (hierarchy only, no methods used) |
+| `atltypes.h` | ✅ | — | **Stub only** — `CPoint`/`CRect`/`CSize` (ATL/MFC "shared classes", not declared in `afxwin.h`) |
 | `afxsock.h` | ✅ | — | **Stub only** — `CAsyncSocket` |
 
 The "stub only" headers **compile** (syntactically valid declarations,
@@ -37,15 +41,25 @@ verified together with the rest via `g++ -fsyntax-only`), but have no
 types (not just declare a pointer to one) will fail to link with missing
 symbols. They exist as a reference/interface awaiting a future
 implementation (which would require a cross-platform GUI layer for
-`afxwin.h`/`afxext.h`/`afxdlgs.h`/`afxdd_.h`, and system APIs — outside the
-"standard C++ only" scope — for `afxsock.h`).
+`afxwin.h`/`afxext.h`/`afxdlgs.h`/`afxdd_.h`/`afxcmn.h`/`afxole.h`/
+`afxdhtml.h`/`atltypes.h`, and system APIs — outside the "standard C++
+only" scope — for `afxsock.h`).
+
+The GUI/GDI stubs only declare the **subset of classes and methods
+actually used by a real MFC application** (eMule/srchybrid), not the
+full real-MFC API surface — each signature was cross-referenced against
+the official Microsoft Learn documentation. See `mfc_scan_srchybrid.md`
+(sibling of this repo) for the full method-by-method scan (occurrence
+counts, exact signatures, required headers) this subset was derived
+from.
 
 ## Why some headers are not implemented
 
-- **GUI (`afxwin.h`, `afxext.h`, `afxdlgs.h`, `afxdd_.h`, `afxmsg_.h`)** —
-  `CWnd` and its subclasses, message maps, `DDX_*`: pure Win32 concepts
-  (windows, messages), with no standard C++ equivalent without a dedicated
-  cross-platform UI layer.
+- **GUI (`afxwin.h`, `afxext.h`, `afxdlgs.h`, `afxdd_.h`, `afxmsg_.h`,
+  `afxcmn.h`, `afxole.h`, `afxdhtml.h`, `atltypes.h`)** — `CWnd` and its
+  subclasses, common controls, GDI drawing, message maps, `DDX_*`: pure
+  Win32 concepts (windows, messages, device contexts), with no standard
+  C++ equivalent without a dedicated cross-platform UI layer.
 - **Networking (`afxsock.h`)** — sockets are not "Windows-specific" in a
   strict sense (they also exist on POSIX), but they still require system
   APIs: they are not part of the C++ standard library (no Networking TS in

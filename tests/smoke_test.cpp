@@ -11,6 +11,12 @@
 // includable and that the types/hierarchies compile, without actually
 // using them.
 #include "afxwin.h"
+#include "afxext.h"
+#include "afxdlgs.h"
+#include "afxdd_.h"
+#include "afxcmn.h"
+#include "afxole.h"
+#include "afxdhtml.h"
 #include "afxsock.h"
 
 #include <cassert>
@@ -42,6 +48,13 @@ int main()
     (void)t;
 
     CWnd* w = nullptr; (void)w;
+    CDC* dc = nullptr; (void)dc;
+    CRect* r = nullptr; (void)r;
+    CPropertySheet* sheet = nullptr; (void)sheet;
+    CTreeCtrl* tree = nullptr; (void)tree;
+    CImageList* iml = nullptr; (void)iml;
+    COleDropTarget* dropTarget = nullptr; (void)dropTarget;
+    CDHtmlDialog* dhtml = nullptr; (void)dhtml;
     CAsyncSocket* sock = nullptr; (void)sock;
 
     std::printf("simple_mfc smoke test: ALL OK\n");

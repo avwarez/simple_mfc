@@ -1,13 +1,64 @@
 // afxwin.h — reference STUB (declarations only, no implementation).
 // Transitively includes afx.h (as in real MFC). Contains the
-// window/thread/application classes and the message-map macros, with
-// signatures verified against the official Microsoft Learn documentation.
+// window/thread/application classes, the core GDI classes, and the
+// message-map macros, with signatures verified against the official
+// Microsoft Learn documentation for the subset of methods actually used
+// by eMule/srchybrid (see ../../mfc_scan_srchybrid.md).
 #pragma once
 #include "afx.h"
+#include "atltypes.h"
 
 class CWnd;
+class CDC;
+class CMenu;
+class CBitmap;
+class CRgn;
+class CPalette;
+class CCreateContext;
 struct SECURITY_ATTRIBUTES;
 typedef long (*AFX_THREADPROC)(void*);
+
+// ---------------------------------------------------------------------
+// Win32 primitive handle/type stand-ins (normally from windef.h/
+// winnt.h): opaque aliases, no Windows headers pulled in, consistent
+// with the void*-based handles already used for CWinThread::m_hThread.
+// ---------------------------------------------------------------------
+using HWND = void*;
+using HDC = void*;
+using HICON = void*;
+using HCURSOR = void*;
+using HBRUSH = void*;
+using HFONT = void*;
+using HMENU = void*;
+using HGDIOBJ = void*;
+using HPALETTE = void*;
+using HPEN = void*;
+using HBITMAP = void*;
+using HGLOBAL = void*;
+using LPVOID = void*;
+using BYTE = unsigned char;
+using COLORREF = unsigned long;
+using UINT_PTR = std::uintptr_t;
+using DWORD_PTR = std::uintptr_t;
+using INT_PTR = long long; // matches afxcoll.h's INT_PTR (identical redefinition is legal if both headers are included together)
+using LONG_PTR = std::intptr_t;
+using WPARAM = UINT_PTR;
+using LPARAM = LONG_PTR;
+using LRESULT = LONG_PTR;
+
+// Real MFC's CWnd-derived classes intentionally hide the base Create()
+// overload set with their own Create() (different signature per class):
+// that's the actual API shape, not a mistake, but it trips
+// -Woverloaded-virtual/C4266. Suppressed for this declaration-only
+// hierarchy (afxwin.h/afxext.h/afxdlgs.h/afxcmn.h).
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Woverloaded-virtual"
+#endif
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4266)
+#endif
 
 // ---------------------------------------------------------------------
 // CCmdTarget — base of CWinThread for command routing (header afxwin.h)
@@ -49,25 +100,338 @@ public:
 };
 
 // ---------------------------------------------------------------------
-// CWnd — base of all windows/controls (header afxwin.h)
-// Skeleton only: the concrete methods actually used live entirely on the
-// subclasses (CDialog, CStatic, CEdit, ...), not directly on CWnd.
+// GDI classes (header afxwin.h per Microsoft Learn — CImageList is the
+// one exception, it lives in afxcmn.h, see there). Declared before CWnd
+// because CWnd::GetDC/ReleaseDC and CMenu::AppendMenu reference them.
 // ---------------------------------------------------------------------
-class CWnd : public CCmdTarget {};
 
-class CDialog : public CWnd {};
-class CFrameWnd : public CWnd {};
-class CStatic : public CWnd {};
-class CEdit : public CWnd {};
-class CListBox : public CWnd {};
-class CComboBox : public CWnd {};
-class CButton : public CWnd {};
+// CGdiObject — base of CBitmap/CBrush/CFont/CPalette/CPen/CRgn (header
+// afxwin.h, hierarchy CObject -> CGdiObject). DeleteObject/Attach/
+// Detach/GetSafeHandle/GetObject are genuinely defined once here, not
+// re-implemented per subclass (verified against Microsoft Learn).
+class CGdiObject : public CObject
+{
+public:
+    BOOL DeleteObject();
+    BOOL Attach(HGDIOBJ hObject);
+    HGDIOBJ Detach();
+    HGDIOBJ GetSafeHandle() const;
+    int GetObject(int nCount, LPVOID lpObject) const;
+};
+
+struct tagLOGBRUSH;
+using LOGBRUSH = tagLOGBRUSH;
+
+// CPen (header afxwin.h, deriva da CGdiObject)
+class CPen : public CGdiObject
+{
+public:
+    CPen();
+    CPen(int nPenStyle, int nWidth, COLORREF crColor);
+    CPen(int nPenStyle, int nWidth, const LOGBRUSH* pLogBrush, int nStyleCount = 0, const DWORD* lpStyle = nullptr);
+
+    BOOL CreatePen(int nPenStyle, int nWidth, COLORREF crColor);
+    BOOL CreatePen(int nPenStyle, int nWidth, const LOGBRUSH* pLogBrush, int nStyleCount = 0, const DWORD* lpStyle = nullptr);
+};
+
+// CBrush (header afxwin.h, deriva da CGdiObject)
+class CBrush : public CGdiObject
+{
+public:
+    CBrush();
+    CBrush(COLORREF crColor);
+    CBrush(int nIndex, COLORREF crColor);
+    explicit CBrush(CBitmap* pBitmap);
+
+    BOOL CreateSolidBrush(COLORREF crColor);
+    BOOL CreateHatchBrush(int nIndex, COLORREF crColor);
+    BOOL CreatePatternBrush(CBitmap* pBitmap);
+    BOOL CreateDIBPatternBrush(HGLOBAL hPackedDIB, UINT nUsage);
+    BOOL CreateDIBPatternBrush(const void* lpPackedDIB, UINT nUsage);
+};
+
+// CBitmap (header afxwin.h, deriva da CGdiObject)
+class CBitmap : public CGdiObject
+{
+public:
+    BOOL CreateCompatibleBitmap(CDC* pDC, int nWidth, int nHeight);
+    int GetBitmap(struct tagBITMAP* pBitMap);
+    BOOL LoadBitmap(LPCTSTR lpszResourceName);
+    BOOL LoadBitmap(UINT nIDResource);
+    CSize GetBitmapDimension() const;
+};
+
+struct tagLOGFONT;
+using LOGFONT = tagLOGFONT;
+
+// CFont (header afxwin.h, deriva da CGdiObject)
+class CFont : public CGdiObject
+{
+public:
+    BOOL CreateFontIndirect(const LOGFONT* lpLogFont);
+    int GetLogFont(LOGFONT* pLogFont);
+    BOOL CreateFont(int nHeight, int nWidth, int nEscapement, int nOrientation, int nWeight,
+                     BYTE bItalic, BYTE bUnderline, BYTE cStrikeOut, BYTE nCharSet,
+                     BYTE nOutPrecision, BYTE nClipPrecision, BYTE nQuality,
+                     BYTE nPitchAndFamily, LPCTSTR lpszFacename);
+    BOOL CreatePointFont(int nPointSize, LPCTSTR lpszFaceName, CDC* pDC = nullptr);
+};
+
+// CDC (header afxwin.h, hierarchy CObject -> CDC)
+class CDC : public CObject
+{
+public:
+    CGdiObject* SelectObject(CGdiObject* pObject);
+    CDC* SelectObject(CFont* pFont);
+    CDC* SelectObject(CBrush* pBrush);
+    CDC* SelectObject(CPen* pPen);
+    CDC* SelectObject(CPalette* pPalette);
+    CDC* SelectObject(CBitmap* pBitmap);
+    BOOL Attach(HDC hDC);
+    HDC Detach();
+    COLORREF SetTextColor(COLORREF crColor);
+    virtual int DrawText(LPCTSTR lpszString, int nCount, LPRECT lpRect, UINT nFormat);
+    int DrawText(const CString& str, LPRECT lpRect, UINT nFormat);
+    void FillSolidRect(LPCRECT lpRect, COLORREF clr);
+    void FillSolidRect(int x, int y, int cx, int cy, COLORREF clr);
+    BOOL LineTo(int x, int y);
+    BOOL LineTo(POINT point);
+    CPoint MoveTo(int x, int y);
+    CPoint MoveTo(POINT point);
+    COLORREF SetBkColor(COLORREF crColor);
+    int SetBkMode(int nBkMode);
+    BOOL CreateCompatibleDC(CDC* pDC);
+    HDC GetSafeHdc();
+    BOOL BitBlt(int x, int y, int nWidth, int nHeight, CDC* pSrcDC, int xSrc, int ySrc, DWORD dwRop);
+    CSize GetTextExtent(LPCTSTR lpszString, int nCount);
+    CSize GetTextExtent(const CString& str);
+    BOOL TextOut(int x, int y, LPCTSTR lpszString, int nCount);
+    BOOL TextOut(int x, int y, const CString& str);
+    BOOL DrawEdge(LPRECT lpRect, UINT nEdge, UINT nFlags);
+    UINT SetTextAlign(UINT nFlags);
+    int GetDeviceCaps(int nIndex);
+    void FrameRect(LPCRECT lpRect, CBrush* pBrush);
+    void DrawFocusRect(LPCRECT lpRect);
+    int SetROP2(int nDrawMode);
+    int ExcludeClipRect(int x1, int y1, int x2, int y2);
+    int ExcludeClipRect(LPCRECT lpRect);
+    BOOL Rectangle(int x1, int y1, int x2, int y2);
+    BOOL Rectangle(LPCRECT lpRect);
+    CPalette* SelectPalette(CPalette* pPalette, BOOL bForceBackground);
+    BOOL GetTextMetrics(struct tagTEXTMETRIC* lpMetrics);
+    int GetClipBox(LPRECT lpRect);
+    BOOL DrawState(CPoint pt, CSize size, LPCTSTR lpszText, UINT nFlags, BOOL bPrefixText = TRUE, int nTextLen = 0, HBRUSH hBrush = nullptr);
+    UINT RealizePalette();
+    BOOL Polygon(LPPOINT lpPoints, int nCount);
+    int SetMapMode(int nMapMode);
+    CGdiObject* SelectStockObject(int nIndex);
+    COLORREF SetPixel(int x, int y, COLORREF crColor);
+    COLORREF SetPixel(POINT point, COLORREF crColor);
+    COLORREF GetPixel(int x, int y);
+    COLORREF GetPixel(POINT point);
+    long TabbedTextOut(int x, int y, LPCTSTR lpszString, int nCount, int nTabPositions, const int* lpnTabStopPositions, int nTabOrigin);
+    BOOL DrawIcon(int x, int y, HICON hIcon);
+    BOOL DrawIcon(POINT point, HICON hIcon);
+    void DPtoLP(LPPOINT lpPoints, int nCount = 1);
+    void DPtoLP(LPRECT lpRect);
+    void DPtoLP(LPSIZE lpSize);
+    int SaveDC();
+    BOOL RestoreDC(int nSavedDC);
+    void Draw3dRect(LPCRECT lpRect, COLORREF clrTopLeft, COLORREF clrBottomRight);
+    void Draw3dRect(int x, int y, int cx, int cy, COLORREF clrTopLeft, COLORREF clrBottomRight);
+    UINT GetTextAlign();
+    CSize GetOutputTextExtent(LPCTSTR lpszString, int nCount);
+    CSize GetOutputTextExtent(const CString& str);
+    BOOL IsPrinting();
+    void FillRect(LPCRECT lpRect, CBrush* pBrush);
+};
+
+// ---------------------------------------------------------------------
+// CWnd — base of all windows/controls (header afxwin.h). Methods below
+// are only the ones actually called on CWnd*/CWnd& in eMule/srchybrid
+// (not the full real-MFC surface) — see ../../mfc_scan_srchybrid.md.
+// ---------------------------------------------------------------------
+constexpr UINT RDW_INVALIDATE = 0x0001;
+constexpr UINT RDW_ERASE = 0x0004;
+constexpr UINT RDW_UPDATENOW = 0x0100;
+
+class CWnd : public CCmdTarget
+{
+public:
+    BOOL EnableWindow(BOOL bEnable = TRUE);
+    BOOL ShowWindow(int nCmdShow);
+    void GetWindowRect(LPRECT lpRect) const;
+    virtual BOOL Create(LPCTSTR lpszClassName, LPCTSTR lpszWindowName, DWORD dwStyle,
+                         const RECT& rect, CWnd* pParentWnd, UINT nID, CCreateContext* pContext = nullptr);
+    LRESULT SendMessage(UINT message, WPARAM wParam = 0, LPARAM lParam = 0);
+    void SetWindowText(LPCTSTR lpszString);
+    void MoveWindow(int x, int y, int nWidth, int nHeight, BOOL bRepaint = TRUE);
+    void MoveWindow(LPCRECT lpRect, BOOL bRepaint = TRUE);
+    HWND Detach();
+    BOOL Attach(HWND hWndNew);
+    CWnd* SetFocus();
+    void SetRedraw(BOOL bRedraw = TRUE);
+    HWND GetSafeHwnd() const;
+    void Invalidate(BOOL bErase = TRUE);
+    BOOL ModifyStyle(DWORD dwRemove, DWORD dwAdd, UINT nFlags = 0);
+    HICON SetIcon(HICON hIcon, BOOL bBigIcon);
+    BOOL IsWindowVisible() const;
+    virtual BOOL DestroyWindow();
+    BOOL SetWindowPos(CWnd* pWndInsertAfter, int x, int y, int cx, int cy, UINT nFlags);
+    void UpdateWindow();
+    void ScreenToClient(LPPOINT lpPoint) const;
+    void ScreenToClient(LPRECT lpRect) const;
+    BOOL ModifyStyleEx(DWORD dwRemove, DWORD dwAdd, UINT nFlags = 0);
+    DWORD GetStyle() const;
+    void SetDlgItemText(int nID, LPCTSTR lpszString);
+    int GetWindowTextLength() const;
+    void GetClientRect(LPRECT lpRect) const;
+    BOOL PostMessage(UINT message, WPARAM wParam = 0, LPARAM lParam = 0);
+    void ClientToScreen(LPPOINT lpPoint) const;
+    void ClientToScreen(LPRECT lpRect) const;
+    void GetWindowText(CString& rString) const;
+    int GetWindowText(LPTSTR lpszStringBuf, int nMaxCount) const;
+    BOOL SetForegroundWindow();
+    BOOL BringWindowToTop();
+    BOOL IsWindowEnabled() const;
+    CWnd* GetParent() const;
+    CWnd* GetDlgItem(int nID) const;
+    CDC* GetDC();
+    int ReleaseDC(CDC* pDC);
+    BOOL RedrawWindow(LPCRECT lpRectUpdate = nullptr, CRgn* prgnUpdate = nullptr,
+                       UINT flags = RDW_INVALIDATE | RDW_UPDATENOW | RDW_ERASE);
+    CWnd* SetCapture();
+    void InvalidateRect(LPCRECT lpRect, BOOL bErase = TRUE);
+};
+
+class CDialog : public CWnd
+{
+public:
+    virtual INT_PTR DoModal();
+    void EndDialog(int nResult);
+    virtual BOOL Create(LPCTSTR lpszTemplateName, CWnd* pParentWnd = nullptr);
+    virtual BOOL Create(UINT nIDTemplate, CWnd* pParentWnd = nullptr);
+    virtual BOOL OnInitDialog();
+
+protected:
+    virtual void OnOK();
+    virtual void OnCancel();
+};
+
+extern const CRect rectDefault;
+constexpr DWORD WS_OVERLAPPEDWINDOW = 0x00CF0000;
+
+class CFrameWnd : public CWnd
+{
+public:
+    virtual BOOL Create(LPCTSTR lpszClassName, LPCTSTR lpszWindowName,
+                         DWORD dwStyle = WS_OVERLAPPEDWINDOW, const RECT& rect = rectDefault,
+                         CWnd* pParentWnd = nullptr, LPCTSTR lpszMenuName = nullptr,
+                         DWORD dwExStyle = 0, CCreateContext* pContext = nullptr);
+    virtual void RecalcLayout(BOOL bNotify = TRUE);
+};
+
+class CStatic : public CWnd
+{
+public:
+    HBITMAP SetBitmap(HBITMAP hBitmap);
+    HBITMAP GetBitmap() const;
+};
+
+class CEdit : public CWnd
+{
+public:
+    void SetSel(DWORD dwSelection, BOOL bNoScroll = FALSE);
+    void SetSel(int nStartChar, int nEndChar, BOOL bNoScroll = FALSE);
+    void LimitText(int nChars = 0);
+    DWORD GetSel() const;
+    void GetSel(int& nStartChar, int& nEndChar) const;
+    void ReplaceSel(LPCTSTR lpszNewText, BOOL bCanUndo = FALSE);
+};
+
+class CListBox : public CWnd
+{
+public:
+    int GetCount() const;
+    int GetCurSel() const;
+    int SetCurSel(int nSelect);
+    int AddString(LPCTSTR lpszItem);
+    DWORD_PTR GetItemData(int nIndex) const;
+    int SetItemData(int nIndex, DWORD_PTR dwItemData);
+    void ResetContent();
+    int GetText(int nIndex, LPTSTR lpszBuffer) const;
+    void GetText(int nIndex, CString& rString) const;
+    int DeleteString(UINT nIndex);
+};
+
+class CComboBox : public CWnd
+{
+public:
+    int GetCount() const;
+    int GetCurSel() const;
+    int SetCurSel(int nSelect);
+    int AddString(LPCTSTR lpszString);
+    DWORD_PTR GetItemData(int nIndex) const;
+    int SetItemData(int nIndex, DWORD_PTR dwItemData);
+    void ResetContent();
+    int GetLBText(int nIndex, LPTSTR lpszText) const;
+    void GetLBText(int nIndex, CString& rString) const;
+    int DeleteString(UINT nIndex);
+    int SelectString(int nStartAfter, LPCTSTR lpszString) const;
+};
+
+class CButton : public CWnd
+{
+public:
+    HICON SetIcon(HICON hIcon);
+    UINT GetState() const;
+    void SetState(BOOL bHighlight);
+    int GetCheck() const;
+    void SetCheck(int nCheck);
+    HBITMAP SetBitmap(HBITMAP hBitmap);
+    HBITMAP GetBitmap() const;
+};
+
+// CMenu (header afxwin.h, deriva da CObject — NOT CWnd/CCmdTarget)
+class CMenu : public CObject
+{
+public:
+    BOOL AppendMenu(UINT nFlags, UINT_PTR nIDNewItem = 0, LPCTSTR lpszNewItem = nullptr);
+    BOOL AppendMenu(UINT nFlags, UINT_PTR nIDNewItem, const CBitmap* pBmp);
+    UINT EnableMenuItem(UINT nIDEnableItem, UINT nEnable);
+    BOOL DestroyMenu();
+    HMENU Detach();
+    BOOL Attach(HMENU hMenu);
+    BOOL CreatePopupMenu();
+    BOOL TrackPopupMenu(UINT nFlags, int x, int y, CWnd* pWnd, LPCRECT lpRect = nullptr);
+    UINT CheckMenuItem(UINT nIDCheckItem, UINT nCheck);
+    BOOL SetDefaultItem(UINT uItem, BOOL fByPos = FALSE);
+    BOOL RemoveMenu(UINT nPosition, UINT nFlags);
+    UINT GetMenuItemCount() const;
+    BOOL InsertMenu(UINT nPosition, UINT nFlags, UINT_PTR nIDNewItem = 0, LPCTSTR lpszNewItem = nullptr);
+    BOOL LoadMenu(LPCTSTR lpszResourceName);
+    BOOL LoadMenu(UINT nIDResource);
+    CMenu* GetSubMenu(int nPos) const;
+    BOOL ModifyMenu(UINT nPosition, UINT nFlags, UINT_PTR nIDNewItem = 0, LPCTSTR lpszNewItem = nullptr);
+};
+
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
+
 class CDocument : public CCmdTarget {};
 
 // CControlBar and CDialogBar are NOT declared here: they really belong to
 // the afxext.h header (per Microsoft Learn), see afxext.h.
 // CPropertyPage and CPropertySheet are NOT declared here: they really
 // belong to the afxdlgs.h header (per Microsoft Learn), see afxdlgs.h.
+// CImageList/CTreeCtrl/CListCtrl/CRichEditCtrl/CTabCtrl/CToolBarCtrl/
+// CStatusBarCtrl/CToolTipCtrl are NOT declared here: they belong to
+// afxcmn.h. COleDropTarget belongs to afxole.h. CDHtmlDialog belongs to
+// afxdhtml.h.
 
 // ---------------------------------------------------------------------
 // Message-map demarcation macros (per Microsoft Learn: header afxwin.h).

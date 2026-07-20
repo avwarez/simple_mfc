@@ -19,8 +19,28 @@ protected:
 // ---------------------------------------------------------------------
 // CDialogBar — modeless dialog hosted inside a control bar
 // (header afxext.h, hierarchy CObject -> CCmdTarget -> CWnd -> CControlBar -> CDialogBar).
-// No concrete method beyond the class itself (consistent with the
-// "hierarchy only" skeleton already used for the other CWnd subclasses
-// in afxwin.h).
+// Create hides CWnd::Create (same real-MFC pattern as CDialog/
+// CFrameWnd/CPropertySheet), see the pragma note in afxwin.h.
 // ---------------------------------------------------------------------
-class CDialogBar : public CControlBar {};
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Woverloaded-virtual"
+#endif
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4266)
+#endif
+
+class CDialogBar : public CControlBar
+{
+public:
+    virtual BOOL Create(CWnd* pParentWnd, LPCTSTR lpszTemplateName, UINT nStyle, UINT nID);
+    virtual BOOL Create(CWnd* pParentWnd, UINT nIDTemplate, UINT nStyle, UINT nID);
+};
+
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif

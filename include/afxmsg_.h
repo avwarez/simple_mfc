@@ -29,3 +29,72 @@
 // ON_UPDATE_COMMAND_UI is intentionally NOT declared here: it is not part
 // of the real-world usage this subset targets. Note: Microsoft Learn
 // documents it with Requirements: Header afxole.h, not afxmsg_.h.
+
+// ---------------------------------------------------------------------
+// ON_WM_* — standard Windows-message entries (each maps to a fixed
+// handler name, hence no memberFxn parameter, unlike ON_COMMAND/
+// ON_MESSAGE/ON_CONTROL above). Real MFC's macro bodies are empty in a
+// declaration-only sense too (they only expand to a message-map table
+// entry). Subset actually used by eMule/srchybrid, verified against
+// Microsoft Learn (see ../../mfc_scan_srchybrid.md) — the 25 most-used
+// variants carry the exact handler signature as a comment; the 26 minor
+// variants (1-2 occurrences each in the scanned codebase) are declared
+// without a captured signature.
+// ---------------------------------------------------------------------
+#define ON_WM_DESTROY()                // handler: afx_msg void OnDestroy();
+#define ON_WM_SYSCOLORCHANGE()         // handler: afx_msg void OnSysColorChange();
+#define ON_WM_HELPINFO()               // handler: afx_msg BOOL OnHelpInfo(HELPINFO* pHelpInfo);
+#define ON_WM_CONTEXTMENU()            // handler: afx_msg void OnContextMenu(CWnd* pWnd, CPoint point);
+#define ON_WM_PAINT()                  // handler: afx_msg void OnPaint();
+#define ON_WM_CREATE()                 // handler: afx_msg int OnCreate(LPCREATESTRUCT lpCreateStruct);
+#define ON_WM_TIMER()                  // handler: afx_msg void OnTimer(UINT_PTR nIDEvent);
+#define ON_WM_MOUSEMOVE()              // handler: afx_msg void OnMouseMove(UINT nFlags, CPoint point);
+#define ON_WM_LBUTTONUP()              // handler: afx_msg void OnLButtonUp(UINT nFlags, CPoint point);
+#define ON_WM_SIZE()                   // handler: afx_msg void OnSize(UINT nType, int cx, int cy);
+#define ON_WM_CTLCOLOR()               // handler: afx_msg HBRUSH OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor);
+#define ON_WM_KEYDOWN()                // handler: afx_msg void OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags);
+#define ON_WM_SYSCOMMAND()             // handler: afx_msg void OnSysCommand(UINT nID, LPARAM lParam);
+#define ON_WM_SHOWWINDOW()             // handler: afx_msg void OnShowWindow(BOOL bShow, UINT nStatus);
+#define ON_WM_SETTINGCHANGE()          // handler: afx_msg void OnSettingChange(UINT uFlags, LPCTSTR lpszSection);
+#define ON_WM_SETCURSOR()              // handler: afx_msg BOOL OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message);
+#define ON_WM_LBUTTONDOWN()            // handler: afx_msg void OnLButtonDown(UINT nFlags, CPoint point);
+#define ON_WM_HSCROLL()                // handler: afx_msg void OnHScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar);
+#define ON_WM_THEMECHANGED()           // handler: afx_msg void OnThemeChanged();
+#define ON_WM_ERASEBKGND()             // handler: afx_msg BOOL OnEraseBkgnd(CDC* pDC);
+#define ON_WM_SETFOCUS()               // handler: afx_msg void OnSetFocus(CWnd* pOldWnd);
+#define ON_WM_CLOSE()                  // handler: afx_msg void OnClose();
+#define ON_WM_RBUTTONDOWN()            // handler: afx_msg void OnRButtonDown(UINT nFlags, CPoint point);
+#define ON_WM_LBUTTONDBLCLK()          // handler: afx_msg void OnLButtonDblClk(UINT nFlags, CPoint point);
+#define ON_WM_KILLFOCUS()              // handler: afx_msg void OnKillFocus(CWnd* pNewWnd);
+
+// Minor variants (1-2 occurrences each in eMule/srchybrid): no handler
+// signature captured by the scan, declared for message-map completeness
+// only. ON_WM_MEASUREITEM_REFLECT/ON_WM_CTLCOLOR_REFLECT are MFC
+// "reflection" macros (no dedicated Microsoft Learn page, unlike the
+// direct ON_WM_* ones above).
+#define ON_WM_CAPTURECHANGED()
+#define ON_WM_ACTIVATEAPP()
+#define ON_WM_VSCROLL()
+#define ON_WM_QUERYNEWPALETTE()
+#define ON_WM_QUERYENDSESSION()
+#define ON_WM_QUERYDRAGICON()
+#define ON_WM_PALETTECHANGED()
+#define ON_WM_NCRBUTTONDOWN()
+#define ON_WM_NCPAINT()
+#define ON_WM_NCLBUTTONDOWN()
+#define ON_WM_NCHITTEST()
+#define ON_WM_NCDESTROY()
+#define ON_WM_NCACTIVATE()
+#define ON_WM_MENUSELECT()
+#define ON_WM_MENUCHAR()
+#define ON_WM_MEASUREITEM()
+#define ON_WM_MBUTTONUP()
+#define ON_WM_INITMENUPOPUP()
+#define ON_WM_GETDLGCODE()
+#define ON_WM_ENDSESSION()
+#define ON_WM_DRAWITEM()
+#define ON_WM_DEVICECHANGE()
+#define ON_WM_CHAR()
+#define ON_WM_CANCELMODE()
+#define ON_WM_MEASUREITEM_REFLECT()
+#define ON_WM_CTLCOLOR_REFLECT()
