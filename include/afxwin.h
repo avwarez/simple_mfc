@@ -51,6 +51,7 @@ typedef long (*AFX_THREADPROC)(void*);
 #include <commctrl.h> // TOOLINFO is a commctrl.h type, not windows.h
 #else
 using HWND = void*;
+using HINSTANCE = void*;
 using HDC = void*;
 using HICON = void*;
 using HCURSOR = void*;
@@ -130,6 +131,8 @@ public:
     BOOL m_bAutoDelete;
     void* m_hThread;
     DWORD m_nThreadID;
+    CWnd* m_pMainWnd;   // real MFC public data members
+    CWnd* m_pActiveWnd;
 
     CWinThread();
     BOOL CreateThread(DWORD dwCreateFlags = 0, UINT nStackSize = 0,
@@ -149,6 +152,18 @@ public:
 class CWinApp : public CWinThread
 {
 public:
+    // Real MFC public data members (winmain sets them; app code reads them,
+    // e.g. eMule's GetProfileFile() returns m_pszProfileName).
+    HINSTANCE m_hInstance;
+    HINSTANCE m_hPrevInstance;
+    LPTSTR    m_lpCmdLine;
+    int       m_nCmdShow;
+    LPCTSTR   m_pszAppName;
+    LPCTSTR   m_pszRegistryKey;
+    LPCTSTR   m_pszExeName;
+    LPCTSTR   m_pszHelpFilePath;
+    LPCTSTR   m_pszProfileName;
+
     UINT GetProfileInt(LPCTSTR lpszSection, LPCTSTR lpszEntry, int nDefault);
     BOOL WriteProfileInt(LPCTSTR lpszSection, LPCTSTR lpszEntry, int nValue);
     CString GetProfileString(LPCTSTR lpszSection, LPCTSTR lpszEntry, LPCTSTR lpszDefault = nullptr);
