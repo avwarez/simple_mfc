@@ -105,17 +105,26 @@ public:
 // ---------------------------------------------------------------------
 // CTreeCtrl (header afxcmn.h, deriva da CWnd)
 // ---------------------------------------------------------------------
+// TVI_ROOT/TVI_LAST: real Win32 sentinel HTREEITEM values (commctrl.h),
+// used as InsertItem's default hParent/hInsertAfter below.
+#define TVI_ROOT ((HTREEITEM)0xFFFF0000)
+#define TVI_LAST ((HTREEITEM)0xFFFF0002)
+
 class CTreeCtrl : public CWnd
 {
 public:
     HTREEITEM InsertItem(LPTVINSERTSTRUCT lpInsertStruct);
-    // Doc captured only the first parameters of this overload ("...");
-    // completed here with the well-established real-MFC parameter list
-    // (3 further overloads exist and are not declared, not individually
-    // captured by the scan).
     HTREEITEM InsertItem(UINT nMask, LPCTSTR lpszItem, int nImage, int nSelectedImage,
                           UINT nState, UINT nStateMask, LPARAM lParam,
                           HTREEITEM hParent, HTREEITEM hInsertAfter);
+    // Independently re-verified against Microsoft Learn (2026-07-20): real
+    // CTreeCtrl::InsertItem has exactly 4 overloads (the original scan's
+    // "5 overload totali" was inaccurate). These 2 were missing despite
+    // genuine real usage (StatisticsDlg.cpp's CStatisticsTree : public
+    // CTreeCtrl, PPgDebug.cpp's CTreeOptionsCtrl : public CTreeCtrl).
+    HTREEITEM InsertItem(LPCTSTR lpszItem, HTREEITEM hParent = TVI_ROOT, HTREEITEM hInsertAfter = TVI_LAST);
+    HTREEITEM InsertItem(LPCTSTR lpszItem, int nImage, int nSelectedImage,
+                          HTREEITEM hParent = TVI_ROOT, HTREEITEM hInsertAfter = TVI_LAST);
     BOOL SetItemText(HTREEITEM hItem, LPCTSTR lpszItem);
     BOOL DeleteAllItems();
     BOOL DeleteItem(HTREEITEM hItem);
