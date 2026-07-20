@@ -17,6 +17,7 @@
 #include "afxcmn.h"
 #include "afxole.h"
 #include "afxdhtml.h"
+#include "afxdtctl.h"
 #include "afxsock.h"
 
 #include <cassert>
@@ -77,6 +78,7 @@ int main()
     CImageList* iml = nullptr; (void)iml;
     COleDropTarget* dropTarget = nullptr; (void)dropTarget;
     CDHtmlDialog* dhtml = nullptr; (void)dhtml;
+    CDateTimeCtrl* dtp = nullptr; (void)dtp;
     CAsyncSocket* sock = nullptr; (void)sock;
     // CPalette went from an incomplete forward declaration to a real
     // class definition during the FRONTEND/GDI blind-spot pass (see

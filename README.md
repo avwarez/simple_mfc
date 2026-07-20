@@ -32,6 +32,7 @@ separate "stub" copy and "native" copy.
 | `afxcmn.h` | ✅ | — | **Stub only** — `CImageList`/`CTreeCtrl`/`CListCtrl`/`CRichEditCtrl`/`CTabCtrl`/`CToolBarCtrl`/`CStatusBarCtrl`/`CToolTipCtrl` |
 | `afxole.h` | ✅ | — | **Stub only** — `COleDropTarget` |
 | `afxdhtml.h` | ✅ | — | **Stub only** — `CDHtmlDialog` (hierarchy only, no methods used) |
+| `afxdtctl.h` | ✅ | — | **Stub only** — `CDateTimeCtrl` |
 | `atltypes.h` | ✅ | — | **Stub only** — `CPoint`/`CRect`/`CSize` (ATL/MFC "shared classes", not declared in `afxwin.h`) |
 | `afxsock.h` | ✅ | — | **Stub only** — `CAsyncSocket` |
 
@@ -42,7 +43,7 @@ types (not just declare a pointer to one) will fail to link with missing
 symbols. They exist as a reference/interface awaiting a future
 implementation (which would require a cross-platform GUI layer for
 `afxwin.h`/`afxext.h`/`afxdlgs.h`/`afxdd_.h`/`afxcmn.h`/`afxole.h`/
-`afxdhtml.h`/`atltypes.h`, and system APIs — outside the "standard C++
+`afxdhtml.h`/`afxdtctl.h`/`atltypes.h`, and system APIs — outside the "standard C++
 only" scope — for `afxsock.h`).
 
 The GUI/GDI stubs only declare the **subset of classes and methods
@@ -56,7 +57,7 @@ from.
 ## Why some headers are not implemented
 
 - **GUI (`afxwin.h`, `afxext.h`, `afxdlgs.h`, `afxdd_.h`, `afxmsg_.h`,
-  `afxcmn.h`, `afxole.h`, `afxdhtml.h`, `atltypes.h`)** — `CWnd` and its
+  `afxcmn.h`, `afxole.h`, `afxdhtml.h`, `afxdtctl.h`, `atltypes.h`)** — `CWnd` and its
   subclasses, common controls, GDI drawing, message maps, `DDX_*`: pure
   Win32 concepts (windows, messages, device contexts), with no standard
   C++ equivalent without a dedicated cross-platform UI layer.
