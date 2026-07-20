@@ -52,8 +52,18 @@ constexpr BOOL FALSE_ = 0;
 // "different basic type" even though the two are layout-identical, so
 // this collides with real <windows.h> the same way afxwin.h's
 // SECURITY_ATTRIBUTES/CREATESTRUCT do (see there). Deferred to the real
-// header on _WIN32.
+// header on _WIN32. CString and friends are unconditionally wide-char
+// (std::wstring-backed) regardless of the project's own charset setting,
+// so UNICODE/_UNICODE are forced here too -- otherwise winnt.h's LPTSTR
+// resolves to the ANSI (char*) alias and every wide-char call site in
+// this library (wmemcpy, CDumpContext::operator<<...) stops matching.
 #ifdef _WIN32
+#ifndef UNICODE
+#define UNICODE
+#endif
+#ifndef _UNICODE
+#define _UNICODE
+#endif
 #include <windows.h>
 #else
 using LPCTSTR = const wchar_t*;
