@@ -47,8 +47,18 @@ constexpr BOOL FALSE_ = 0;
 #ifndef FALSE
 #define FALSE 0
 #endif
+// Real LPTSTR/LPCTSTR (winnt.h) are typedef chains through WCHAR*, not a
+// bare wchar_t* alias -- MSVC's redefinition check treats that as a
+// "different basic type" even though the two are layout-identical, so
+// this collides with real <windows.h> the same way afxwin.h's
+// SECURITY_ATTRIBUTES/CREATESTRUCT do (see there). Deferred to the real
+// header on _WIN32.
+#ifdef _WIN32
+#include <windows.h>
+#else
 using LPCTSTR = const wchar_t*;
 using LPTSTR = wchar_t*;
+#endif
 
 // ---------------------------------------------------------------------
 // Lightweight MFC-style RTTI (does not use the compiler's typeid/
