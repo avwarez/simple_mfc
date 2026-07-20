@@ -3,7 +3,16 @@
 #pragma once
 #include "afx.h"
 
+// Real SOCKADDR is a typedef-name for `struct sockaddr` (winsock2.h),
+// not a struct literally tagged SOCKADDR -- guarded like afxwin.h's
+// SECURITY_ATTRIBUTES/CREATESTRUCT (see there): on a real Windows/MSVC
+// target this collides with our own bare forward-declaration once
+// eMule/srchybrid's own direct <winsock2.h> include is processed.
+#ifdef _WIN32
+#include <winsock2.h>
+#else
 struct SOCKADDR;
+#endif
 
 // ---------------------------------------------------------------------
 // CAsyncSocket (header afxsock.h, hierarchy CObject -> CAsyncSocket)

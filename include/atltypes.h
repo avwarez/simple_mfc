@@ -8,9 +8,19 @@
 #include "afx.h"
 
 // ---------------------------------------------------------------------
-// Plain Win32 structs (normally from windef.h): minimal POD definitions,
-// no Windows headers pulled in, consistent with the rest of the project.
+// Plain Win32 structs (normally from windef.h). On a real Windows/MSVC
+// target these come from the real <windows.h> instead of being redefined
+// here: discovered (2026-07-20, compiling real eMule/srchybrid against
+// this header on windows-latest) that eMule also includes real Win32
+// headers directly (<winsock2.h> etc., for non-MFC networking), which
+// pull in the actual tagRECT/tagPOINT/tagSIZE from windef.h — defining
+// our own unconditionally collided with them (C2011 "type redefinition").
+// On non-Windows targets (this project's main portability point) no such
+// header exists, so we still provide these ourselves.
 // ---------------------------------------------------------------------
+#ifdef _WIN32
+#include <windows.h>
+#else
 struct tagPOINT
 {
     long x;
@@ -39,6 +49,7 @@ struct tagRECT
 using RECT = tagRECT;
 using LPRECT = RECT*;
 using LPCRECT = const RECT*;
+#endif
 
 // ---------------------------------------------------------------------
 // CPoint (header atltypes.h, derives from tagPOINT)

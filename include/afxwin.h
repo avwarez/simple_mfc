@@ -16,14 +16,27 @@ class CRgn;
 class CPalette;
 class CCreateContext;
 class CDataExchange;
-struct SECURITY_ATTRIBUTES;
 typedef long (*AFX_THREADPROC)(void*);
 
 // ---------------------------------------------------------------------
-// Win32 primitive handle/type stand-ins (normally from windef.h/
-// winnt.h): opaque aliases, no Windows headers pulled in, consistent
-// with the void*-based handles already used for CWinThread::m_hThread.
+// Win32 primitive handle/type stand-ins (normally from windef.h/winnt.h
+// /winuser.h). On a real Windows/MSVC target these come from the real
+// <windows.h> instead of being redefined here: discovered (2026-07-20,
+// compiling real eMule/srchybrid against this header on windows-latest)
+// that eMule also includes real Win32 headers directly (<winsock2.h>
+// etc., for non-MFC networking), which pull in the actual HWND & friends
+// (windef.h), SECURITY_ATTRIBUTES/CREATESTRUCT/HELPINFO/TOOLINFO
+// (winbase.h/winuser.h) — several of these are typedef-NAMES for a
+// differently-tagged real struct (e.g. real SECURITY_ATTRIBUTES aliases
+// `struct _SECURITY_ATTRIBUTES`, not a struct literally tagged
+// SECURITY_ATTRIBUTES), so our bare forward-declarations collided with
+// them (C2371 "redefinition; different basic types"). On non-Windows
+// targets (this project's main portability point) none of these headers
+// exist, so we still provide our own stand-ins there.
 // ---------------------------------------------------------------------
+#ifdef _WIN32
+#include <windows.h>
+#else
 using HWND = void*;
 using HDC = void*;
 using HICON = void*;
@@ -46,6 +59,13 @@ using LONG_PTR = std::intptr_t;
 using WPARAM = UINT_PTR;
 using LPARAM = LONG_PTR;
 using LRESULT = LONG_PTR;
+struct SECURITY_ATTRIBUTES;
+struct tagCREATESTRUCT;
+using CREATESTRUCT = tagCREATESTRUCT;
+using LPCREATESTRUCT = CREATESTRUCT*;
+struct HELPINFO;
+struct TOOLINFO;
+#endif
 
 // ---------------------------------------------------------------------
 // Additional Win32 primitive stand-ins (FRONTEND/GDI blind-spot pass,
@@ -54,15 +74,17 @@ using LRESULT = LONG_PTR;
 // qualified super-calls (e.g. CDialog::DoDataExchange(),
 // CWnd::OnDestroy()) invisible to a plain ".Method("/"->Method(" scan.
 // All incomplete/forward-declared: only ever used by pointer here.
+// Unlike the block above, these do NOT collide on a real Windows target
+// (their real counterparts share the exact same tag name, e.g. real
+// windows.h also has a struct literally tagged "tagMSG" — forward-
+// declaring the same tag twice, later completed by the real definition,
+// is legal C++, not a redefinition), so no #ifdef _WIN32 needed here.
 // ---------------------------------------------------------------------
+#ifndef _WIN32
 struct tagMSG;
 using MSG = tagMSG;
 using LPMSG = MSG*;
-struct tagCREATESTRUCT;
-using CREATESTRUCT = tagCREATESTRUCT;
-using LPCREATESTRUCT = CREATESTRUCT*;
-struct HELPINFO;
-struct TOOLINFO;
+#endif
 struct tagMEASUREITEMSTRUCT;
 using LPMEASUREITEMSTRUCT = tagMEASUREITEMSTRUCT*;
 class CScrollBar; // real header afxwin.h too; only used here as a pointer parameter
@@ -140,8 +162,14 @@ public:
     int GetObject(int nCount, LPVOID lpObject) const;
 };
 
+// LOGBRUSH/LOGFONT (like CREATESTRUCT/HELPINFO/TOOLINFO above) are
+// typedef-names for a real, differently-tagged ANSI/Unicode-dispatched
+// struct on Windows (e.g. real LOGFONT aliases tagLOGFONTW) -- guarded
+// the same way, real <windows.h> already pulled in above provides them.
+#ifndef _WIN32
 struct tagLOGBRUSH;
 using LOGBRUSH = tagLOGBRUSH;
+#endif
 
 // CPen (header afxwin.h, deriva da CGdiObject)
 class CPen : public CGdiObject
@@ -201,8 +229,10 @@ public:
     CSize GetBitmapDimension() const;
 };
 
+#ifndef _WIN32
 struct tagLOGFONT;
 using LOGFONT = tagLOGFONT;
+#endif
 
 // CFont (header afxwin.h, deriva da CGdiObject)
 class CFont : public CGdiObject
@@ -302,9 +332,22 @@ public:
 // are only the ones actually called on CWnd*/CWnd& in eMule/srchybrid
 // (not the full real-MFC surface) — see ../../mfc_scan_srchybrid.md.
 // ---------------------------------------------------------------------
+// These are real Win32 *macros* (winuser.h), not just type names: on
+// _WIN32 <windows.h> was already #included above in this same file, so
+// by the time the preprocessor reaches these lines the macro is already
+// live and would silently rewrite our own declaration's token (e.g.
+// "constexpr UINT RDW_INVALIDATE = ..." becomes "constexpr UINT 0x0001 =
+// ..." -- a syntax error) unless guarded with #ifndef rather than
+// #ifdef _WIN32 (the two aren't equivalent for macros).
+#ifndef RDW_INVALIDATE
 constexpr UINT RDW_INVALIDATE = 0x0001;
+#endif
+#ifndef RDW_ERASE
 constexpr UINT RDW_ERASE = 0x0004;
+#endif
+#ifndef RDW_UPDATENOW
 constexpr UINT RDW_UPDATENOW = 0x0100;
+#endif
 
 class CWnd : public CCmdTarget
 {
@@ -449,7 +492,9 @@ protected:
 };
 
 extern const CRect rectDefault;
+#ifndef WS_OVERLAPPEDWINDOW
 constexpr DWORD WS_OVERLAPPEDWINDOW = 0x00CF0000;
+#endif
 
 class CFrameWnd : public CWnd
 {

@@ -16,8 +16,16 @@
 #include <list>
 #include <vector>
 
-using POSITION = void*;
+using POSITION = void*; // not a real Win32/SDK type, safe to always define
+
+// INT_PTR is a real basetsd.h typedef on Windows; guarded the same way as
+// afxwin.h's copy of this same alias (see there for why: eMule/srchybrid
+// also includes real Win32 headers directly, which define this too).
+#ifdef _WIN32
+#include <windows.h>
+#else
 using INT_PTR = long long;
+#endif
 
 namespace mfc_detail
 {

@@ -16,20 +16,36 @@ class CArchive; // real header afxx.h family; not implemented (see afx.h), only 
 // header, so an incomplete forward declaration is enough — no member
 // access happens here.
 // ---------------------------------------------------------------------
+// HIMAGELIST/HTREEITEM are real DECLARE_HANDLE-based opaque handles in
+// <commctrl.h> (an incompatible type from our void* alias), and
+// PFNLVCOMPARE's real calling convention may differ from ours -- guarded
+// like afxwin.h's HWND-family (see there): real <commctrl.h>, pulled in
+// here on a real Windows/MSVC target, provides all three.
+#ifdef _WIN32
+#include <commctrl.h>
+#else
 using HIMAGELIST = void*;
 using HTREEITEM = void*;
+using PFNLVCOMPARE = int (*)(LPARAM, LPARAM, LPARAM);
+#endif
 // LPMSG comes from afxwin.h (included above): a real MSG/LPMSG pair was
 // added there during the FRONTEND/GDI blind-spot pass (needed by
 // CWnd::PreTranslateMessage), so it is no longer aliased to void* here.
 using POSITION = void*; // same alias as afxcoll.h's (identical redefinition is legal, avoids depending on it)
+// LPSTR_TEXTCALLBACK/LVCFMT_LEFT are real commctrl.h *macros*: #ifndef,
+// not #ifdef _WIN32 (see afxwin.h's RDW_* for why the two aren't
+// equivalent for a macro that's already active by this point).
+#ifndef LPSTR_TEXTCALLBACK
 #define LPSTR_TEXTCALLBACK ((LPTSTR)-1)
+#endif
 
 struct LVITEM;
 struct LVCOLUMN;
 struct LVFINDINFO;
 struct LVHITTESTINFO;
-using PFNLVCOMPARE = int (*)(LPARAM, LPARAM, LPARAM);
+#ifndef LVCFMT_LEFT
 constexpr int LVCFMT_LEFT = 0;
+#endif
 
 struct TVINSERTSTRUCT;
 using LPTVINSERTSTRUCT = TVINSERTSTRUCT*;
@@ -106,9 +122,14 @@ public:
 // CTreeCtrl (header afxcmn.h, deriva da CWnd)
 // ---------------------------------------------------------------------
 // TVI_ROOT/TVI_LAST: real Win32 sentinel HTREEITEM values (commctrl.h),
-// used as InsertItem's default hParent/hInsertAfter below.
+// used as InsertItem's default hParent/hInsertAfter below. Real macros:
+// #ifndef, not #ifdef _WIN32 (see afxwin.h's RDW_* for why).
+#ifndef TVI_ROOT
 #define TVI_ROOT ((HTREEITEM)0xFFFF0000)
+#endif
+#ifndef TVI_LAST
 #define TVI_LAST ((HTREEITEM)0xFFFF0002)
+#endif
 
 class CTreeCtrl : public CWnd
 {

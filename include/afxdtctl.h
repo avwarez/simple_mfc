@@ -12,13 +12,27 @@
 #include "afxwin.h"
 #include "atltime.h" // CTime, used by SetTime/GetTime below
 
+// SYSTEMTIME is a real minwinbase.h struct on Windows (guarded like
+// afxwin.h's SECURITY_ATTRIBUTES/CREATESTRUCT -- see there for why: it
+// collides with eMule/srchybrid's own direct Win32 header includes).
+// GDT_ERROR/GDT_VALID/GDT_NONE are real commctrl.h *macros*, so they need
+// #ifndef rather than #ifdef _WIN32 (see afxwin.h's RDW_* for why the two
+// aren't equivalent for a macro).
+#ifdef _WIN32
+#include <commctrl.h>
+#else
 struct SYSTEMTIME;
 using LPSYSTEMTIME = SYSTEMTIME*;
-
-// Real Win32 return-value constants for CDateTimeCtrl::GetTime (commctrl.h).
+#endif
+#ifndef GDT_ERROR
 constexpr DWORD GDT_ERROR = static_cast<DWORD>(-1);
+#endif
+#ifndef GDT_VALID
 constexpr DWORD GDT_VALID = 0;
+#endif
+#ifndef GDT_NONE
 constexpr DWORD GDT_NONE = 1;
+#endif
 
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic push
