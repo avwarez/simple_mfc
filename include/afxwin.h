@@ -36,6 +36,7 @@ typedef long (*AFX_THREADPROC)(void*);
 // ---------------------------------------------------------------------
 #ifdef _WIN32
 #include <windows.h>
+#include <commctrl.h> // TOOLINFO is a commctrl.h type, not windows.h
 #else
 using HWND = void*;
 using HDC = void*;

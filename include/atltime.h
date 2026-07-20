@@ -35,6 +35,11 @@ private:
     long long m_span;
 };
 
+// GetCurrentTime is also a real winuser.h macro (expands to GetTickCount())
+// -- undefined here for the same reason afx.h undefines FindNextFile
+// above: keeps the member's true name instead of a silent rewrite to a
+// method CTime doesn't have, consistently for every later call site too.
+#undef GetCurrentTime
 class CTime
 {
 public:

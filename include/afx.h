@@ -417,7 +417,14 @@ private:
 
 // ---------------------------------------------------------------------
 // CFileFind — built on std::filesystem (standard C++17, no FindFirstFile).
+// FindNextFile is also a real winbase.h macro (expands to FindNextFileW/A)
+// -- undefined here, the same way real MFC's own afx.h does it, so the
+// member keeps its true name instead of being silently rewritten to
+// something CFileFind doesn't have. Once undef'd it stays gone for the
+// rest of the translation unit, so later call sites (this file's own
+// afx.cpp, and any including code such as eMule's) see the same name too.
 // ---------------------------------------------------------------------
+#undef FindNextFile
 class CFileFind : public CObject
 {
     DECLARE_DYNAMIC(CFileFind)

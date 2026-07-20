@@ -39,25 +39,35 @@ using POSITION = void*; // same alias as afxcoll.h's (identical redefinition is 
 #define LPSTR_TEXTCALLBACK ((LPTSTR)-1)
 #endif
 
+// LVITEM/TVINSERTSTRUCT/TCITEM/TBBUTTON and their LP*/TC_ITEM aliases:
+// with UNICODE defined (forced by afx.h on _WIN32, see there), several of
+// these are themselves real commctrl.h *macros* that textually expand to
+// their ...W-suffixed name (e.g. LVITEM -> LVITEMW) or, like TBBUTTON,
+// name a typedef to a differently-tagged real struct -- either way our
+// own alias declaration collides with (or gets silently rewritten into a
+// duplicate of) what the real, already-included <commctrl.h> (see above)
+// completely defines (C2371), unlike the bare tagMSG-style forward-
+// declares elsewhere in this file. On _WIN32 every use of these names
+// elsewhere in this header resolves directly through the real macro/type
+// from <commctrl.h>, so nothing needs to be (re)declared here at all.
+#ifndef _WIN32
 struct LVITEM;
 struct LVCOLUMN;
 struct LVFINDINFO;
 struct LVHITTESTINFO;
-#ifndef LVCFMT_LEFT
-constexpr int LVCFMT_LEFT = 0;
-#endif
-
 struct TVINSERTSTRUCT;
 using LPTVINSERTSTRUCT = TVINSERTSTRUCT*;
 struct TVHITTESTINFO;
-
 struct TCHITTESTINFO;
 struct TCITEM;
 using TC_ITEM = TCITEM; // older-SDK alias, used interchangeably with TCITEM in eMule/srchybrid
-
 struct TBBUTTON;
 using LPTBBUTTON = TBBUTTON*;
 struct TBBUTTONINFO;
+#endif
+#ifndef LVCFMT_LEFT
+constexpr int LVCFMT_LEFT = 0;
+#endif
 
 struct CHARFORMAT;
 struct CHARFORMAT2;
