@@ -13,15 +13,20 @@
 //   - CException::ReportError only prints to stderr, not a real MessageBox
 #pragma once
 
+#include <algorithm>
+#include <cctype>
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
+#include <cwchar>
+#include <cwctype>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 // Compatibility with the headers that are still "declaration-only" (afxdd_.h,
@@ -177,81 +182,333 @@ private:
 extern CDumpContext afxDump;
 
 // ---------------------------------------------------------------------
-// CString — a real wrapper around std::wstring exposing the standard MFC
-// interface. LoadString (PE .rc resources) is omitted: no standard C++
-// equivalent, see ../README.md. Declared here, before CException, because
+// CStringT<Ch> — a real wrapper around std::basic_string<Ch> exposing the
+// standard MFC/ATL CStringT interface (only the members eMule/srchybrid
+// actually uses; verified against Microsoft Learn's CStringT reference).
+// The public aliases below match real ATL: CStringA (char), CStringW
+// (wchar_t), CString (wide, matching a UNICODE build's TCHAR). LoadString
+// (PE .rc resources) is omitted: no standard C++ equivalent, see
+// ../README.md. Declared here, before CException, because
 // CFileException::m_strFileName is a CString (matching real MFC).
 // ---------------------------------------------------------------------
-class CString
+namespace mfc_detail
+{
+// The handful of operations that differ between the char and wchar_t
+// instantiations, isolated so CStringT's body stays character-set neutral.
+// (Real ATL factors these into ChTraitsCRT/StrTraitMFC; this is the
+// minimal portable equivalent for simple_mfc's subset.)
+template <class Ch> struct StrTraits;
+
+template <>
+struct StrTraits<wchar_t>
+{
+    static const wchar_t* WS() noexcept { return L" \t\r\n"; }
+    static wchar_t Lower(wchar_t c) noexcept { return static_cast<wchar_t>(std::towlower(static_cast<std::wint_t>(c))); }
+    static wchar_t Upper(wchar_t c) noexcept { return static_cast<wchar_t>(std::towupper(static_cast<std::wint_t>(c))); }
+    static int FormatV(wchar_t* buf, size_t n, const wchar_t* fmt, va_list a) { return std::vswprintf(buf, n, fmt, a); }
+};
+
+template <>
+struct StrTraits<char>
+{
+    static const char* WS() noexcept { return " \t\r\n"; }
+    static char Lower(char c) noexcept { return static_cast<char>(std::tolower(static_cast<unsigned char>(c))); }
+    static char Upper(char c) noexcept { return static_cast<char>(std::toupper(static_cast<unsigned char>(c))); }
+    static int FormatV(char* buf, size_t n, const char* fmt, va_list a) { return std::vsnprintf(buf, n, fmt, a); }
+};
+
+// Narrow<->wide conversion for CStringT's cross-character (YCHAR)
+// constructors/assignment. ASCII maps 1:1; bytes >= 0x80 widen as Latin-1
+// and non-ASCII wide chars narrow to '?' -- a portable, compile-check-grade
+// stand-in for real MFC's active-code-page conversion (documented
+// limitation, see ../README.md).
+inline std::wstring Widen(const char* p, size_t n)
+{
+    std::wstring w;
+    w.reserve(n);
+    for (size_t i = 0; i < n; ++i)
+        w.push_back(static_cast<wchar_t>(static_cast<unsigned char>(p[i])));
+    return w;
+}
+inline std::string Narrow(const wchar_t* p, size_t n)
+{
+    std::string s;
+    s.reserve(n);
+    for (size_t i = 0; i < n; ++i)
+        s.push_back(p[i] < 0x80 ? static_cast<char>(p[i]) : '?');
+    return s;
+}
+} // namespace mfc_detail
+
+template <class BaseType, class = void>
+class CStringT
 {
 public:
-    CString() = default;
-    CString(const CString&) = default;
-    CString(CString&&) noexcept = default;
-    CString(const wchar_t* psz) : m_data(psz ? psz : L"") {}
-    CString(wchar_t ch, int nRepeat = 1) : m_data(static_cast<size_t>(nRepeat), ch) {}
-    CString& operator=(const CString&) = default;
-    CString& operator=(CString&&) noexcept = default;
-    CString& operator=(const wchar_t* psz) { m_data = psz ? psz : L""; return *this; }
+    using XCHAR = BaseType;        // this string's character type (ATL naming)
+    using PXSTR = XCHAR*;
+    using PCXSTR = const XCHAR*;
+    using YCHAR = std::conditional_t<std::is_same_v<XCHAR, char>, wchar_t, char>; // the "other" type
+    using PCYSTR = const YCHAR*;
+
+    CStringT() = default;
+    CStringT(const CStringT&) = default;
+    CStringT(CStringT&&) noexcept = default;
+    CStringT(PCXSTR pszSrc) { if (pszSrc) m_data = pszSrc; }
+    CStringT(PCXSTR pch, int nLength) { if (pch && nLength > 0) m_data.assign(pch, static_cast<size_t>(nLength)); }
+    explicit CStringT(XCHAR ch, int nRepeat = 1) : m_data(static_cast<size_t>(nRepeat < 0 ? 0 : nRepeat), ch) {}
+    // Cross-character (YCHAR) sources convert; explicit, matching real ATL's
+    // CSTRING_EXPLICIT so a char/wchar_t mismatch is never silently narrowed.
+    explicit CStringT(PCYSTR pszSrc) { if (pszSrc) m_data = Convert(pszSrc, std::char_traits<YCHAR>::length(pszSrc)); }
+    explicit CStringT(PCYSTR pch, int nLength) { if (pch && nLength > 0) m_data = Convert(pch, static_cast<size_t>(nLength)); }
+    explicit CStringT(const CStringT<YCHAR>& strSrc) { m_data = Convert(strSrc.GetString(), static_cast<size_t>(strSrc.GetLength())); }
+
+    CStringT& operator=(const CStringT&) = default;
+    CStringT& operator=(CStringT&&) noexcept = default;
+    CStringT& operator=(PCXSTR pszSrc) { if (pszSrc) m_data = pszSrc; else m_data.clear(); return *this; }
+    CStringT& operator=(XCHAR ch) { m_data.assign(1, ch); return *this; }
+    CStringT& operator=(PCYSTR pszSrc) { m_data = pszSrc ? Convert(pszSrc, std::char_traits<YCHAR>::length(pszSrc)) : std::basic_string<XCHAR>(); return *this; }
 
     int GetLength() const noexcept { return static_cast<int>(m_data.size()); }
     bool IsEmpty() const noexcept { return m_data.empty(); }
     void Empty() noexcept { m_data.clear(); }
-    wchar_t* GetBuffer(int nMinBufferLength);
-    wchar_t* GetBuffer() { return GetBuffer(GetLength()); }
-    void ReleaseBuffer(int nNewLength = -1);
-    wchar_t GetAt(int iChar) const { return m_data.at(static_cast<size_t>(iChar)); }
-    void SetAt(int iChar, wchar_t ch) { m_data.at(static_cast<size_t>(iChar)) = ch; }
+    PXSTR GetBuffer(int nMinBufferLength)
+    {
+        if (static_cast<size_t>(nMinBufferLength) > m_data.size())
+            m_data.resize(static_cast<size_t>(nMinBufferLength));
+        return m_data.data();
+    }
+    PXSTR GetBuffer() { return GetBuffer(GetLength()); }
+    void ReleaseBuffer(int nNewLength = -1)
+    {
+        if (nNewLength < 0) m_data.resize(std::char_traits<XCHAR>::length(m_data.c_str()));
+        else m_data.resize(static_cast<size_t>(nNewLength));
+    }
+    XCHAR GetAt(int iChar) const { return m_data.at(static_cast<size_t>(iChar)); }
+    void SetAt(int iChar, XCHAR ch) { m_data.at(static_cast<size_t>(iChar)) = ch; }
+    PCXSTR GetString() const noexcept { return m_data.c_str(); }
 
-    void Format(const wchar_t* pszFormat, ...);
-    void AppendFormat(const wchar_t* pszFormat, ...);
-    int Compare(const wchar_t* psz) const { return m_data.compare(psz); }
-    int CompareNoCase(const wchar_t* psz) const;
-    int Delete(int iIndex, int nCount = 1);
-    int Find(const wchar_t* pszSub, int iStart = 0) const;
-    int Find(wchar_t ch, int iStart = 0) const;
-    int ReverseFind(wchar_t ch) const;
-    int Insert(int iIndex, const wchar_t* psz);
-    int Insert(int iIndex, wchar_t ch);
-    CString Left(int nCount) const;
-    CString Right(int nCount) const;
-    CString Mid(int iFirst, int nCount) const;
-    CString Mid(int iFirst) const;
-    CString& MakeLower();
-    CString& MakeUpper();
-    int Replace(const wchar_t* pszOld, const wchar_t* pszNew);
-    int Replace(wchar_t chOld, wchar_t chNew);
-    CString SpanExcluding(const wchar_t* pszCharSet) const;
-    CString Tokenize(const wchar_t* pszTokens, int& iStart) const;
-    CString& Trim();
-    CString& Trim(wchar_t chTarget);
-    CString& Trim(const wchar_t* pszTargets);
-    CString& TrimRight();
-    CString& TrimRight(wchar_t chTarget);
-    CString& TrimRight(const wchar_t* pszTargets);
+    void Format(PCXSTR pszFormat, ...) { va_list a; va_start(a, pszFormat); m_data = VFormat(pszFormat, a); va_end(a); }
+    void AppendFormat(PCXSTR pszFormat, ...) { va_list a; va_start(a, pszFormat); m_data += VFormat(pszFormat, a); va_end(a); }
+    void Append(PCXSTR pszSrc) { if (pszSrc) m_data += pszSrc; }
+    void Append(PCXSTR pszSrc, int nLength) { if (pszSrc && nLength > 0) m_data.append(pszSrc, static_cast<size_t>(nLength)); }
+    void AppendChar(XCHAR ch) { m_data += ch; }
 
-    const wchar_t* c_str() const noexcept { return m_data.c_str(); }
-    operator const wchar_t*() const noexcept { return m_data.c_str(); }
-    wchar_t operator[](int i) const { return m_data[static_cast<size_t>(i)]; }
-    const std::wstring& AsStdString() const noexcept { return m_data; }
+    int Compare(PCXSTR psz) const { return m_data.compare(psz); }
+    int CompareNoCase(PCXSTR psz) const
+    {
+        std::basic_string<XCHAR> a = m_data, b = psz ? psz : std::basic_string<XCHAR>().c_str();
+        auto lower = [](XCHAR c) { return mfc_detail::StrTraits<XCHAR>::Lower(c); };
+        std::transform(a.begin(), a.end(), a.begin(), lower);
+        std::transform(b.begin(), b.end(), b.begin(), lower);
+        return a.compare(b);
+    }
+    int Delete(int iIndex, int nCount = 1)
+    {
+        if (iIndex < 0 || static_cast<size_t>(iIndex) >= m_data.size()) return GetLength();
+        m_data.erase(static_cast<size_t>(iIndex), static_cast<size_t>(nCount));
+        return GetLength();
+    }
+    int Find(PCXSTR pszSub, int iStart = 0) const
+    {
+        auto pos = m_data.find(pszSub, static_cast<size_t>(iStart));
+        return pos == npos ? -1 : static_cast<int>(pos);
+    }
+    int Find(XCHAR ch, int iStart = 0) const
+    {
+        auto pos = m_data.find(ch, static_cast<size_t>(iStart));
+        return pos == npos ? -1 : static_cast<int>(pos);
+    }
+    int FindOneOf(PCXSTR pszCharSet) const
+    {
+        auto pos = m_data.find_first_of(pszCharSet);
+        return pos == npos ? -1 : static_cast<int>(pos);
+    }
+    int ReverseFind(XCHAR ch) const
+    {
+        auto pos = m_data.rfind(ch);
+        return pos == npos ? -1 : static_cast<int>(pos);
+    }
+    int Insert(int iIndex, PCXSTR psz)
+    {
+        size_t i = std::min<size_t>(static_cast<size_t>(iIndex), m_data.size());
+        m_data.insert(i, psz);
+        return GetLength();
+    }
+    int Insert(int iIndex, XCHAR ch)
+    {
+        size_t i = std::min<size_t>(static_cast<size_t>(iIndex), m_data.size());
+        m_data.insert(i, 1, ch);
+        return GetLength();
+    }
+    int Remove(XCHAR chRemove)
+    {
+        size_t before = m_data.size();
+        m_data.erase(std::remove(m_data.begin(), m_data.end(), chRemove), m_data.end());
+        return static_cast<int>(before - m_data.size());
+    }
+    void Truncate(int nNewLength)
+    {
+        if (nNewLength >= 0 && static_cast<size_t>(nNewLength) < m_data.size())
+            m_data.resize(static_cast<size_t>(nNewLength));
+    }
+    CStringT Left(int nCount) const
+    {
+        nCount = std::clamp(nCount, 0, GetLength());
+        return CStringT(m_data.substr(0, static_cast<size_t>(nCount)).c_str());
+    }
+    CStringT Right(int nCount) const
+    {
+        nCount = std::clamp(nCount, 0, GetLength());
+        return CStringT(m_data.substr(m_data.size() - static_cast<size_t>(nCount)).c_str());
+    }
+    CStringT Mid(int iFirst, int nCount) const
+    {
+        iFirst = std::clamp(iFirst, 0, GetLength());
+        nCount = std::clamp(nCount, 0, GetLength() - iFirst);
+        return CStringT(m_data.substr(static_cast<size_t>(iFirst), static_cast<size_t>(nCount)).c_str());
+    }
+    CStringT Mid(int iFirst) const { return Mid(iFirst, GetLength() - iFirst); }
+    CStringT& MakeLower()
+    {
+        std::transform(m_data.begin(), m_data.end(), m_data.begin(), [](XCHAR c) { return mfc_detail::StrTraits<XCHAR>::Lower(c); });
+        return *this;
+    }
+    CStringT& MakeUpper()
+    {
+        std::transform(m_data.begin(), m_data.end(), m_data.begin(), [](XCHAR c) { return mfc_detail::StrTraits<XCHAR>::Upper(c); });
+        return *this;
+    }
+    int Replace(PCXSTR pszOld, PCXSTR pszNew)
+    {
+        std::basic_string<XCHAR> oldS = pszOld, newS = pszNew;
+        if (oldS.empty()) return 0;
+        int count = 0;
+        size_t pos = 0;
+        while ((pos = m_data.find(oldS, pos)) != npos)
+        {
+            m_data.replace(pos, oldS.size(), newS);
+            pos += newS.size();
+            ++count;
+        }
+        return count;
+    }
+    int Replace(XCHAR chOld, XCHAR chNew)
+    {
+        int count = 0;
+        for (auto& c : m_data) if (c == chOld) { c = chNew; ++count; }
+        return count;
+    }
+    CStringT SpanExcluding(PCXSTR pszCharSet) const
+    {
+        auto pos = m_data.find_first_of(pszCharSet);
+        return pos == npos ? *this : Left(static_cast<int>(pos));
+    }
+    CStringT Tokenize(PCXSTR pszTokens, int& iStart) const
+    {
+        if (iStart < 0 || static_cast<size_t>(iStart) >= m_data.size()) { iStart = -1; return CStringT(); }
+        size_t begin = m_data.find_first_not_of(pszTokens, static_cast<size_t>(iStart));
+        if (begin == npos) { iStart = -1; return CStringT(); }
+        size_t end = m_data.find_first_of(pszTokens, begin);
+        CStringT tok(m_data.substr(begin, end == npos ? npos : end - begin).c_str());
+        iStart = (end == npos) ? -1 : static_cast<int>(end + 1);
+        return tok;
+    }
+    CStringT& Trim() { return Trim(mfc_detail::StrTraits<XCHAR>::WS()); }
+    CStringT& Trim(XCHAR chTarget) { XCHAR set[2] = {chTarget, 0}; return Trim(set); }
+    CStringT& Trim(PCXSTR pszTargets)
+    {
+        size_t b = m_data.find_first_not_of(pszTargets);
+        if (b == npos) m_data.clear();
+        else m_data.erase(0, b);
+        return TrimRight(pszTargets);
+    }
+    CStringT& TrimRight() { return TrimRight(mfc_detail::StrTraits<XCHAR>::WS()); }
+    CStringT& TrimRight(XCHAR chTarget) { XCHAR set[2] = {chTarget, 0}; return TrimRight(set); }
+    CStringT& TrimRight(PCXSTR pszTargets)
+    {
+        size_t e = m_data.find_last_not_of(pszTargets);
+        if (e == npos) m_data.clear();
+        else m_data.erase(e + 1);
+        return *this;
+    }
 
-    CString& operator+=(const CString& s) { m_data += s.m_data; return *this; }
-    CString& operator+=(wchar_t ch) { m_data += ch; return *this; }
-    friend CString operator+(const CString& a, const CString& b) { CString r(a); r += b; return r; }
-    friend bool operator==(const CString& a, const CString& b) { return a.m_data == b.m_data; }
-    friend bool operator!=(const CString& a, const CString& b) { return a.m_data != b.m_data; }
-    friend bool operator<(const CString& a, const CString& b) { return a.m_data < b.m_data; }
+    PCXSTR c_str() const noexcept { return m_data.c_str(); }
+    operator PCXSTR() const noexcept { return m_data.c_str(); }
+    XCHAR operator[](int i) const { return m_data[static_cast<size_t>(i)]; }
+    const std::basic_string<XCHAR>& AsStdString() const noexcept { return m_data; }
+
+    CStringT& operator+=(const CStringT& s) { m_data += s.m_data; return *this; }
+    CStringT& operator+=(PCXSTR psz) { if (psz) m_data += psz; return *this; }
+    CStringT& operator+=(XCHAR ch) { m_data += ch; return *this; }
+
+    friend CStringT operator+(const CStringT& a, const CStringT& b) { CStringT r(a); r.m_data += b.m_data; return r; }
+    friend CStringT operator+(const CStringT& a, PCXSTR b) { CStringT r(a); if (b) r.m_data += b; return r; }
+    friend CStringT operator+(PCXSTR a, const CStringT& b) { CStringT r; if (a) r.m_data = a; r.m_data += b.m_data; return r; }
+    friend CStringT operator+(const CStringT& a, XCHAR b) { CStringT r(a); r.m_data += b; return r; }
+    friend CStringT operator+(XCHAR a, const CStringT& b) { CStringT r; r.m_data += a; r.m_data += b.m_data; return r; }
+
+    friend bool operator==(const CStringT& a, const CStringT& b) noexcept { return a.m_data == b.m_data; }
+    friend bool operator==(const CStringT& a, PCXSTR b) noexcept { return a.m_data == b; }
+    friend bool operator==(PCXSTR a, const CStringT& b) noexcept { return a == b.m_data; }
+    friend bool operator!=(const CStringT& a, const CStringT& b) noexcept { return a.m_data != b.m_data; }
+    friend bool operator!=(const CStringT& a, PCXSTR b) noexcept { return a.m_data != b; }
+    friend bool operator!=(PCXSTR a, const CStringT& b) noexcept { return a != b.m_data; }
+    friend bool operator<(const CStringT& a, const CStringT& b) noexcept { return a.m_data < b.m_data; }
+    friend bool operator<(const CStringT& a, PCXSTR b) noexcept { return a.m_data < b; }
+    friend bool operator<(PCXSTR a, const CStringT& b) noexcept { return a < b.m_data; }
+    friend bool operator>(const CStringT& a, const CStringT& b) noexcept { return a.m_data > b.m_data; }
+    friend bool operator>(const CStringT& a, PCXSTR b) noexcept { return a.m_data > b; }
+    friend bool operator>(PCXSTR a, const CStringT& b) noexcept { return a > b.m_data; }
+    friend bool operator<=(const CStringT& a, const CStringT& b) noexcept { return a.m_data <= b.m_data; }
+    friend bool operator>=(const CStringT& a, const CStringT& b) noexcept { return a.m_data >= b.m_data; }
 
 private:
-    std::wstring m_data;
+    static constexpr auto npos = std::basic_string<XCHAR>::npos;
+
+    template <class Src>
+    static std::basic_string<XCHAR> Convert(const Src* p, size_t n)
+    {
+        if (!p) return {};
+        if constexpr (std::is_same_v<Src, XCHAR>)
+            return std::basic_string<XCHAR>(p, n);
+        else if constexpr (std::is_same_v<XCHAR, wchar_t>)
+            return mfc_detail::Widen(p, n);
+        else
+            return mfc_detail::Narrow(p, n);
+    }
+
+    static std::basic_string<XCHAR> VFormat(PCXSTR fmt, va_list args)
+    {
+        size_t size = 256;
+        std::vector<XCHAR> buf(size);
+        for (;;)
+        {
+            va_list ap;
+            va_copy(ap, args);
+            int n = mfc_detail::StrTraits<XCHAR>::FormatV(buf.data(), size, fmt, ap);
+            va_end(ap);
+            if (n >= 0 && static_cast<size_t>(n) < size)
+                return std::basic_string<XCHAR>(buf.data(), static_cast<size_t>(n));
+            if (size > (1u << 20))
+                return std::basic_string<XCHAR>(buf.data(), size - 1);
+            size *= 2;
+            buf.resize(size);
+        }
+    }
+
+    std::basic_string<XCHAR> m_data;
 };
+
+using CStringA = CStringT<char>;    // ANSI/char
+using CStringW = CStringT<wchar_t>; // wide
+using CString = CStringW;           // TCHAR under UNICODE, matching real MFC
 
 namespace std
 {
-template <>
-struct hash<CString>
+template <class Ch, class Tr>
+struct hash<CStringT<Ch, Tr>>
 {
-    size_t operator()(const CString& s) const noexcept { return std::hash<std::wstring>{}(s.AsStdString()); }
+    size_t operator()(const CStringT<Ch, Tr>& s) const noexcept { return std::hash<std::basic_string<Ch>>{}(s.AsStdString()); }
 };
 } // namespace std
 

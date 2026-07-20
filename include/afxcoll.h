@@ -201,6 +201,9 @@ public:
     POSITION FindIndex(INT_PTR nIndex) const { return m_impl.FindIndex(nIndex); }
     POSITION InsertBefore(POSITION position, void* e) { return m_impl.InsertBefore(position, e); }
     POSITION InsertAfter(POSITION position, void* e) { return m_impl.InsertAfter(position, e); }
+    void*& GetAt(POSITION position) { return m_impl.GetAt(position); }
+    void SetAt(POSITION pos, void* e) { m_impl.SetAt(pos, e); }
+    void RemoveAt(POSITION position) { m_impl.RemoveAt(position); }
     INT_PTR GetCount() const { return m_impl.GetCount(); }
     BOOL IsEmpty() const { return m_impl.IsEmpty() ? TRUE : FALSE; }
     void RemoveAll() { m_impl.RemoveAll(); }
@@ -266,6 +269,7 @@ public:
     INT_PTR Add(void* e) { return m_impl.Add(e); }
     INT_PTR Append(const CPtrArray& src) { return m_impl.Append(src.m_impl); }
     void Copy(const CPtrArray& src) { m_impl.Copy(src.m_impl); }
+    void*& ElementAt(INT_PTR i) { return m_impl.ElementAt(i); }
     void* GetAt(INT_PTR i) const { return m_impl.GetAt(i); }
     INT_PTR GetCount() const { return m_impl.GetCount(); }
     void** GetData() { return m_impl.GetData(); }

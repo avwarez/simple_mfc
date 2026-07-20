@@ -102,6 +102,7 @@ public:
         return TRUE;
     }
     void SetAt(ARG_KEY key, ARG_VALUE newValue) { m_map[key] = newValue; }
+    VALUE& operator[](ARG_KEY key) { return m_map[key]; }
     BOOL RemoveKey(ARG_KEY key) { return m_map.erase(key) > 0 ? TRUE : FALSE; }
     void RemoveAll() { m_map.clear(); }
 
@@ -149,4 +150,62 @@ public:
 private:
     MapT m_map;
     mutable std::unique_ptr<CPair> m_scratch;
+};
+
+// ---------------------------------------------------------------------
+// CTypedPtrList<BASE_CLASS, TYPE> — type-safe wrapper over a pointer list
+// (BASE_CLASS is CPtrList or CObList). Each accessor forwards to the base
+// and casts the base's void*/CObject* element to TYPE, exactly like real
+// MFC (which uses the same C-style reference cast on the base result).
+// ---------------------------------------------------------------------
+template <class BASE_CLASS, class TYPE>
+class CTypedPtrList : public BASE_CLASS
+{
+public:
+    POSITION AddHead(TYPE newElement) { return BASE_CLASS::AddHead(newElement); }
+    POSITION AddTail(TYPE newElement) { return BASE_CLASS::AddTail(newElement); }
+    TYPE& GetHead() { return reinterpret_cast<TYPE&>(BASE_CLASS::GetHead()); }
+    TYPE& GetTail() { return reinterpret_cast<TYPE&>(BASE_CLASS::GetTail()); }
+    TYPE RemoveHead() { return reinterpret_cast<TYPE>(BASE_CLASS::RemoveHead()); }
+    TYPE RemoveTail() { return reinterpret_cast<TYPE>(BASE_CLASS::RemoveTail()); }
+    TYPE& GetNext(POSITION& rPosition) { return reinterpret_cast<TYPE&>(BASE_CLASS::GetNext(rPosition)); }
+    TYPE& GetPrev(POSITION& rPosition) { return reinterpret_cast<TYPE&>(BASE_CLASS::GetPrev(rPosition)); }
+    TYPE& GetAt(POSITION position) { return reinterpret_cast<TYPE&>(BASE_CLASS::GetAt(position)); }
+    void SetAt(POSITION pos, TYPE newElement) { BASE_CLASS::SetAt(pos, newElement); }
+    POSITION Find(TYPE searchValue, POSITION startAfter = nullptr) const { return BASE_CLASS::Find(searchValue, startAfter); }
+    POSITION InsertBefore(POSITION position, TYPE newElement) { return BASE_CLASS::InsertBefore(position, newElement); }
+    POSITION InsertAfter(POSITION position, TYPE newElement) { return BASE_CLASS::InsertAfter(position, newElement); }
+};
+
+// ---------------------------------------------------------------------
+// CTypedPtrArray<BASE_CLASS, TYPE> — type-safe wrapper over a pointer array
+// (BASE_CLASS is CPtrArray or CObArray); same casting scheme as above.
+// ---------------------------------------------------------------------
+template <class BASE_CLASS, class TYPE>
+class CTypedPtrArray : public BASE_CLASS
+{
+public:
+    INT_PTR Add(TYPE newElement) { return BASE_CLASS::Add(newElement); }
+    TYPE GetAt(INT_PTR nIndex) const { return reinterpret_cast<TYPE>(BASE_CLASS::GetAt(nIndex)); }
+    TYPE& ElementAt(INT_PTR nIndex) { return reinterpret_cast<TYPE&>(BASE_CLASS::ElementAt(nIndex)); }
+    void SetAt(INT_PTR nIndex, TYPE newElement) { BASE_CLASS::SetAt(nIndex, newElement); }
+    void SetAtGrow(INT_PTR nIndex, TYPE newElement) { BASE_CLASS::SetAtGrow(nIndex, newElement); }
+    void InsertAt(INT_PTR nIndex, TYPE newElement, INT_PTR nCount = 1) { BASE_CLASS::InsertAt(nIndex, newElement, nCount); }
+    TYPE* GetData() { return reinterpret_cast<TYPE*>(BASE_CLASS::GetData()); }
+    TYPE operator[](INT_PTR nIndex) const { return reinterpret_cast<TYPE>(BASE_CLASS::GetAt(nIndex)); }
+    TYPE& operator[](INT_PTR nIndex) { return reinterpret_cast<TYPE&>(BASE_CLASS::ElementAt(nIndex)); }
+};
+
+// ---------------------------------------------------------------------
+// CMapStringToPtr / CMapStringToString — concrete string-keyed maps. Real
+// MFC declares these in afxcoll.h; here they build on the CMap template
+// above (which lives in this header), so they are defined here instead.
+// ARG_KEY is LPCTSTR: a CString key converts implicitly at every call.
+// ---------------------------------------------------------------------
+class CMapStringToPtr : public CMap<CString, LPCTSTR, void*, void*>
+{
+};
+
+class CMapStringToString : public CMap<CString, LPCTSTR, CString, LPCTSTR>
+{
 };

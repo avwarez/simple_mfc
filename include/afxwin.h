@@ -7,6 +7,12 @@
 #pragma once
 #include "afx.h"
 #include "atltypes.h"
+// Real MFC makes the template collections (CArray/CList/CMap and the
+// CTypedPtr* wrappers) and the concrete string maps available transitively
+// through the standard <afxwin.h> include chain; eMule/srchybrid relies on
+// that (its Stdafx.h uses CArray/CTypedPtrList without a direct
+// <afxtempl.h> include), so pull them in here too.
+#include "afxtempl.h"
 
 class CWnd;
 class CDC;
