@@ -71,6 +71,15 @@ constexpr BOOL FALSE_ = 0;
 #ifndef _UNICODE
 #define _UNICODE
 #endif
+// Stop <windows.h> from dragging in the legacy <winsock.h> (Winsock 1):
+// eMule/srchybrid (and our own afxsock.h) include <winsock2.h>, and the two
+// redefine the same structs/functions -> thousands of C2011/C2375 errors.
+// This is exactly what real MFC's afxv_w32.h does before it includes
+// <windows.h>; _WINSOCKAPI_ is winsock.h's own include guard, so pre-defining
+// it makes windows.h skip winsock.h and leaves the field to winsock2.h.
+#ifndef _WINSOCKAPI_
+#define _WINSOCKAPI_
+#endif
 #include <windows.h>
 // <windows.h> does NOT pull in <tchar.h>, so _T()/TCHAR/_tcs* would be
 // missing on a real Windows build too -- real MFC gets them because its own
