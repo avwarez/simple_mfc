@@ -724,6 +724,8 @@ void* AfxGetResourceHandle();
 CWnd* AfxGetMainWnd();
 LPCTSTR AfxGetAppName();
 int AfxMessageBox(LPCTSTR lpszText, UINT nType = 0, UINT nIDHelp = 0);
+BOOL AfxIsValidString(LPCTSTR lpsz, int nLength = -1);
+BOOL AfxIsValidAddress(const void* lp, UINT nBytes, BOOL bReadWrite = TRUE);
 
 // ---------------------------------------------------------------------
 // CDataExchange — object passed to DoDataExchange (header afxwin.h per

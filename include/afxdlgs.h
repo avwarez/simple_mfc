@@ -70,3 +70,30 @@ public:
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
+
+// ---------------------------------------------------------------------
+// CFileDialog — the common Open/Save-As file dialog (header afxdlgs.h,
+// hierarchy CObject -> CCmdTarget -> CWnd -> CDialog -> CCommonDialog ->
+// CFileDialog). eMule constructs it directly (6-arg ctor), calls DoModal
+// (inherited) + GetPathName, and reads m_ofn.lpstrTitle. m_ofn is the real
+// OPENFILENAME (from <commdlg.h>, pulled in by <windows.h> now that
+// WIN32_LEAN_AND_MEAN is gone); a minimal portable stand-in otherwise.
+// ---------------------------------------------------------------------
+#ifndef _WIN32
+struct OPENFILENAME { LPCTSTR lpstrTitle; };
+#endif
+class CFileDialog : public CDialog
+{
+public:
+    OPENFILENAME m_ofn;
+    explicit CFileDialog(BOOL bOpenFileDialog, LPCTSTR lpszDefExt = nullptr,
+                         LPCTSTR lpszFileName = nullptr, DWORD dwFlags = 0,
+                         LPCTSTR lpszFilter = nullptr, CWnd* pParentWnd = nullptr,
+                         DWORD dwSize = 0, BOOL bVistaStyle = TRUE);
+    CString GetPathName() const;
+    CString GetFileName() const;
+    CString GetFileExt() const;
+    CString GetFileTitle() const;
+    POSITION GetStartPosition() const;
+    CString GetNextPathName(POSITION& pos) const;
+};

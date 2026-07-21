@@ -38,9 +38,12 @@
 #define __stdcall
 #endif
 #define AFXAPI __stdcall
+#define AFX_CDECL __cdecl   // real MFC's calling-convention marker on static
+                            // thread procs (`static UINT AFX_CDECL RunProc(...)`)
 
 using UINT = unsigned int;
 using WORD = unsigned short;
+using BYTE = unsigned char;
 using DWORD = unsigned long;
 using LONG = long;
 using LONGLONG = long long;
@@ -746,6 +749,10 @@ public:
     // growth, which this std::vector-backed implementation handles
     // automatically, so the argument is accepted and ignored.
     explicit CMemFile(UINT /*nGrowBytes*/) {}
+    // Real MFC's attach-a-buffer constructor CMemFile(BYTE*, UINT, UINT).
+    // eMule's CSafeMemFile(const BYTE*, UINT) forwards to it (SafeFile.h:104).
+    CMemFile(BYTE* lpBuffer, UINT nBufferSize, UINT /*nGrowBytes*/ = 0)
+        : m_buffer(lpBuffer, lpBuffer + nBufferSize) {}
     UINT Read(void* lpBuf, UINT nCount) override;
     void Write(const void* lpBuf, UINT nCount) override;
     ULONGLONG Seek(LONGLONG lOff, UINT nFrom) override;

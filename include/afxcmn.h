@@ -72,9 +72,19 @@ struct COMBOBOXEXITEM;
 constexpr int LVCFMT_LEFT = 0;
 #endif
 
+// CHARFORMAT/CHARFORMAT2/CHARRANGE are <richedit.h> types. eMule declares
+// them as by-value data members (e.g. CHTRichEditCtrl::m_cfDefault), which
+// needs a COMPLETE type, not a forward declaration -> on a real Windows build
+// pull in <richedit.h> (which, like <commctrl.h> above, resolves CHARFORMAT
+// to its real ...W-suffixed struct under UNICODE). Only the portable build,
+// where simple_mfc never instantiates them, keeps the incomplete stand-ins.
+#ifdef _WIN32
+#include <richedit.h>
+#else
 struct CHARFORMAT;
 struct CHARFORMAT2;
 struct CHARRANGE;
+#endif
 
 // ---------------------------------------------------------------------
 // CImageList (header afxcmn.h, deriva da CObject — NOT CWnd)
@@ -381,6 +391,25 @@ public:
     CEdit* GetEditCtrl();
     CImageList* SetImageList(CImageList* pImageList);
     CImageList* GetImageList() const;
+};
+
+// ---------------------------------------------------------------------
+// CSliderCtrl (header afxcmn.h, deriva da CWnd)
+// ---------------------------------------------------------------------
+class CSliderCtrl : public CWnd
+{
+public:
+    void SetPos(int nPos);
+    int GetPos() const;
+    void SetRange(int nMin, int nMax, BOOL bRedraw = FALSE);
+    void SetRangeMin(int nMin, BOOL bRedraw = FALSE);
+    void SetRangeMax(int nMax, BOOL bRedraw = FALSE);
+    void GetRange(int& nMin, int& nMax) const;
+    int SetPageSize(int nSize);
+    int GetPageSize() const;
+    void SetTicFreq(int nFreq);
+    BOOL SetTic(int nTic);
+    void SetLineSize(int nSize);
 };
 
 #if defined(__GNUC__) || defined(__clang__)
