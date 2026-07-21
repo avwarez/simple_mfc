@@ -12,10 +12,42 @@
 #ifdef _WIN32
 #include <ocidl.h>  // IPicture, IPictureDisp
 #include <olectl.h> // OleLoadPicture and the OLE control constants
+#else
+// Off Windows there is no COM at all; the data-transfer types below are
+// named only so the declarations parse (same approach as afxwin.h's
+// WINDOWPLACEMENT & co).
+struct IDataObject;
+using LPDATAOBJECT = IDataObject*;
+using CLIPFORMAT = unsigned short;
+struct FORMATETC;
+using LPFORMATETC = FORMATETC*;
+struct STGMEDIUM;
+using LPSTGMEDIUM = STGMEDIUM*;
+using HGLOBAL = void*;
 #endif
 
 using DROPEFFECT = DWORD;
-class COleDataObject; // real header afxole.h too; not otherwise used here beyond a pointer parameter
+// ---------------------------------------------------------------------
+// COleDataObject — wraps the IDataObject handed to a drop target. eMule
+// asks it which formats the dragged data offers and pulls the ones it
+// understands (CF_HDROP file lists, text URLs).
+// ---------------------------------------------------------------------
+class COleDataObject
+{
+public:
+    COleDataObject();
+    virtual ~COleDataObject();
+    void Attach(LPDATAOBJECT lpDataObject, BOOL bAutoRelease = TRUE);
+    LPDATAOBJECT Detach();
+    void Release();
+    BOOL IsDataAvailable(CLIPFORMAT cfFormat, LPFORMATETC lpFormatEtc = nullptr);
+    HGLOBAL GetGlobalData(CLIPFORMAT cfFormat, LPFORMATETC lpFormatEtc = nullptr);
+    CFile* GetFileData(CLIPFORMAT cfFormat, LPFORMATETC lpFormatEtc = nullptr);
+    BOOL GetData(CLIPFORMAT cfFormat, LPSTGMEDIUM lpStgMedium, LPFORMATETC lpFormatEtc = nullptr);
+    void BeginEnumFormats();
+    BOOL GetNextFormat(LPFORMATETC lpFormatEtc);
+    LPDATAOBJECT m_lpDataObject;
+};
 
 // ---------------------------------------------------------------------
 // COleDropTarget (header afxole.h, deriva da CCmdTarget)
@@ -28,3 +60,18 @@ public:
     virtual BOOL OnDrop(CWnd* pWnd, COleDataObject* pDataObject, DROPEFFECT dropEffect, CPoint point);
     virtual DROPEFFECT OnDragOver(CWnd* pWnd, COleDataObject* pDataObject, DWORD dwKeyState, CPoint point);
 };
+
+// ---------------------------------------------------------------------
+// Event-sink maps: how a container declares handlers for the events an
+// embedded ActiveX control fires (eMule sinks the browser control's
+// BeforeNavigate2). Real MFC builds a dispatch table; the handlers are
+// ordinary member declarations, so as with the message maps these expand
+// to nothing -- see afxmsg_.h for the rationale.
+// ---------------------------------------------------------------------
+#define DECLARE_EVENTSINK_MAP()
+#define BEGIN_EVENTSINK_MAP(theClass, baseClass)
+#define END_EVENTSINK_MAP()
+#define ON_EVENT(theClass, id, dispid, pfn, vtsParams)
+#define ON_EVENT_RANGE(theClass, idFirst, idLast, dispid, pfn, vtsParams)
+#define ON_EVENT_REFLECT(theClass, dispid, pfn, vtsParams)
+#define ON_PROPNOTIFY(theClass, id, dispid, pfnRequest, pfnChanged)

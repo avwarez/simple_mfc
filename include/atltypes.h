@@ -57,6 +57,7 @@ using LPCRECT = const RECT*;
 class CPoint : public tagPOINT
 {
 public:
+    void SetPoint(int X, int Y) noexcept { x = X; y = Y; }
     CPoint();
     CPoint(long initX, long initY);
     CPoint(POINT initPt);
@@ -124,6 +125,12 @@ public:
     int Height() const noexcept;
     int Width() const noexcept;
     BOOL PtInRect(POINT point) const noexcept;
+    // Moves the rectangle without resizing it: MoveToXY sets the top-left
+    // corner outright, MoveToX/MoveToY only one coordinate of it.
+    void MoveToX(int x) noexcept;
+    void MoveToY(int y) noexcept;
+    void MoveToXY(int x, int y) noexcept;
+    void MoveToXY(POINT point) noexcept;
     void OffsetRect(int x, int y) noexcept;
     void OffsetRect(POINT point) noexcept;
     void OffsetRect(SIZE size) noexcept;

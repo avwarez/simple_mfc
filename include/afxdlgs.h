@@ -81,6 +81,10 @@ public:
                               UINT nIDHeaderTitle = 0, UINT nIDHeaderSubTitle = 0);
 };
 
+// CPropertySheetEx is the Wizard97 sheet that goes with CPropertyPageEx
+// above; eMule's setup wizard casts its GetParent() to one.
+class CPropertySheetEx;
+
 class CPropertySheet : public CWnd
 {
 public:
@@ -189,6 +193,12 @@ public:
     BOOL IsItalic() const;
     BOOL IsUnderline() const;
     BOOL IsStrikeOut() const;
+    // The raw Win32 descriptor, which eMule pre-loads with its current
+    // font before calling DoModal.
+#ifndef _WIN32
+    struct CHOOSEFONT { DWORD Flags; };
+#endif
+    CHOOSEFONT m_cf;
 };
 
 // ---------------------------------------------------------------------
@@ -201,4 +211,8 @@ public:
     explicit CColorDialog(COLORREF clrInit = 0, DWORD dwFlags = 0, CWnd* pParentWnd = nullptr);
     COLORREF GetColor() const;
     void SetCurrentColor(COLORREF clr);
+#ifndef _WIN32
+    struct CHOOSECOLOR { DWORD Flags; };
+#endif
+    CHOOSECOLOR m_cc;
 };

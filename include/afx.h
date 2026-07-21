@@ -419,6 +419,12 @@ public:
         if (nNewLength < 0) m_data.resize(std::char_traits<XCHAR>::length(m_data.c_str()));
         else m_data.resize(static_cast<size_t>(nNewLength));
     }
+    // Same as ReleaseBuffer, but the length is known to be exact: real MFC
+    // skips the strlen rather than allowing the -1 "measure it" form.
+    void ReleaseBufferSetLength(int nNewLength)
+    {
+        m_data.resize(static_cast<size_t>(nNewLength));
+    }
     XCHAR GetAt(int iChar) const { return m_data.at(static_cast<size_t>(iChar)); }
     void SetAt(int iChar, XCHAR ch) { m_data.at(static_cast<size_t>(iChar)) = ch; }
     PCXSTR GetString() const noexcept { return m_data.c_str(); }
@@ -777,10 +783,14 @@ public:
 // CFile / CStdioFile / CMemFile — built on std::fstream / an in-memory
 // buffer, fully portable (no Win32 HANDLE).
 // ---------------------------------------------------------------------
-struct CFileStatus
-{
-    ULONGLONG m_size = 0;
-};
+// CFileStatus carries CTime members, so its definition lives in
+// atltime.h (included at the bottom of this header) -- CFile only needs
+// to take it by reference, which a forward declaration covers. Both
+// include orders work: whichever of the two headers is entered first, the
+// other's #pragma once turns the back-reference into a no-op and the
+// definitions still end up in dependency order.
+class CTime;
+struct CFileStatus;
 
 class CFile : public CObject
 {
@@ -876,6 +886,9 @@ public:
     // malloc'd block to give away, and the compile-check never links.
     BYTE* Detach();
     void Attach(BYTE* lpBuffer, UINT nBufferSize, UINT nGrowBytes = 0);
+    // Reserves space ahead of a write. Protected in real MFC too; eMule's
+    // CSafeMemFile calls it from its own override.
+    virtual void GrowFile(ULONGLONG dwNewLen);
 
 protected:
     // Real MFC's protected data members. eMule's CSafeMemFile reads m_lpBuffer
@@ -926,6 +939,14 @@ public:
     virtual CString GetFilePath() const;
     ULONGLONG GetLength() const;
     virtual CString GetRoot() const;
+    // The find-data timestamps. CTime is incomplete here (see the
+    // CFileStatus note above), which is enough for a reference parameter.
+    virtual BOOL GetLastWriteTime(CTime& refTime) const;
+    virtual BOOL GetCreationTime(CTime& refTime) const;
+    virtual BOOL GetLastAccessTime(CTime& refTime) const;
+    BOOL IsTemporary() const;
+    BOOL IsArchived() const;
+    BOOL IsCompressed() const;
 
 private:
     bool AdvanceToNextMatch();
@@ -937,3 +958,7 @@ private:
     std::optional<std::filesystem::directory_entry> m_pending;
     std::filesystem::directory_entry m_current;
 };
+
+// The time classes, and with them CFileStatus (see the forward
+// declaration above). Last, because atltime.h builds on CString.
+#include "atltime.h"

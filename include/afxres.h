@@ -34,3 +34,28 @@
 #ifndef AFX_IDW_REBAR
 #define AFX_IDW_REBAR 0xE800
 #endif
+
+// The control-bar id range, and the four dock bars a frame creates at its
+// edges -- eMule names AFX_IDW_DOCKBAR_TOP/LEFT when it re-docks its
+// search-parameters and transfer bars.
+#ifndef AFX_IDW_CONTROLBAR_FIRST
+#define AFX_IDW_CONTROLBAR_FIRST 0xE800
+#define AFX_IDW_CONTROLBAR_LAST  0xE8FF
+#endif
+#ifndef AFX_IDW_DOCKBAR_TOP
+#define AFX_IDW_DOCKBAR_TOP    0xE81B
+#define AFX_IDW_DOCKBAR_LEFT   0xE81C
+#define AFX_IDW_DOCKBAR_RIGHT  0xE81D
+#define AFX_IDW_DOCKBAR_BOTTOM 0xE81E
+#define AFX_IDW_DOCKBAR_FLOAT  0xE81F
+#endif
+
+// The standard DDV_ failure prompts (real MFC's afxres.h 0xE100 block).
+#ifndef AFX_IDP_PARSE_INT
+#define AFX_IDP_PARSE_INT  0xE108
+#define AFX_IDP_PARSE_REAL 0xE109
+#define AFX_IDP_PARSE_UINT 0xE114
+#endif
+#ifndef AFX_IDP_FAILED_TO_LAUNCH_HELP
+#define AFX_IDP_FAILED_TO_LAUNCH_HELP 0xE202
+#endif

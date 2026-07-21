@@ -10,6 +10,9 @@
 // eMule/srchybrid's own direct <winsock2.h> include is processed.
 #ifdef _WIN32
 #include <winsock2.h>
+#include <ipexport.h> // IPAddr and the ICMP reply/status types: <icmpapi.h>,
+                      // which eMule includes directly, uses them without
+                      // declaring them.
 #include <ws2tcpip.h> // in6_addr and the IPv6 API (ws2ipdef.h) -- winsock2.h
                       // alone does not pull these in, but eMule's
                       // AsyncSocketEx.h uses `const in6_addr&` (C4430 without).

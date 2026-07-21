@@ -58,8 +58,15 @@ public:
     POSITION GetHeadPosition() const { return m_impl.GetHeadPosition(); }
     POSITION GetTailPosition() const { return m_impl.GetTailPosition(); }
     TYPE& GetNext(POSITION& rPosition) { return m_impl.GetNext(rPosition); }
+    // const traversal overloads (real MFC has them): selected when the
+    // list is reached through a const reference, e.g. from a const getter.
+    const TYPE& GetNext(POSITION& rPosition) const { return m_impl.GetNext(rPosition); }
     TYPE& GetPrev(POSITION& rPosition) { return m_impl.GetPrev(rPosition); }
+    const TYPE& GetPrev(POSITION& rPosition) const { return m_impl.GetPrev(rPosition); }
     TYPE& GetAt(POSITION position) { return m_impl.GetAt(position); }
+    const TYPE& GetAt(POSITION position) const { return m_impl.GetAt(position); }
+    const TYPE& GetHead() const { return m_impl.GetHead(); }
+    const TYPE& GetTail() const { return m_impl.GetTail(); }
     void SetAt(POSITION pos, ARG_TYPE e) { m_impl.SetAt(pos, e); }
     void RemoveAt(POSITION position) { m_impl.RemoveAt(position); }
     void RemoveAll() { m_impl.RemoveAll(); }

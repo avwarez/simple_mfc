@@ -1,6 +1,7 @@
 #include "afx.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cctype>
 #include <cwctype>
 #include <cstdlib>
@@ -336,6 +337,15 @@ void CMemFile::Write(const void* lpBuf, UINT nCount)
     m_pos += nCount;
 }
 
+// Real MFC reallocates the buffer so that a later write of dwNewLen bytes
+// needs no further growth; a std::vector already amortises that, so this
+// only has to guarantee the length.
+void CMemFile::GrowFile(ULONGLONG dwNewLen)
+{
+    if (dwNewLen > m_buffer.size())
+        m_buffer.resize(static_cast<size_t>(dwNewLen));
+}
+
 ULONGLONG CMemFile::Seek(LONGLONG lOff, UINT nFrom)
 {
     long long base = nFrom == CFile::begin ? 0 : nFrom == CFile::end ? static_cast<long long>(m_buffer.size()) : static_cast<long long>(m_pos);
@@ -416,6 +426,57 @@ BOOL CFileFind::IsDirectory() const
 {
     std::error_code ec;
     return std::filesystem::is_directory(m_current.path(), ec) ? TRUE : FALSE;
+}
+
+#ifdef _WIN32
+static BOOL HasFileAttribute(const std::filesystem::path& p, DWORD dwAttr); // defined below
+#endif
+
+// Timestamps. std::filesystem exposes only the modification time, and
+// only as a file_time_type whose epoch is unspecified before C++20's
+// clock_cast -- hence the now()-difference conversion below. Creation and
+// last-access times have no portable source at all, so they answer FALSE
+// rather than inventing a value (same rule as the attribute bits below).
+BOOL CFileFind::GetLastWriteTime(CTime& refTime) const
+{
+    std::error_code ec;
+    auto ftime = std::filesystem::last_write_time(m_current.path(), ec);
+    if (ec)
+        return FALSE;
+    const auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+        ftime - std::filesystem::file_time_type::clock::now() + std::chrono::system_clock::now());
+    refTime = CTime(static_cast<__time64_t>(std::chrono::system_clock::to_time_t(sctp)));
+    return TRUE;
+}
+
+BOOL CFileFind::GetCreationTime(CTime& /*refTime*/) const { return FALSE; }
+BOOL CFileFind::GetLastAccessTime(CTime& /*refTime*/) const { return FALSE; }
+
+BOOL CFileFind::IsTemporary() const
+{
+#ifdef _WIN32
+    return HasFileAttribute(m_current.path(), FILE_ATTRIBUTE_TEMPORARY);
+#else
+    return FALSE;
+#endif
+}
+
+BOOL CFileFind::IsArchived() const
+{
+#ifdef _WIN32
+    return HasFileAttribute(m_current.path(), FILE_ATTRIBUTE_ARCHIVE);
+#else
+    return FALSE;
+#endif
+}
+
+BOOL CFileFind::IsCompressed() const
+{
+#ifdef _WIN32
+    return HasFileAttribute(m_current.path(), FILE_ATTRIBUTE_COMPRESSED);
+#else
+    return FALSE;
+#endif
 }
 
 // The Windows file-attribute bits. std::filesystem models none of them,

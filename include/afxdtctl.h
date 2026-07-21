@@ -5,8 +5,8 @@
 // candidate list, not filtered out by a check. Confirmed genuine real
 // usage in eMule/srchybrid: CTreeOptionsDateCtrl : public CDateTimeCtrl
 // (TreeOptionsCtrl.h/.cpp) and plain member instances (PPgScheduler.h).
-// CMonthCalCtrl (the header's other class) has zero real usage beyond a
-// Stdafx.h comment — not declared here.
+// CMonthCalCtrl (the header's other class) is reached only indirectly,
+// through CDateTimeCtrl::GetMonthCalCtrl, to restyle the drop-down.
 // As in real MFC, it includes afxwin.h.
 #pragma once
 #include "afxwin.h"
@@ -44,6 +44,17 @@ constexpr DWORD GDT_NONE = 1;
 #endif
 
 // ---------------------------------------------------------------------
+// CMonthCalCtrl (header afxdtctl.h, hierarchy
+// CObject -> CCmdTarget -> CWnd -> CMonthCalCtrl)
+// ---------------------------------------------------------------------
+class CMonthCalCtrl : public CWnd
+{
+public:
+    COLORREF SetColor(int nRegion, COLORREF ref);
+    COLORREF GetColor(int nRegion) const;
+};
+
+// ---------------------------------------------------------------------
 // CDateTimeCtrl (header afxdtctl.h, hierarchy
 // CObject -> CCmdTarget -> CWnd -> CDateTimeCtrl)
 // ---------------------------------------------------------------------
@@ -56,6 +67,9 @@ public:
     BOOL SetTime(const CTime* pTimeNew);
     DWORD GetTime(CTime& timeDest) const;
     DWORD GetTime(LPSYSTEMTIME pTimeDest) const;
+    // Valid only while the drop-down is open (real MFC returns NULL
+    // otherwise), which is exactly when eMule recolours it.
+    CMonthCalCtrl* GetMonthCalCtrl() const;
 };
 
 #if defined(__GNUC__) || defined(__clang__)

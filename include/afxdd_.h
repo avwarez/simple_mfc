@@ -43,3 +43,7 @@ void AFXAPI DDX_Slider(CDataExchange* pDX, int nIDC, int& value);
 // DDV functions (Dialog Data Validation)
 // ---------------------------------------------------------------------
 void AFXAPI DDV_MinMaxInt(CDataExchange* pDX, int value, int minVal, int maxVal);
+void AFXAPI DDV_MinMaxFloat(CDataExchange* pDX, float value, float minVal, float maxVal);
+void AFXAPI DDV_MinMaxDouble(CDataExchange* pDX, double value, double minVal, double maxVal);
+void AFXAPI DDV_MinMaxUInt(CDataExchange* pDX, UINT value, UINT minVal, UINT maxVal);
+void AFXAPI DDV_MinMaxLong(CDataExchange* pDX, long value, long minVal, long maxVal);

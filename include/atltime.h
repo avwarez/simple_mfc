@@ -103,3 +103,22 @@ private:
     }
     __time64_t m_time;
 };
+
+// ---------------------------------------------------------------------
+// CFileStatus — declared in afx.h (where CFile::GetStatus takes it by
+// reference), defined here because its timestamps are CTime objects.
+// ---------------------------------------------------------------------
+#ifndef _MAX_PATH
+#define _MAX_PATH 260
+#endif
+
+struct CFileStatus
+{
+    CTime m_ctime;               // creation
+    CTime m_mtime;               // last modification
+    CTime m_atime;               // last access
+    ULONGLONG m_size = 0;
+    BYTE m_attribute = 0;
+    BYTE m_padding = 0;
+    TCHAR m_szFullName[_MAX_PATH] = {};
+};

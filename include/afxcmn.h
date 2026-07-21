@@ -89,6 +89,10 @@ struct CHARRANGE;
 struct EDITSTREAM;
 struct PARAFORMAT;
 struct PARAFORMAT2;
+struct IMAGEINFO;
+struct LVBKIMAGE;
+struct TVITEM;
+struct IRichEditOle;
 #endif
 
 // ---------------------------------------------------------------------
@@ -135,8 +139,14 @@ public:
     // methods, only ever called as "CImageList::Method(...)"
     // (SharedDirsTreeCtrl.cpp:1083-1140) — structurally invisible to the
     // original ".Method("/"->Method(" scan, which only sees instance
-    // calls. BeginDrag/DragEnter are NOT added: no call site of any kind
-    // (qualified or not) was found for either.
+    // calls. BeginDrag/DragEnter were originally left out on the strength
+    // of that same scan; the compile check found real call sites for both,
+    // so the drag API is complete here.
+    BOOL BeginDrag(int nImage, CPoint ptHotSpot);
+    static BOOL DragEnter(CWnd* pWndLock, CPoint point);
+    BOOL GetImageInfo(int nImage, IMAGEINFO* pImageInfo) const;
+    BOOL DrawEx(CDC* pDC, int nImage, POINT pt, SIZE sz, COLORREF clrBk,
+                COLORREF clrFg, UINT nStyle);
     static BOOL DragShowNolock(BOOL bShow);
     static BOOL DragMove(CPoint pt);
     static BOOL DragLeave(CWnd* pWndLock);
@@ -216,6 +226,25 @@ public:
     HTREEITEM GetPrevSiblingItem(HTREEITEM hItem) const;
     CImageList* GetImageList(UINT nImageList) const;
     CImageList* SetImageList(CImageList* pImageList, int nImageListType);
+    BOOL GetItem(TVITEM* pItem) const;
+    BOOL SetItem(TVITEM* pItem);
+    // Item state/geometry. Select() is the general form the single-purpose
+    // SelectItem/SelectSetFirstVisible above are shorthands for.
+    BOOL Select(HTREEITEM hItem, UINT nCode);
+    UINT GetItemState(HTREEITEM hItem, UINT nStateMask) const;
+    BOOL SetItemState(HTREEITEM hItem, UINT nState, UINT nStateMask);
+    BOOL EnsureVisible(HTREEITEM hItem);
+    BOOL GetItemRect(HTREEITEM hItem, LPRECT lpRect, BOOL bTextOnly) const;
+    short GetItemHeight() const;
+    short SetItemHeight(short cyHeight);
+    UINT GetIndent() const;
+    void SetIndent(UINT nIndent);
+    COLORREF GetTextColor() const;
+    COLORREF SetTextColor(COLORREF clr);
+    // Drag & drop of tree items (eMule's shared-directories tree).
+    HTREEITEM GetDropHilightItem() const;
+    BOOL SelectDropTarget(HTREEITEM hItem);
+    CImageList* CreateDragImage(HTREEITEM hItem);
 };
 
 // ---------------------------------------------------------------------
@@ -276,6 +305,29 @@ public:
     // ../../mfc_scan_srchybrid.md addendum): MuleListCtrl.h:81 calls
     // "CListCtrl::GetColumn(iColumn, &lvcol)" — a qualified super-call.
     BOOL GetColumn(int nCol, LVCOLUMN* pColumn) const;
+    // Sub-item (column-aware) hit testing, which the report-mode lists use
+    // to know which cell the mouse is over.
+    int SubItemHitTest(LVHITTESTINFO* pInfo);
+    BOOL SetColumnOrderArray(int iCount, int* piArray);
+    BOOL GetColumnOrderArray(int* piArray, int iCount = -1) const;
+    int GetTopIndex() const;
+    int GetCountPerPage() const;
+    int GetStringWidth(LPCTSTR lpsz) const;
+    BOOL RedrawItems(int nFirst, int nLast);
+    BOOL Scroll(CSize size);
+    BOOL GetItemPosition(int nItem, LPPOINT lpPoint) const;
+    BOOL SetItemPosition(int nItem, POINT pt);
+    BOOL SelectDropTarget(int nIndex);
+    CImageList* CreateDragImage(int nItem, LPPOINT lpPoint);
+    // Colours: eMule repaints its lists to follow the current skin.
+    COLORREF GetBkColor() const;
+    BOOL SetBkColor(COLORREF cr);
+    COLORREF GetTextColor() const;
+    BOOL SetTextColor(COLORREF cr);
+    COLORREF GetTextBkColor() const;
+    BOOL SetTextBkColor(COLORREF cr);
+    BOOL SetBkImage(LVBKIMAGE* plvbkImage);
+    BOOL SetBkImage(HBITMAP hbm, BOOL bTile = TRUE, int xOffsetPercent = 0, int yOffsetPercent = 0);
 };
 
 // ---------------------------------------------------------------------
@@ -314,6 +366,24 @@ public:
     BOOL CanUndo() const;
     void Clear();
     void EmptyUndoBuffer();
+    BOOL CanPaste(UINT nFormat = 0) const;
+    DWORD GetDefaultCharFormat(CHARFORMAT& cf) const;
+    DWORD GetDefaultCharFormat(CHARFORMAT2& cf) const;
+    BOOL SetDefaultCharFormat(CHARFORMAT& cf);
+    BOOL SetDefaultCharFormat(CHARFORMAT2& cf);
+    long GetTextRange(int nFirst, int nLast, CString& refString) const;
+    long GetTextLength() const;
+    // Line-oriented access, used by the log/IRC views to scroll and to
+    // pull a single line back out.
+    int GetLineCount() const;
+    int GetFirstVisibleLine() const;
+    void LineScroll(int nLines, int nChars = 0);
+    int LineLength(int nLine = -1) const;
+    int GetLine(int nIndex, LPTSTR lpszBuffer) const;
+    int GetLine(int nIndex, LPTSTR lpszBuffer, int nMaxLength) const;
+    // The OLE interface behind the control, which eMule queries to embed
+    // images in the rich text.
+    IRichEditOle* GetIRichEditOle() const;
 };
 
 // ---------------------------------------------------------------------
@@ -347,6 +417,11 @@ public:
     BOOL GetItemRect(int nItem, LPRECT lpRect) const;
     int HitTest(TCHITTESTINFO* pHitTestInfo) const;
     int GetCurFocus() const;
+    void SetToolTips(CToolTipCtrl* pWndTip);
+    // Converts between the whole-control rectangle and the display area
+    // inside the tabs; eMule sizes its embedded views with it.
+    void AdjustRect(BOOL bLarger, LPRECT lpRect);
+    int SetMinTabWidth(int cx);
 };
 
 // ---------------------------------------------------------------------
@@ -379,6 +454,23 @@ public:
     // qualified super-call in a CToolBarCtrl-derived class.
     CSize GetMaxSize();
     BOOL AutoSize();
+    BOOL GetButtonInfo(int nID, TBBUTTONINFO* ptbbi) const;
+    void SetRows(int nRows, BOOL bLarger, LPRECT lpRect);
+    BOOL SetMaxTextRows(int iMaxRows);
+    int GetMaxTextRows() const;
+    CImageList* SetDisabledImageList(CImageList* pImageList);
+    BOOL SetButtonSize(CSize size);
+    CSize GetButtonSize() const;
+    BOOL SetButtonWidth(int cxMin, int cxMax);
+    BOOL IsButtonHidden(int nID) const;
+    BOOL MapAccelerator(TCHAR chAccel, UINT* pIDBtn);
+    void Customize();
+    // Hides CWnd::GetStyle's counterpart deliberately (same pattern as
+    // Create above): this is the toolbar's TBSTYLE_*, not the window style.
+    void SetStyle(DWORD dwStyle);
+    // The button label pool: a single '\0'-separated, '\0\0'-terminated
+    // block, which is why eMule appends an extra NUL before calling.
+    int AddStrings(LPCTSTR lpszStrings);
 };
 
 // ---------------------------------------------------------------------
@@ -394,6 +486,12 @@ public:
     CString GetText(int nPane, int* pType = nullptr) const;
     int GetText(LPCTSTR lpszText, int nPane, int* pType = nullptr) const;
     BOOL SetParts(int nParts, int* pWidths);
+    int GetParts(int nParts, int* pParts) const;
+    BOOL GetRect(int nPane, LPRECT lpRect) const;
+    // Hides CWnd::SetIcon deliberately (real MFC does the same): this one
+    // addresses a pane, not the window.
+    BOOL SetIcon(int nPane, HICON hIcon);
+    HICON GetIcon(int nPane) const;
 };
 
 // ---------------------------------------------------------------------
@@ -410,6 +508,18 @@ public:
     void Activate(BOOL bActivate);
     void RelayEvent(LPMSG lpMsg);
     void DelTool(CWnd* pWnd, UINT_PTR nIDTool = 0);
+    // Timing and layout. The two-argument SetDelayTime is the TTDT_* form
+    // (which delay to set); the one-argument one sets them all at once.
+    void SetDelayTime(UINT nDelay);
+    void SetDelayTime(DWORD dwDuration, int iTime);
+    int GetDelayTime(DWORD dwDuration) const;
+    void SetMargin(LPRECT lprc);
+    void GetMargin(LPRECT lprc) const;
+    int SetMaxTipWidth(int iWidth);
+    int GetMaxTipWidth() const;
+    int GetToolCount() const;
+    // Forces an immediate repaint of the tip currently showing.
+    void Update();
 };
 
 // ---------------------------------------------------------------------
@@ -421,6 +531,8 @@ class CHeaderCtrl : public CWnd
 {
 public:
     int OrderToIndex(int nOrder) const;
+    int GetBitmapMargin() const;
+    int SetBitmapMargin(int nWidth);
     int GetItemCount() const;
     BOOL GetItem(int nPos, HDITEM* pHeaderItem) const;
     BOOL SetItem(int nPos, HDITEM* pHeaderItem);
@@ -486,6 +598,8 @@ public:
     void SetTicFreq(int nFreq);
     BOOL SetTic(int nTic);
     void SetLineSize(int nSize);
+    void ClearTics(BOOL bRedraw = FALSE);
+    int GetNumTics() const;
 };
 
 // ---------------------------------------------------------------------
@@ -494,6 +608,7 @@ public:
 class CIPAddressCtrl : public CWnd
 {
 public:
+    virtual BOOL Create(DWORD dwStyle, const RECT& rect, CWnd* pParentWnd, UINT nID);
     int GetAddress(BYTE& nField0, BYTE& nField1, BYTE& nField2, BYTE& nField3);
     int GetAddress(DWORD& dwAddress);
     void SetAddress(DWORD dwAddress);

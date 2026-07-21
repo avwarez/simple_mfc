@@ -13,6 +13,7 @@
 #endif
 #include "afx.h"
 #include "atltypes.h"
+#include <cstddef> // offsetof, used by METHOD_PROLOGUE below
 // Real MFC makes the template collections (CArray/CList/CMap and the
 // CTypedPtr* wrappers) and the concrete string maps available transitively
 // through the standard <afxwin.h> include chain; eMule/srchybrid relies on
@@ -57,6 +58,8 @@ typedef UINT(AFX_CDECL* AFX_THREADPROC)(void*);
                       // pulled them in (real MFC's headers do)
 #include <shlobj.h>   // CSIDL_* shell folder ids
 #include <shobjidl.h> // ITaskbarList3: CEMuleDlg holds one as a CComPtr
+#include <uxtheme.h>  // OpenThemeData & co, used by eMule's skinned controls
+#include <vssym32.h>  // the theme part/state ids (TABP_*, BP_*, CBS_*, TMT_*)
                       // member, so all 81 TUs that see EmuleDlg.h need the
                       // interface declared. Shell COM, not MFC -- eMule
                       // never includes it itself either, it inherits it
@@ -95,6 +98,10 @@ using LPCREATESTRUCT = CREATESTRUCT*;
 struct HELPINFO;
 struct TOOLINFO;
 struct WINDOWPLACEMENT;
+struct NCCALCSIZE_PARAMS;
+struct MENUITEMINFOW;
+using MENUITEMINFO = MENUITEMINFOW;
+using LPMENUITEMINFO = MENUITEMINFO*;
 struct SCROLLINFO;
 struct tagTEXTMETRIC;
 using TEXTMETRIC = tagTEXTMETRIC;
@@ -198,6 +205,9 @@ public:
     HCURSOR LoadCursor(LPCTSTR lpszResourceName) const;
     HCURSOR LoadStandardCursor(LPCTSTR lpszCursorName) const;
     HICON LoadStandardIcon(LPCTSTR lpszIconName) const;
+    // Called from the message pump to decide whether a message counts as
+    // user activity; eMule overrides it and super-calls this one.
+    virtual BOOL IsIdleMessage(MSG* pMsg);
 };
 
 // ---------------------------------------------------------------------
@@ -470,6 +480,16 @@ public:
     CSize GetOutputTextExtent(const CString& str);
     BOOL IsPrinting();
     void FillRect(LPCRECT lpRect, CBrush* pBrush);
+    void LPtoDP(LPPOINT lpPoints, int nCount = 1);
+    void LPtoDP(LPRECT lpRect);
+    void LPtoDP(LPSIZE lpSize);
+    BOOL SetPixelV(int x, int y, COLORREF crColor);
+    BOOL SetPixelV(POINT point, COLORREF crColor);
+    // Bounds accumulation, which eMule's CMemoryDC resets before drawing.
+    UINT SetBoundsRect(LPCRECT lpRectBounds, UINT flags);
+    UINT GetBoundsRect(LPRECT lpRectBounds, UINT flags);
+    BOOL ScrollDC(int dx, int dy, LPCRECT lpRectScroll, LPCRECT lpRectClip,
+                  CRgn* pRgnUpdate, LPRECT lpRectUpdate);
 };
 
 // Device-context helpers (header afxwin.h). Real MFC derives each from CDC
@@ -516,6 +536,10 @@ constexpr UINT RDW_ERASE = 0x0004;
 constexpr UINT RDW_UPDATENOW = 0x0100;
 #endif
 
+// See CWnd::GetNextWindow below: winuser.h makes this name a two-argument
+// macro, which would rewrite every member call into an unparsable one.
+#undef GetNextWindow
+
 class CWnd : public CCmdTarget
 {
 public:
@@ -528,6 +552,7 @@ public:
     // constantly, both as a validity test and to hand the raw handle to
     // Win32 calls.
     HWND m_hWnd = nullptr;
+    operator HWND() const { return m_hWnd; }
 
     UINT_PTR SetTimer(UINT_PTR nIDEvent, UINT nElapse,
                        void(CALLBACK* lpfnTimer)(HWND, UINT, UINT_PTR, DWORD) = nullptr);
@@ -587,7 +612,6 @@ public:
     CWnd* GetWindow(UINT nCmd) const;
     CWnd* ChildWindowFromPoint(POINT point) const;
     DWORD GetExStyle() const;
-    BOOL SetWindowPos(const CWnd* pWndInsertAfter, int x, int y, int cx, int cy, UINT nFlags);
     BOOL GetScrollInfo(int nBar, SCROLLINFO* lpScrollInfo, UINT nMask = 0x17 /*SIF_ALL*/);
     BOOL SetScrollInfo(int nBar, SCROLLINFO* lpScrollInfo, BOOL bRedraw = TRUE);
     BOOL GetWindowPlacement(WINDOWPLACEMENT* lpwndpl) const;
@@ -611,6 +635,31 @@ public:
                        UINT flags = RDW_INVALIDATE | RDW_UPDATENOW | RDW_ERASE);
     CWnd* SetCapture();
     void InvalidateRect(LPCRECT lpRect, BOOL bErase = TRUE);
+
+    // Subclassing: eMule's control classes attach themselves to a window
+    // created from the dialog template rather than creating it themselves.
+    BOOL SubclassWindow(HWND hWnd);
+    BOOL SubclassDlgItem(UINT nID, CWnd* pParent);
+    HWND UnsubclassWindow();
+
+    // GetNextWindow is a real winuser.h *macro* taking (hWnd, wCmd), so an
+    // unqualified `pWnd->GetNextWindow()` expands to `GetWindow(,)` and
+    // fails to parse. Undefined here for the same reason afx.h undefines
+    // FindNextFile: keep the member's true name at every later call site.
+    CWnd* GetNextWindow(UINT nFlag = 2 /*GW_HWNDNEXT*/) const;
+    CWnd* GetTopWindow() const;
+    CWnd* GetLastActivePopup() const;
+    CWnd* GetTopLevelParent() const;
+    CWnd* GetTopLevelFrame() const;
+    CWnd* GetTopLevelOwner() const;
+    // The owner is the window notifications go to, which is not always the
+    // parent (real MFC keeps the distinction; eMule relies on it for its
+    // floating bars).
+    CWnd* GetOwner() const;
+    void SetOwner(CWnd* pOwnerWnd);
+    CDC* GetWindowDC();
+    void CenterWindow(CWnd* pAlternateOwner = nullptr);
+    int GetClassName(LPTSTR lpszClassName, int nMaxCount) const;
 
     // -----------------------------------------------------------------
     // Everything below was added during the FRONTEND/GDI blind-spot pass
@@ -692,6 +741,18 @@ public:
     virtual void OnMenuSelect(UINT nItemID, UINT nFlags, HMENU hSysMenu);
     virtual void OnInitMenuPopup(CMenu* pPopupMenu, UINT nIndex, BOOL bSysMenu);
     virtual void OnCancelMode();
+    virtual void OnNcPaint();
+    virtual BOOL OnNcActivate(BOOL bActive);
+    virtual LRESULT OnNcHitTest(CPoint point);
+    virtual void OnNcLButtonDown(UINT nHitTest, CPoint point);
+    virtual void OnNcRButtonDown(UINT nHitTest, CPoint point);
+    virtual void OnNcCalcSize(BOOL bCalcValidRects, NCCALCSIZE_PARAMS* lpncsp);
+    virtual LRESULT OnMenuChar(UINT nChar, UINT nFlags, CMenu* pMenu);
+    virtual BOOL OnQueryEndSession();
+    virtual void OnEndSession(BOOL bEnding);
+    virtual void OnMove(int x, int y);
+    virtual void OnEnable(BOOL bEnable);
+    virtual void OnActivate(UINT nState, CWnd* pWndOther, BOOL bMinimized);
 };
 
 class CDialog : public CWnd
@@ -735,6 +796,19 @@ public:
     // forward-declared just above for this pointer parameter.
     void ShowControlBar(CControlBar* pBar, BOOL bShow, BOOL bDelay);
     CWnd* CreateView(CCreateContext* pContext, UINT nID = 0xE900 /*AFX_IDW_PANE_FIRST*/);
+
+    // Docking. The frame is the dock site: it decides which edges accept
+    // bars (EnableDocking), performs the docking (DockControlBar) and
+    // persists the layout to the registry (Load/SaveBarState). Declared
+    // here rather than in afxext.h because real MFC declares them on
+    // CFrameWnd, whose definition lives in this header.
+    void EnableDocking(DWORD dwDockStyle);
+    void DockControlBar(CControlBar* pBar, UINT nDockBarID = 0, LPCRECT lpRect = nullptr);
+    void FloatControlBar(CControlBar* pBar, CPoint point, DWORD dwStyle = 0x2000L /*CBRS_ALIGN_TOP*/);
+    void LoadBarState(LPCTSTR lpszProfileName);
+    void SaveBarState(LPCTSTR lpszProfileName) const;
+    CControlBar* GetControlBar(UINT nID);
+    virtual BOOL OnCreateClient(CREATESTRUCT* lpcs, CCreateContext* pContext);
 };
 
 // ---------------------------------------------------------------------
@@ -819,6 +893,11 @@ public:
     void* GetItemDataPtr(int nIndex) const;
     int SetItemDataPtr(int nIndex, void* pData);
     int InsertString(int nIndex, LPCTSTR lpszItem);
+    int GetTopIndex() const;
+    int SetTopIndex(int nIndex);
+    int GetItemRect(int nIndex, LPRECT lpRect) const;
+    int GetItemHeight(int nIndex) const;
+    int SetItemHeight(int nIndex, UINT cyItemHeight);
 };
 
 class CComboBox : public CWnd
@@ -887,6 +966,13 @@ public:
     BOOL LoadMenu(UINT nIDResource);
     CMenu* GetSubMenu(int nPos) const;
     BOOL ModifyMenu(UINT nPosition, UINT nFlags, UINT_PTR nIDNewItem = 0, LPCTSTR lpszNewItem = nullptr);
+    // Radio-style check marks (only one item in the range ticked, with a
+    // bullet instead of a check), and the MENUITEMINFO-based insert.
+    BOOL CheckMenuRadioItem(UINT nIDFirst, UINT nIDLast, UINT nIDItem, UINT nFlags);
+    BOOL InsertMenuItem(UINT uItem, LPMENUITEMINFO lpMenuItemInfo, BOOL fByPos = FALSE);
+    BOOL GetMenuItemInfo(UINT uItem, LPMENUITEMINFO lpMenuItemInfo, BOOL fByPos = FALSE) const;
+    BOOL SetMenuItemInfo(UINT uItem, LPMENUITEMINFO lpMenuItemInfo, BOOL fByPos = FALSE);
+    UINT GetMenuItemID(int nPos) const;
 
     // Added during the FRONTEND/GDI blind-spot pass (see
     // ../../mfc_scan_srchybrid.md addendum): CTitledMenu (TitledMenu.h),
@@ -963,7 +1049,8 @@ CWinApp* AfxGetApp();
 // to any Win32 call expecting a module handle (LoadAccelerators, ...)
 // without an explicit cast eMule does not write.
 HINSTANCE AfxGetInstanceHandle();
-void* AfxGetResourceHandle();
+HINSTANCE AfxGetResourceHandle();
+void AfxSetResourceHandle(HINSTANCE hInstResource);
 CWnd* AfxGetMainWnd();
 LPCTSTR AfxGetAppName();
 int AfxMessageBox(LPCTSTR lpszText, UINT nType = 0, UINT nIDHelp = 0);
@@ -976,6 +1063,66 @@ BOOL AfxIsValidAddress(const void* lp, UINT nBytes, BOOL bReadWrite = TRUE);
 // background brush of their own (eMule's CColourPopup, CDownloadQueue).
 LPCTSTR AFXAPI AfxRegisterWndClass(UINT nClassStyle, HCURSOR hCursor = nullptr,
                                     HBRUSH hbrBackground = nullptr, HICON hIcon = nullptr);
+// The module a resource id should be looked up in: real MFC searches the
+// app, then any loaded language DLL, which is exactly why eMule (which
+// ships localisation DLLs) calls this instead of AfxGetResourceHandle.
+HINSTANCE AFXAPI AfxFindResourceHandle(LPCTSTR lpszName, LPCTSTR lpszType);
+BOOL AFXAPI AfxHtmlHelp(HWND hWnd, LPCTSTR szHelpFilePath, UINT nCmd, DWORD_PTR dwData);
+// The window procedure MFC installs on every window it owns; eMule
+// compares against it to tell its own subclassed windows apart.
+LRESULT CALLBACK AfxWndProc(HWND hWnd, UINT nMsg, WPARAM wParam, LPARAM lParam);
+
+// The four special CWnd values SetWindowPos takes as pWndInsertAfter.
+// Real MFC declares them as const CWnd objects, not as HWND constants,
+// so that `&wndTop` has the parameter's type.
+extern const CWnd wndTop;
+extern const CWnd wndBottom;
+extern const CWnd wndTopMost;
+extern const CWnd wndNoTopMost;
+
+// WM_INITIALUPDATE is MFC's own private message (not a Win32 one), sent
+// to a view once its frame is fully created.
+#ifndef WM_INITIALUPDATE
+#define WM_INITIALUPDATE (WM_USER + 0x0364)
+#endif
+// Base of the id range MFC maps to status-bar prompt strings.
+#ifndef HID_BASE_PROMPT
+#define HID_BASE_PROMPT 0x00030000UL
+#endif
+
+// ---------------------------------------------------------------------
+// Nested-interface support for CCmdTarget (real MFC puts these macros in
+// afxwin.h too). A class exposes each COM interface it implements as a
+// nested XName object whose this-pointer is a known offset from the
+// outer object's; METHOD_PROLOGUE recovers the outer object from it.
+// eMule uses them for its IDataObject / IServiceProvider /
+// IInternetSecurityManager / IDocHostUIHandler implementations.
+// ---------------------------------------------------------------------
+#ifndef AFX_MANAGE_STATE
+#define AFX_MANAGE_STATE(p) ((void)0)
+#endif
+#define METHOD_PROLOGUE(theClass, localClass)                                  \
+    theClass* pThis = ((theClass*)((BYTE*)this - offsetof(theClass, m_x##localClass)))
+
+#define METHOD_PROLOGUE_(theClass, localClass)                                 \
+    theClass* pThis = ((theClass*)((BYTE*)this - offsetof(theClass, m_x##localClass)));
+
+#define BEGIN_INTERFACE_PART(localClass, baseClass)                            \
+    class X##localClass : public baseClass                                     \
+    {                                                                          \
+    public:                                                                    \
+        STDMETHOD_(ULONG, AddRef)();                                           \
+        STDMETHOD_(ULONG, Release)();                                          \
+        STDMETHOD(QueryInterface)(REFIID iid, LPVOID* ppvObj);
+
+#define END_INTERFACE_PART(localClass)                                         \
+    } m_x##localClass;                                                         \
+    friend class X##localClass;
+
+#define BEGIN_INTERFACE_MAP(theClass, theBase)
+#define INTERFACE_PART(theClass, iid, localClass)
+#define END_INTERFACE_MAP()
+#define DECLARE_INTERFACE_MAP()
 
 // ---------------------------------------------------------------------
 // CWaitCursor — shows the hourglass for as long as the object is alive;

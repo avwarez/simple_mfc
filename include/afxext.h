@@ -5,6 +5,72 @@
 #include "afxwin.h"
 
 // ---------------------------------------------------------------------
+// Control-bar styles. Real MFC defines them in this header as macros, so
+// #ifndef (not #ifdef _WIN32) is the right guard -- see afxwin.h's RDW_*
+// for why the two are not interchangeable for a macro.
+// The alignment/border bits are combined into the CBRS_TOP/BOTTOM/LEFT/
+// RIGHT shorthands eMule actually passes to CDialogBar::Create.
+// ---------------------------------------------------------------------
+#ifndef CBRS_ALIGN_ANY
+#define CBRS_ALIGN_LEFT     0x1000L
+#define CBRS_ALIGN_TOP      0x2000L
+#define CBRS_ALIGN_RIGHT    0x4000L
+#define CBRS_ALIGN_BOTTOM   0x8000L
+#define CBRS_ALIGN_ANY      0xF000L
+
+#define CBRS_BORDER_LEFT    0x0100L
+#define CBRS_BORDER_TOP     0x0200L
+#define CBRS_BORDER_RIGHT   0x0400L
+#define CBRS_BORDER_BOTTOM  0x0800L
+#define CBRS_BORDER_ANY     0x0F00L
+
+#define CBRS_FLOATING       0x0001L
+#define CBRS_SIZE_FIXED     0x0002L
+#define CBRS_SIZE_DYNAMIC   0x0004L
+#define CBRS_HIDE_INPLACE   0x0008L
+#define CBRS_TOOLTIPS       0x0010L
+#define CBRS_FLYBY          0x0020L
+#define CBRS_FLOAT_MULTI    0x0040L
+#define CBRS_BORDER_3D      0x0080L
+#define CBRS_GRIPPER        0x00400000L
+
+#define CBRS_TOP            (CBRS_ALIGN_TOP|CBRS_BORDER_TOP|CBRS_BORDER_BOTTOM)
+#define CBRS_BOTTOM         (CBRS_ALIGN_BOTTOM|CBRS_BORDER_TOP|CBRS_BORDER_BOTTOM)
+#define CBRS_LEFT           (CBRS_ALIGN_LEFT|CBRS_BORDER_LEFT|CBRS_BORDER_RIGHT)
+#define CBRS_RIGHT          (CBRS_ALIGN_RIGHT|CBRS_BORDER_LEFT|CBRS_BORDER_RIGHT)
+#define CBRS_ORIENT_HORZ    (CBRS_ALIGN_TOP|CBRS_ALIGN_BOTTOM)
+#define CBRS_ORIENT_VERT    (CBRS_ALIGN_LEFT|CBRS_ALIGN_RIGHT)
+#define CBRS_ORIENT_ANY     (CBRS_ORIENT_HORZ|CBRS_ORIENT_VERT)
+#endif
+
+// The dwMode bits CalcDynamicLayout receives (real MFC: afxpriv.h).
+// eMule's two CDialogBar subclasses both override CalcDynamicLayout and
+// test them to decide their own size.
+#ifndef LM_STRETCH
+#define LM_STRETCH   1
+#define LM_HORZ      2
+#define LM_MRUWIDTH  4
+#define LM_HORZDOCK  8
+#define LM_VERTDOCK  16
+#define LM_LENGTHY   32
+#define LM_COMMIT    64
+#endif
+
+// ---------------------------------------------------------------------
+// CDockContext — the per-bar drag/dock state. eMule never constructs one;
+// it only reads the id of the dock bar this control bar was last docked
+// to, in order to put it back there.
+// ---------------------------------------------------------------------
+class CDockBar;
+
+class CDockContext
+{
+public:
+    UINT m_uMRUDockID;
+    CRect m_rectMRUDockPos;
+};
+
+// ---------------------------------------------------------------------
 // CControlBar — abstract base for the control-bar classes (CStatusBar,
 // CToolBar, CDialogBar, CReBar, COleResizeBar). Protected constructor:
 // not directly instantiable (header afxext.h, hierarchy
@@ -26,6 +92,26 @@ public:
     // CDialogBar::Create is genuinely used (see the note in afxext.h
     // below): it is not, but this method is.
     virtual CSize CalcDynamicLayout(int nLength, DWORD dwMode);
+
+    // Docking state, all public data members in real MFC. eMule reads
+    // m_pDockContext to restore a floating bar to its last dock position.
+    CDockContext* m_pDockContext;
+    CFrameWnd* m_pDockSite;
+    CDockBar* m_pDockBar;
+    DWORD m_dwStyle;
+    int m_cxLeftBorder, m_cxRightBorder, m_cyTopBorder, m_cyBottomBorder;
+
+    // Which sides of the frame this bar may dock to; the frame's own
+    // EnableDocking (CFrameWnd, afxwin.h) has to allow them as well.
+    virtual void EnableDocking(DWORD dwDockStyle);
+    BOOL IsFloating() const;
+    BOOL IsVisible() const;
+    // The client rectangle minus this bar's borders.
+    void CalcInsideRect(CRect& rect, BOOL bHorz) const;
+    CFrameWnd* GetDockingFrame() const;
+    DWORD GetBarStyle();
+    void SetBarStyle(DWORD dwStyle);
+    virtual CSize CalcFixedLayout(BOOL bStretch, BOOL bHorz);
 };
 
 // ---------------------------------------------------------------------
@@ -64,6 +150,11 @@ class CDialogBar : public CControlBar
 public:
     virtual BOOL Create(CWnd* pParentWnd, LPCTSTR lpszTemplateName, UINT nStyle, UINT nID);
     virtual BOOL Create(CWnd* pParentWnd, UINT nIDTemplate, UINT nStyle, UINT nID);
+
+protected:
+    // The size of the dialog template, which the bar defaults to; both of
+    // eMule's subclasses grow their own layout from it.
+    CSize m_sizeDefault;
 };
 
 #if defined(__GNUC__) || defined(__clang__)

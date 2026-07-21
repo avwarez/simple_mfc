@@ -259,6 +259,34 @@ public:
     CString RemoveTail() { return m_impl.RemoveTail(); }
     POSITION GetHeadPosition() const { return m_impl.GetHeadPosition(); }
     CString& GetNext(POSITION& rPosition) { return m_impl.GetNext(rPosition); }
+    const CString& GetNext(POSITION& rPosition) const { return m_impl.GetNext(rPosition); }
+    const CString& GetHead() const { return m_impl.GetHead(); }
+    const CString& GetTail() const { return m_impl.GetTail(); }
+    CString& GetAt(POSITION position) { return m_impl.GetAt(position); }
+    const CString& GetAt(POSITION position) const { return m_impl.GetAt(position); }
+    void SetAt(POSITION pos, const CString& e) { m_impl.SetAt(pos, e); }
+    void RemoveAt(POSITION position) { m_impl.RemoveAt(position); }
+    POSITION InsertBefore(POSITION position, const CString& e) { return m_impl.InsertBefore(position, e); }
+    POSITION InsertAfter(POSITION position, const CString& e) { return m_impl.InsertAfter(position, e); }
+    POSITION GetTailPosition() const { return m_impl.GetTailPosition(); }
+    // Appends another whole list, the overload real MFC's list classes all
+    // carry alongside the single-element one. Defined inline: afxcoll.h is
+    // a real implementation, not a declaration-only stub.
+    void AddTail(CStringList* pNewList)
+    {
+        if (pNewList == nullptr) return;
+        for (POSITION pos = pNewList->GetHeadPosition(); pos != nullptr;)
+            AddTail(pNewList->GetNext(pos));
+    }
+    void AddHead(CStringList* pNewList)
+    {
+        if (pNewList == nullptr) return;
+        POSITION posInsert = nullptr;
+        for (POSITION pos = pNewList->GetHeadPosition(); pos != nullptr;) {
+            const CString& s = pNewList->GetNext(pos);
+            posInsert = (posInsert == nullptr) ? AddHead(s) : InsertAfter(posInsert, s);
+        }
+    }
     POSITION Find(const CString& searchValue, POSITION startAfter = nullptr) const { return m_impl.Find(searchValue, startAfter); }
     INT_PTR GetCount() const { return m_impl.GetCount(); }
     BOOL IsEmpty() const { return m_impl.IsEmpty() ? TRUE : FALSE; }
