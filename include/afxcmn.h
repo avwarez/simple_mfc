@@ -403,6 +403,11 @@ public:
 class CTabCtrl : public CWnd
 {
 public:
+    // The common-control Create: 4 arguments, no class name (the control
+    // class is implied). Without it the call resolves to the 7-argument
+    // CWnd::Create and fails on arity -- TreePropSheet.cpp:652 creates a
+    // throwaway tab control just to measure its caption height.
+    virtual BOOL Create(DWORD dwStyle, const RECT& rect, CWnd* pParentWnd, UINT nID);
     CToolTipCtrl* GetToolTips() const;
     CImageList* SetImageList(CImageList* pImageList);
     CImageList* GetImageList() const;
@@ -446,6 +451,10 @@ class CToolBarCtrl : public CWnd
 public:
     virtual BOOL Create(DWORD dwStyle, const RECT& rect, CWnd* pParentWnd, UINT nID);
     BOOL CheckButton(int nID, BOOL bCheck = TRUE);
+    // The query that goes with CheckButton. eMule's toolbar buttons act
+    // as toggles for its panes and it reads their state back
+    // (KademliaWnd.cpp, through its own CToolBarCtrlX/CDropDownButton).
+    BOOL IsButtonChecked(int nID) const;
     BOOL SetButtonInfo(int nID, TBBUTTONINFO* ptbbi);
     BOOL GetItemRect(int nIndex, LPRECT lpRect) const;
     int GetButtonCount() const;

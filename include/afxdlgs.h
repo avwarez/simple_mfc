@@ -123,6 +123,10 @@ public:
     // Rebuilds the raw PROPSHEETPAGE array from m_pages before the sheet
     // is created; eMule's own sheet calls it after reordering its pages.
     BOOL BuildPropPageArray();
+    // Whether SetWizardMode has been called on this sheet. eMule's wizard
+    // pages ask the sheet itself before deciding which buttons to enable
+    // (PShtWiz1.cpp:91, through a CPropertySheetEx*).
+    BOOL IsWizard() const;
     // Wizard97 sheets: lets the tab row wrap onto several lines.
     void EnableStackedTabs(BOOL bStacked);
     CTabCtrl* GetTabControl() const;

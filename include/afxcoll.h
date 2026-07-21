@@ -21,6 +21,7 @@
 
 #include <list>
 #include <type_traits>
+#include <unordered_map> // CMapPtrToPtr
 #include <vector>
 
 using POSITION = void*; // not a real Win32/SDK type, safe to always define
@@ -255,6 +256,57 @@ public:
 
 private:
     mfc_detail::ListImpl<void*> m_impl;
+};
+
+// ---------------------------------------------------------------------
+// CMapPtrToPtr — the concrete pointer-keyed map (header afxcoll.h, as
+// its CObList/CPtrList siblings above). Reached through eMule's own
+// _AFX_SOCK_THREAD_STATE shim (AsyncSocketEx.h defines
+// "#define _AFX_SOCK_THREAD_STATE AFX_MODULE_THREAD_STATE"), whose
+// socket-handle maps it allocates directly: "pThreadState->
+// m_pmapSocketHandle = new CMapPtrToPtr;" (Emule.cpp:386,388).
+// std::unordered_map with the identity hash real MFC uses for pointers.
+// ---------------------------------------------------------------------
+class CMapPtrToPtr : public CObject
+{
+    DECLARE_DYNAMIC(CMapPtrToPtr)
+public:
+    INT_PTR GetCount() const { return static_cast<INT_PTR>(m_map.size()); }
+    BOOL IsEmpty() const { return m_map.empty() ? TRUE : FALSE; }
+    void SetAt(void* key, void* newValue) { m_map[key] = newValue; }
+    BOOL Lookup(void* key, void*& rValue) const
+    {
+        auto it = m_map.find(key);
+        if (it == m_map.end())
+            return FALSE;
+        rValue = it->second;
+        return TRUE;
+    }
+    BOOL RemoveKey(void* key) { return m_map.erase(key) != 0 ? TRUE : FALSE; }
+    void RemoveAll() { m_map.clear(); }
+
+    // MFC's map walk: GetStartPosition hands out an opaque cursor that
+    // GetNextAssoc advances. Same box-an-iterator convention as the lists
+    // above (see the POSITION note at the top of this header).
+    POSITION GetStartPosition() const
+    {
+        return m_map.empty() ? nullptr : new Iter(m_map.begin());
+    }
+    void GetNextAssoc(POSITION& rNextPosition, void*& rKey, void*& rValue) const
+    {
+        Iter* pIt = static_cast<Iter*>(rNextPosition);
+        rKey = (*pIt)->first;
+        rValue = (*pIt)->second;
+        if (++(*pIt) == m_map.end()) {
+            delete pIt;
+            rNextPosition = nullptr;
+        }
+    }
+
+private:
+    using Map = std::unordered_map<void*, void*>;
+    using Iter = Map::const_iterator;
+    Map m_map;
 };
 
 class CStringList : public CObject

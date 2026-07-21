@@ -27,6 +27,13 @@ using HGLOBAL = void*;
 #endif
 
 using DROPEFFECT = DWORD;
+
+// Initializes the OLE libraries for this thread (and installs MFC's
+// message filter). Real MFC declares it in afxdisp.h, which real
+// afxole.h includes -- eMule includes only afxole.h and still sees it,
+// so it belongs on this side of the include graph.
+BOOL AFXAPI AfxOleInit();
+
 // ---------------------------------------------------------------------
 // COleDataObject — wraps the IDataObject handed to a drop target. eMule
 // asks it which formats the dragged data offers and pulls the ones it

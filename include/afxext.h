@@ -135,6 +135,11 @@ public:
     int FindBar(CControlBar* pBar, int nPos = 0) const;
     CControlBar* GetDockedControlBar(int nPos) const;
     BOOL IsHorz() const;
+    // Set when this dock bar is the one inside a mini floating frame
+    // rather than one of the four fixed strips. eMule reads it off a
+    // bar's m_pDockBar to tell a real close-button click from an ordinary
+    // hide (ToolbarWnd.cpp:435).
+    BOOL m_bFloating;
     CPtrArray m_arrBars;
 };
 

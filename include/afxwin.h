@@ -166,6 +166,96 @@ class CScrollBar; // real header afxwin.h too; only used here as a pointer param
 #endif
 
 // ---------------------------------------------------------------------
+// Message-map data structures (header afxwin.h in real MFC too).
+//
+// These used to be absent, because every ON_* macro and every
+// BEGIN/END_MESSAGE_MAP expanded to nothing: a message map declares
+// handlers, and this library implements no dispatch, so an empty
+// expansion looked sufficient. It is not. eMule writes message-map
+// entries BY HAND -- its own _ON_WM_THEMECHANGED() (ButtonsTabCtrl.cpp,
+// ClosableTabCtrl.cpp, DialogMinTrayBtn.cpp) expands to a braced
+// AFX_MSGMAP_ENTRY aggregate ending in a comma:
+//
+//   { _WM_THEMECHANGED, 0, 0, 0, AfxSig_l, (AFX_PMSG)(AFX_PMSGW)
+//     (static_cast<LRESULT (AFX_MSG_CALL CWnd::*)(void)>(_OnThemeChanged)) },
+//
+// which is only legal inside the array real BEGIN_MESSAGE_MAP opens. With
+// no-op macros it landed at file scope and produced C2447/C2059. So the
+// macros below reproduce real MFC's expansion faithfully -- that, and not
+// a lookalike, is what makes eMule's hand-written entries compile, and it
+// is also why every ON_* entry macro can keep expanding to nothing: they
+// simply contribute no element to the array.
+//
+// Note the entry macros are the ONLY thing that stays empty. The
+// demarcation macros now generate the two functions real MFC generates,
+// so a class that writes BEGIN_MESSAGE_MAP without DECLARE_MESSAGE_MAP
+// no longer compiles here either -- exactly as under real MFC.
+// ---------------------------------------------------------------------
+#ifndef _WIN32
+// __stdcall on Windows (windef.h), where it is part of the function's
+// type; nothing to express off it. Same treatment as CALLBACK above.
+#define PASCAL
+#endif
+// Real MFC's marker on message handlers' calling convention: empty on
+// every current target, kept because eMule spells it out in its own
+// entry macros (static_cast<LRESULT (AFX_MSG_CALL CWnd::*)(void)>).
+#define AFX_MSG_CALL
+
+struct AFX_MSGMAP_ENTRY;
+
+struct AFX_MSGMAP
+{
+    const AFX_MSGMAP* (PASCAL* pfnGetBaseMap)();
+    const AFX_MSGMAP_ENTRY* lpEntries;
+};
+
+// The pointer-to-member types an entry stores its handler as. Handlers
+// have every possible signature, so MFC casts them all to one type; the
+// CWnd form exists because a cast has to go through the class the
+// handler is actually declared in before being flattened to AFX_PMSG.
+class CCmdTarget; // defined just below; named here by the handler types
+typedef void (AFX_MSG_CALL CCmdTarget::*AFX_PMSG)(void);
+typedef void (AFX_MSG_CALL CWnd::*AFX_PMSGW)(void);
+
+struct AFX_MSGMAP_ENTRY
+{
+    UINT nMessage;   // the Windows message
+    UINT nCode;      // control notification code, or WM_NOTIFY code
+    UINT nID;        // control id (0 for a plain window message)
+    UINT nLastID;    // the end of the id range, for the _RANGE entries
+    UINT_PTR nSig;   // which handler signature pfn really has
+    AFX_PMSG pfn;    // the handler itself
+};
+
+// The handler-signature tags. Real MFC's enum is far longer (one tag per
+// distinct handler prototype, generated for its own dispatcher); only
+// the two that eMule names are declared: AfxSig_end terminates the array
+// below, AfxSig_l is what its hand-written _ON_WM_THEMECHANGED() uses
+// (an LRESULT-returning, argument-less handler).
+enum AfxSig
+{
+    AfxSig_end = 0,
+    AfxSig_l
+};
+
+// What a class puts in its own body to own a message map. Real MFC's
+// expansion ends with "protected:", so the handlers declared after it in
+// a class body are protected -- which is what makes a derived class's
+// qualified super-call (CTrayDialog::OnSysCommand(...)) legal. Expanding
+// to nothing left them private and produced C2248.
+// GetThisMessageMap is static: that is what lets END_MESSAGE_MAP below
+// write "&TheBaseClass::GetThisMessageMap" for ANY base without every
+// base having to redeclare it -- CCmdTarget declares it once and the
+// whole hierarchy inherits it.
+// The counterpart macros BEGIN_MESSAGE_MAP/END_MESSAGE_MAP are defined
+// further down, next to afxmsg_.h's entry macros: only .cpp files expand
+// them, so they need nothing declared here.
+#define DECLARE_MESSAGE_MAP()                                    \
+protected:                                                       \
+    static const AFX_MSGMAP* PASCAL GetThisMessageMap();         \
+    virtual const AFX_MSGMAP* GetMessageMap() const;
+
+// ---------------------------------------------------------------------
 // CCmdTarget — base of CWinThread for command routing (header afxwin.h)
 // ---------------------------------------------------------------------
 // The routing context OnCmdMsg reports back into; opaque to callers.
@@ -200,6 +290,13 @@ public:
     void BeginWaitCursor();
     void EndWaitCursor();
     void RestoreWaitCursor();
+
+    // Real MFC ends CCmdTarget's body with this too. Declaring it here
+    // and nowhere else is deliberate: GetThisMessageMap is static, so
+    // every class in the hierarchy inherits a usable
+    // "TheBaseClass::GetThisMessageMap" for END_MESSAGE_MAP to point the
+    // base-map link at, whatever class eMule names as its base.
+    DECLARE_MESSAGE_MAP()
 };
 
 // ---------------------------------------------------------------------
@@ -239,6 +336,41 @@ public:
 };
 
 // ---------------------------------------------------------------------
+// CCommandLineInfo (header afxwin.h, derives from CObject) — the parsed
+// command line CWinApp::ParseCommandLine fills in. eMule reads the two
+// fields that matter for a shell "open this ed2k/magnet link" launch.
+// ---------------------------------------------------------------------
+class CCommandLineInfo : public CObject
+{
+public:
+    CCommandLineInfo();
+    // Called once per token by ParseCommandLine; overriding it is how an
+    // application adds its own switches.
+    virtual void ParseParam(LPCTSTR lpszParam, BOOL bFlag, BOOL bLast);
+
+    BOOL m_bShowSplash;
+    BOOL m_bRunEmbedded;
+    BOOL m_bRunAutomated;
+    // Which document command the shell asked for. eMule compares against
+    // FileOpen to tell "opened with a file/link" from a plain start.
+    enum
+    {
+        FileNew,
+        FileOpen,
+        FilePrint,
+        FilePrintTo,
+        FileDDE,
+        AppRegister,
+        AppUnregister,
+        FileNothing = -1
+    } m_nShellCommand;
+    CString m_strFileName;
+    CString m_strPrinterName;
+    CString m_strDriverName;
+    CString m_strPortName;
+};
+
+// ---------------------------------------------------------------------
 // CWinApp (header afxwin.h, derives from CWinThread)
 // ---------------------------------------------------------------------
 class CWinApp : public CWinThread
@@ -255,6 +387,17 @@ public:
     LPCTSTR   m_pszExeName;
     LPCTSTR   m_pszHelpFilePath;
     LPCTSTR   m_pszProfileName;
+    // The help context a message box last asked for, so that the app's
+    // Help command can answer about that box instead of the app itself.
+    // Public in real MFC (an implementation member, not on its
+    // documented member list); eMule reads it in CemuleApp::OnHelp.
+    DWORD m_dwPromptContext;
+
+    // The name form of the constructor: eMule's app object forwards its
+    // own name to it ("CemuleApp::CemuleApp(LPCTSTR lpszAppName)
+    // : CWinApp(lpszAppName)"), and the default makes the no-argument
+    // form real MFC also offers work.
+    explicit CWinApp(LPCTSTR lpszAppName = nullptr);
 
     UINT GetProfileInt(LPCTSTR lpszSection, LPCTSTR lpszEntry, int nDefault);
     BOOL WriteProfileInt(LPCTSTR lpszSection, LPCTSTR lpszEntry, int nValue);
@@ -271,7 +414,31 @@ public:
     // Called from the message pump to decide whether a message counts as
     // user activity; eMule overrides it and super-calls this one.
     virtual BOOL IsIdleMessage(MSG* pMsg);
+
+    // Help. EnableHtmlHelp switches the application from the old WinHelp
+    // engine to HTML Help (eMule calls it in its constructor);
+    // WinHelpInternal is the entry point the framework routes a help
+    // request through once a path has been set, and is virtual because
+    // EnableHtmlHelp works by overriding it.
+    void EnableHtmlHelp();
+#ifdef _WIN32
+    virtual void WinHelpInternal(DWORD_PTR dwData, UINT nCmd = HELP_CONTEXT);
+#else
+    virtual void WinHelpInternal(DWORD_PTR dwData, UINT nCmd = 1);
+#endif
+
+    // Splits the process command line into the fields of a
+    // CCommandLineInfo, calling its ParseParam for each token.
+    void ParseCommandLine(CCommandLineInfo& rCmdInfo);
 };
+
+// Enables an ActiveX control container in a dialog-based application;
+// eMule calls it before creating its browser-hosting dialogs.
+void AFXAPI AfxEnableControlContainer(void* pOccManager = nullptr);
+// Loads the RichEdit 4.1/5.0 window class (MSFTEDIT.DLL) so that a
+// dialog template's RICHEDIT50W controls can be created. Returns FALSE
+// if the library is missing, which is what eMule tests.
+BOOL AFXAPI AfxInitRichEdit5();
 
 // ---------------------------------------------------------------------
 // GDI classes (header afxwin.h per Microsoft Learn — CImageList is the
@@ -339,6 +506,9 @@ public:
     BOOL CreatePatternBrush(CBitmap* pBitmap);
     BOOL CreateDIBPatternBrush(HGLOBAL hPackedDIB, UINT nUsage);
     BOOL CreateDIBPatternBrush(const void* lpPackedDIB, UINT nUsage);
+    // The LOGBRUSH form, which is how eMule builds its 8x8 pattern brush
+    // (Emule.cpp:1780) after creating the bitmap by hand below.
+    BOOL CreateBrushIndirect(const LOGBRUSH* lpLogBrush);
 };
 
 struct tagLOGPALETTE;
@@ -366,6 +536,9 @@ class CBitmap : public CGdiObject
 {
 public:
     operator HBITMAP() const { return (HBITMAP)m_hObject; }
+    // The from-scratch form (no DC involved): eMule builds a 1bpp 8x8
+    // pattern from a static WORD[8] with it (Emule.cpp:1775).
+    BOOL CreateBitmap(int nWidth, int nHeight, UINT nPlanes, UINT nBitcount, const void* lpBits);
     BOOL CreateCompatibleBitmap(CDC* pDC, int nWidth, int nHeight);
     int GetBitmap(struct tagBITMAP* pBitMap);
     DWORD GetBitmapBits(DWORD dwCount, void* lpBits) const;
@@ -689,6 +862,13 @@ public:
     // result straight to a CWnd* (`CWnd *pWndFocus = GetFocus();`).
     static CWnd* GetFocus();
     static CWnd* GetCapture();
+    // Same shape as GetFocus/GetCapture, and missing it fails the same
+    // silent way the note above describes: the unqualified call falls
+    // through to the global Win32 ::FindWindowEx, which returns an HWND
+    // where eMule assigns a CWnd* ("CWnd *pWnd = FindWindowEx(
+    // GetSafeHwnd(), 0, _T("msctls_updown32"), 0);", TabCtrl.cpp:146).
+    static CWnd* FindWindowEx(HWND hwndParent, HWND hwndChildAfter,
+                              LPCTSTR lpszClass, LPCTSTR lpszWindow);
     CWnd* GetWindow(UINT nCmd) const;
     CWnd* ChildWindowFromPoint(POINT point) const;
     CWnd* ChildWindowFromPoint(POINT point, UINT nFlags) const;
@@ -1127,13 +1307,54 @@ public:
 // are NOT declared here: they really belong to the afxmsg_.h header,
 // which afxwin.h includes below (as in real MFC: a single
 // #include "afxwin.h" also exposes the ON_* macros).
-// Real MFC's expansion ends with "protected:", so the handlers declared
-// after it in a class body are protected -- which is what makes a derived
-// class's qualified super-call (CTrayDialog::OnSysCommand(...)) legal.
-// Expanding to nothing left them private and produced C2248.
-#define DECLARE_MESSAGE_MAP() protected:
-#define BEGIN_MESSAGE_MAP(theClass, baseClass)
-#define END_MESSAGE_MAP()
+// DECLARE_MESSAGE_MAP is defined much earlier in this header, right after
+// the AFX_MSGMAP structures, because CCmdTarget itself uses it.
+//
+// BEGIN/END_MESSAGE_MAP open and close the entry array. They are
+// reproduced from real MFC rather than stubbed because eMule writes
+// entries by hand and they have to land inside that array -- see the
+// long note next to AFX_MSGMAP above. The two typedefs are not
+// incidental: ThisClass is what makes an unqualified handler name in a
+// hand-written entry resolve (the array lives inside a member function
+// of the class), and TheBaseClass is what END_MESSAGE_MAP links the
+// base map through.
+#define BEGIN_MESSAGE_MAP(theClass, baseClass)                             \
+    const AFX_MSGMAP* theClass::GetMessageMap() const                      \
+        { return GetThisMessageMap(); }                                    \
+    const AFX_MSGMAP* PASCAL theClass::GetThisMessageMap()                 \
+    {                                                                      \
+        typedef theClass ThisClass;                                        \
+        typedef baseClass TheBaseClass;                                    \
+        static const AFX_MSGMAP_ENTRY _messageEntries[] =                  \
+        {
+
+// The template form, for a message map on a class template. eMule needs
+// it for CDialogMinTrayBtn<BASE> (DialogMinTrayBtn.cpp:98,
+// "BEGIN_TEMPLATE_MESSAGE_MAP(CDialogMinTrayBtn, BASE, BASE)"): the
+// definitions have to be templates themselves, and ThisClass has to name
+// the specialization, not the bare template.
+#define BEGIN_TEMPLATE_MESSAGE_MAP(theClass, type_name, baseClass)         \
+    template <typename type_name>                                          \
+    const AFX_MSGMAP* theClass<type_name>::GetMessageMap() const           \
+        { return GetThisMessageMap(); }                                    \
+    template <typename type_name>                                          \
+    const AFX_MSGMAP* PASCAL theClass<type_name>::GetThisMessageMap()      \
+    {                                                                      \
+        typedef theClass<type_name> ThisClass;                             \
+        typedef baseClass TheBaseClass;                                    \
+        static const AFX_MSGMAP_ENTRY _messageEntries[] =                  \
+        {
+
+// Closes both forms. The trailing element is the terminator real MFC's
+// dispatcher scans for; it is also what keeps the array non-empty when
+// every ON_* entry in between expanded to nothing.
+#define END_MESSAGE_MAP()                                                  \
+            { 0, 0, 0, 0, AfxSig_end, (AFX_PMSG)0 }                        \
+        };                                                                 \
+        static const AFX_MSGMAP messageMap =                               \
+            { &TheBaseClass::GetThisMessageMap, &_messageEntries[0] };     \
+        return &messageMap;                                                \
+    }
 
 #include "afxmsg_.h"
 

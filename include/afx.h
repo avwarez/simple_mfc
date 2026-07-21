@@ -422,10 +422,22 @@ public:
     CStringT& operator=(PCXSTR pszSrc) { if (pszSrc) m_data = pszSrc; else m_data.clear(); return *this; }
     CStringT& operator=(XCHAR ch) { m_data.assign(1, ch); return *this; }
     CStringT& operator=(PCYSTR pszSrc) { m_data = pszSrc ? Convert(pszSrc, std::char_traits<YCHAR>::length(pszSrc)) : std::basic_string<XCHAR>(); return *this; }
-    // The other width's string class, assigned directly: without this the
-    // compiler must choose between two user-conversion paths and calls it
-    // ambiguous ("m_pProxyPeerHost = sAscii;").
-    CStringT& operator=(const CStringT<YCHAR>& s) { m_data = Convert(s.GetString(), static_cast<size_t>(s.GetLength())); return *this; }
+    // NOTE: there is deliberately NO operator=(const CStringT<YCHAR>&).
+    // Real ATL has no such overload either -- the other width's string
+    // class is assigned through its operator PCXSTR and the PCYSTR
+    // overload right above, and the cross-width constructor at line 418
+    // is explicit so it never competes. Adding one looks harmless but
+    // changes overload resolution for anything DERIVED from CStringA:
+    // binding a derived object to "const CStringA&" beats a user-defined
+    // conversion, so it won every time -- including where the derivation
+    // is private/protected, which is a hard error rather than a
+    // fallback. That is exactly Kademlia's CKadTagNameString ("class
+    // CKadTagNameString : protected CStringA", Tag.h:46), which exposes
+    // its content through an explicit operator PCXSTR; "strName =
+    // pTag->m_name;" (MetaDataDlg.cpp:311) failed with C2243, an
+    // inaccessible-base conversion, while compiling fine against real
+    // MFC. (The overload was originally added for "m_pProxyPeerHost =
+    // sAscii;", which the explicit constructor above already covers.)
 
     int GetLength() const noexcept { return static_cast<int>(m_data.size()); }
     bool IsEmpty() const noexcept { return m_data.empty(); }

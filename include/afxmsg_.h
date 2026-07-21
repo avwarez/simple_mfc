@@ -87,6 +87,14 @@
 #define ON_WM_RBUTTONDOWN()            // handler: afx_msg void OnRButtonDown(UINT nFlags, CPoint point);
 #define ON_WM_LBUTTONDBLCLK()          // handler: afx_msg void OnLButtonDblClk(UINT nFlags, CPoint point);
 #define ON_WM_KILLFOCUS()              // handler: afx_msg void OnKillFocus(CWnd* pNewWnd);
+// A missing ON_* macro does not fail loudly: the unexpanded name is
+// parsed as a default-int function declaration that swallows everything
+// up to the next real declaration, so the first error surfaces dozens of
+// lines later (C4430 on the map line, then C2143 at the next function).
+// These two were found that way -- TreeOptionsCtrl.cpp:286 and
+// MiniMule.cpp:78.
+#define ON_WM_MOUSEWHEEL()             // handler: afx_msg BOOL OnMouseWheel(UINT nFlags, short zDelta, CPoint pt);
+#define ON_WM_NCLBUTTONDBLCLK()        // handler: afx_msg void OnNcLButtonDblClk(UINT nHitTest, CPoint point);
 
 // Minor variants (1-2 occurrences each in eMule/srchybrid): no handler
 // signature captured by the scan, declared for message-map completeness

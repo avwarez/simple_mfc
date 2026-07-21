@@ -33,9 +33,27 @@ public:
     // %% a literal percent. Deliberately not strftime: a span is a
     // duration, so %H can exceed 23 only via %D carrying the days.
     CString Format(const wchar_t* pszFormat) const;
+    // The narrow-literal form. Not on the Learn page (which lists only
+    // Format(LPCTSTR)/Format(UINT)), but real: eMule passes a plain
+    // "..." literal while building UNICODE, and the result is then used
+    // where a CString is expected -- so the overload has to accept char
+    // and still return a CString. Same reasoning as CTime::Format below.
+    CString Format(const char* pszFormat) const;
 
     CTimeSpan operator+(const CTimeSpan& o) const { return CTimeSpan(m_span + o.m_span); }
     CTimeSpan operator-(const CTimeSpan& o) const { return CTimeSpan(m_span - o.m_span); }
+    // Real MFC's full relational set. eMule reaches it generically:
+    // OtherFunctions.h's sgn<T> is instantiated with T=CTimeSpan (the
+    // difference of two CTimes) and evaluates "T(0) < val", so the
+    // comparison has to exist for a span, not just for a point in time.
+    // By value for the same reason as CTime's below: it lets the literal
+    // 0 convert through the non-explicit long long constructor.
+    bool operator<(CTimeSpan o) const noexcept { return m_span < o.m_span; }
+    bool operator>(CTimeSpan o) const noexcept { return m_span > o.m_span; }
+    bool operator<=(CTimeSpan o) const noexcept { return m_span <= o.m_span; }
+    bool operator>=(CTimeSpan o) const noexcept { return m_span >= o.m_span; }
+    bool operator==(CTimeSpan o) const noexcept { return m_span == o.m_span; }
+    bool operator!=(CTimeSpan o) const noexcept { return m_span != o.m_span; }
 
 private:
     long long m_span;
@@ -56,6 +74,17 @@ public:
     static CTime GetCurrentTime() noexcept { return CTime(static_cast<__time64_t>(std::time(nullptr))); }
 
     CString Format(const wchar_t* pszFormat) const;
+    // The narrow-literal form. Microsoft Learn lists only
+    // Format(LPCTSTR) and Format(UINT nFormatID), neither of which
+    // accepts a char literal under UNICODE -- yet real eMule code does
+    // exactly that and casts the result to LPCTSTR:
+    //   TRACE("tNow = %s\n", (LPCTSTR)CTime(tNow).Format("%X"));
+    // (FileDetailDialogInfo.cpp:166-167; TRACE is __noop in NDEBUG, but
+    // __noop still parses and overload-resolves its arguments, see
+    // afximpl.h). It compiles against real MFC, so the page is
+    // incomplete here: the overload takes narrow characters and still
+    // returns a CString, which is what makes the LPCTSTR cast legal.
+    CString Format(const char* pszFormat) const;
 
     // Fills the caller's struct with the broken-down local time and hands
     // it back, so it can be used inline (`safe_mktime(t.GetLocalTm(&tm))`).

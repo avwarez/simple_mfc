@@ -12,6 +12,24 @@
 // category. All three are declared below.
 #pragma once
 #include "afxwin.h"
+#include "afxcoll.h" // CMapPtrToPtr / CPtrList, the module thread state's members
+
+// MFC's per-thread, per-module state (real MFC: afxstat_.h, which this
+// header includes). eMule reaches it through a shim of its own --
+// AsyncSocketEx.h:77-78 defines
+//     #define _afxSockThreadState     AfxGetModuleThreadState()
+//     #define _AFX_SOCK_THREAD_STATE  AFX_MODULE_THREAD_STATE
+// -- to reproduce, for its own socket classes, the initialisation MFC
+// does for CAsyncSocket (Emule.cpp:384-390). Only the three socket
+// members it touches are declared; real MFC's struct is much larger.
+struct AFX_MODULE_THREAD_STATE
+{
+    CMapPtrToPtr* m_pmapSocketHandle;
+    CMapPtrToPtr* m_pmapDeadSockets;
+    CPtrList* m_plistSocketNotifications;
+};
+
+AFX_MODULE_THREAD_STATE* AFXAPI AfxGetModuleThreadState();
 
 // MFC's own tooltip flags, private to the framework: they extend
 // commctrl.h's TTF_* set and are not part of the Windows SDK.

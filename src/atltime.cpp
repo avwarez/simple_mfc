@@ -21,6 +21,21 @@ CString CTime::Format(const wchar_t* pszFormat) const
     return CString(n > 0 ? buf : L"");
 }
 
+// The narrow-literal overloads: widen the format string and reuse the
+// wide implementation, so the two can never drift apart. See the header
+// for why they exist at all (a UNICODE build passing a "..." literal).
+CString CTime::Format(const char* pszFormat) const
+{
+    CStringW strFormat(pszFormat ? pszFormat : "");
+    return Format(strFormat.GetString());
+}
+
+CString CTimeSpan::Format(const char* pszFormat) const
+{
+    CStringW strFormat(pszFormat ? pszFormat : "");
+    return Format(strFormat.GetString());
+}
+
 CString CTimeSpan::Format(const wchar_t* pszFormat) const
 {
     // A span is a duration, not a point in time, so wcsftime is not

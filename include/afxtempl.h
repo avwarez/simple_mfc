@@ -24,6 +24,14 @@ public:
     void FreeExtra() { m_impl.FreeExtra(); }
     const TYPE& GetAt(INT_PTR i) const { return m_impl.GetAt(i); }
     INT_PTR GetCount() const { return m_impl.GetCount(); }
+    // Both constnesses, as real MFC has (and as the concrete CObArray/
+    // CPtrArray/CStringArray in afxcoll.h already do). Only the const one
+    // was declared here, so every call on a non-const array still picked
+    // it and handed back a "const TYPE*" -- which then failed at the
+    // Win32 boundary, where the buffer is written to or sorted in place
+    // (WSASend's LPWSABUF in EncryptedStreamSocket.cpp:220, qsort_s's
+    // void* in WebServer.cpp).
+    TYPE* GetData() { return m_impl.GetData(); }
     const TYPE* GetData() const { return m_impl.GetData(); }
     INT_PTR GetSize() const { return m_impl.GetSize(); }
     INT_PTR GetUpperBound() const { return m_impl.GetUpperBound(); }
@@ -55,6 +63,27 @@ public:
 
     POSITION AddHead(ARG_TYPE e) { return m_impl.AddHead(e); }
     POSITION AddTail(ARG_TYPE e) { return m_impl.AddTail(e); }
+    // The whole-list forms real MFC also has (CStringList in afxcoll.h
+    // already carries the same pair). Kademlia's CEntry::Copy splices one
+    // list onto another with them: "pEntry->m_listFileNames.AddTail(
+    // &m_listFileNames);" (Entry.cpp:67). Without them the pointer was
+    // matched against ARG_TYPE and reported as an unconvertible element.
+    void AddHead(const CList* pNewList)
+    {
+        if (pNewList == nullptr)
+            return;
+        // Head-insertion reverses, so walk the source backwards to keep
+        // the appended block in its original order, as real MFC does.
+        for (POSITION pos = pNewList->GetTailPosition(); pos != nullptr;)
+            AddHead(pNewList->GetPrev(pos));
+    }
+    void AddTail(const CList* pNewList)
+    {
+        if (pNewList == nullptr)
+            return;
+        for (POSITION pos = pNewList->GetHeadPosition(); pos != nullptr;)
+            AddTail(pNewList->GetNext(pos));
+    }
     TYPE& GetHead() { return m_impl.GetHead(); }
     TYPE& GetTail() { return m_impl.GetTail(); }
     TYPE RemoveHead() { return m_impl.RemoveHead(); }

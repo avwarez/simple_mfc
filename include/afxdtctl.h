@@ -10,7 +10,9 @@
 // As in real MFC, it includes afxwin.h.
 #pragma once
 #include "afxwin.h"
-#include "atltime.h" // CTime, used by SetTime/GetTime below
+#include "atltime.h"    // CTime, used by SetTime/GetTime below
+#include "atlcomtime.h" // COleDateTime, the third SetTime overload -- see there
+                        // for why eMule needs it without ever naming it
 
 // SYSTEMTIME is a real minwinbase.h struct on Windows (guarded like
 // afxwin.h's SECURITY_ATTRIBUTES/CREATESTRUCT -- see there for why: it
@@ -69,6 +71,10 @@ public:
     DWORD GetTime(LPSYSTEMTIME pTimeDest) const;
     // The SYSTEMTIME form, alongside the CTime one above.
     BOOL SetTime(LPSYSTEMTIME pTimeNew);
+    // The third real form. It is the one that catches a SYSTEMTIME passed
+    // BY VALUE (TreeOptionsCtrl.cpp:1202), through COleDateTime's
+    // converting constructor -- neither pointer overload can.
+    BOOL SetTime(const COleDateTime& timeNew);
     // Valid only while the drop-down is open (real MFC returns NULL
     // otherwise), which is exactly when eMule recolours it.
     CMonthCalCtrl* GetMonthCalCtrl() const;
