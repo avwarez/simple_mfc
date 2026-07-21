@@ -96,10 +96,25 @@ UINT AFXAPI HashKey(ARG_KEY key)
                                  (void*)(std::uintptr_t)key) >> 4);
 }
 
+// The bridge from MFC's hashing convention to std::unordered_map's. Real
+// MFC hashes a key by calling HashKey(), so a class used as a CMap key
+// only has to specialize HashKey -- which is exactly what eMule does
+// (CSKey, CAICHHash, CCKey, ...) and why it never provides std::hash
+// specializations. Hashing with std::hash directly made every one of
+// those maps fail to instantiate.
+template <class KEY, class ARG_KEY>
+struct MfcHashKey
+{
+    std::size_t operator()(const KEY& key) const
+    {
+        return static_cast<std::size_t>(HashKey<ARG_KEY>(const_cast<KEY&>(key)));
+    }
+};
+
 template <class KEY, class ARG_KEY, class VALUE, class ARG_VALUE>
 class CMap : public CObject
 {
-    using MapT = std::unordered_map<KEY, VALUE>;
+    using MapT = std::unordered_map<KEY, VALUE, MfcHashKey<KEY, ARG_KEY>>;
     using Iter = typename MapT::iterator;
 
 public:

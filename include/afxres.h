@@ -15,6 +15,10 @@
 #ifndef ID_HELP
 #define ID_HELP 0xE146
 #endif
+// The property-sheet "Apply" button.
+#ifndef ID_APPLY_NOW
+#define ID_APPLY_NOW 0x3021
+#endif
 #ifndef ID_CONTEXT_HELP
 #define ID_CONTEXT_HELP 0xE145
 #endif

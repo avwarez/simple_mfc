@@ -9,7 +9,8 @@
 #include "afxwin.h"
 
 class CArchive; // real header afxx.h family; not implemented (see afx.h), only used here as a pointer
-class CHeaderCtrl; // defined below; CListCtrl::GetHeaderCtrl returns it
+class CHeaderCtrl;  // defined below; CListCtrl::GetHeaderCtrl returns it
+class CToolTipCtrl; // defined below; CToolBarCtrl::GetToolTips returns it
 
 // ---------------------------------------------------------------------
 // Win32 primitive type stand-ins needed by the signatures below. Most
@@ -86,6 +87,8 @@ struct CHARFORMAT;
 struct CHARFORMAT2;
 struct CHARRANGE;
 struct EDITSTREAM;
+struct PARAFORMAT;
+struct PARAFORMAT2;
 #endif
 
 // ---------------------------------------------------------------------
@@ -97,6 +100,11 @@ public:
     // The wrapped handle, public in real MFC; eMule tests it directly
     // (`piml == NULL || piml->m_hImageList == NULL`).
     HIMAGELIST m_hImageList = nullptr;
+
+    // Real MFC converts implicitly to the raw handle and wraps one back
+    // up; eMule passes a CImageList straight to APIs taking HIMAGELIST.
+    operator HIMAGELIST() const { return m_hImageList; }
+    static CImageList* FromHandle(HIMAGELIST hImageList);
 
     BOOL DeleteImageList();
     int Add(CBitmap* pbmImage, CBitmap* pbmMask);
@@ -280,6 +288,9 @@ public:
     void SetSel(CHARRANGE& cr);
     DWORD SetEventMask(DWORD dwEventMask);
     DWORD GetEventMask() const;
+    BOOL SetParaFormat(PARAFORMAT& pf);
+    BOOL SetParaFormat(PARAFORMAT2& pf);
+    DWORD GetParaFormat(PARAFORMAT& pf) const;
     BOOL SetAutoURLDetect(BOOL bEnable = TRUE);
     UINT GetLimitText() const;
     long StreamOut(int nFormat, EDITSTREAM& es);
@@ -353,6 +364,10 @@ public:
     BOOL DeleteButton(int nIndex);
     DWORD SetExtendedStyle(DWORD dwExStyle);
     DWORD GetExtendedStyle() const;
+    BOOL GetMaxSize(SIZE* pSize) const;
+    void SetBorders(int iLeft, int iTop, int iRight, int iBottom);
+    void GetBorders(int* piLeft, int* piTop, int* piRight, int* piBottom) const;
+    CToolTipCtrl* GetToolTips() const;
     // Added during the FRONTEND/GDI blind-spot pass (see
     // ../../mfc_scan_srchybrid.md addendum): both are called via
     // qualified super-call in a CToolBarCtrl-derived class.
@@ -397,6 +412,7 @@ public:
 class CHeaderCtrl : public CWnd
 {
 public:
+    int OrderToIndex(int nOrder) const;
     int GetItemCount() const;
     BOOL GetItem(int nPos, HDITEM* pHeaderItem) const;
     BOOL SetItem(int nPos, HDITEM* pHeaderItem);

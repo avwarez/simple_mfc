@@ -384,6 +384,8 @@ public:
     COLORREF GetBkColor() const;
     COLORREF GetTextColor() const;
     BOOL DrawFrameControl(LPRECT lpRect, UINT nType, UINT nState);
+    int SetPolyFillMode(int nPolyFillMode);
+    int GetPolyFillMode() const;
     BOOL DeleteDC();
     int GetMapMode() const;
     // The mapping-mode extents/origins CMemDC mirrors from the DC it wraps.
@@ -812,6 +814,8 @@ public:
     int SetItemDataPtr(int nIndex, void* pData);
     void SetHorizontalExtent(UINT nExtent);
     UINT GetHorizontalExtent() const;
+    int SetDroppedWidth(UINT nWidth);
+    int GetDroppedWidth() const;
     void ResetContent();
     int GetLBText(int nIndex, LPTSTR lpszText) const;
     void GetLBText(int nIndex, CString& rString) const;
@@ -835,6 +839,12 @@ public:
 class CMenu : public CObject
 {
 public:
+    // eMule tests a menu for validity directly (`if (menu) ...`) and hands
+    // it to raw Win32 calls, both of which real MFC supports through the
+    // handle member and its implicit conversion.
+    HMENU m_hMenu = nullptr;
+    operator HMENU() const { return m_hMenu; }
+
     BOOL AppendMenu(UINT nFlags, UINT_PTR nIDNewItem = 0, LPCTSTR lpszNewItem = nullptr);
     BOOL AppendMenu(UINT nFlags, UINT_PTR nIDNewItem, const CBitmap* pBmp);
     UINT EnableMenuItem(UINT nIDEnableItem, UINT nEnable);
@@ -925,7 +935,10 @@ CWinThread* AfxBeginThread(CRuntimeClass* pThreadClass,
                             SECURITY_ATTRIBUTES* lpSecurityAttrs = nullptr);
 
 CWinApp* AfxGetApp();
-void* AfxGetInstanceHandle();
+// Returns HINSTANCE in real MFC. As void* the result could not be passed
+// to any Win32 call expecting a module handle (LoadAccelerators, ...)
+// without an explicit cast eMule does not write.
+HINSTANCE AfxGetInstanceHandle();
 void* AfxGetResourceHandle();
 CWnd* AfxGetMainWnd();
 LPCTSTR AfxGetAppName();

@@ -190,3 +190,15 @@ public:
     BOOL IsUnderline() const;
     BOOL IsStrikeOut() const;
 };
+
+// ---------------------------------------------------------------------
+// CColorDialog — the common Choose-Color dialog (same CCommonDialog
+// branch as CFileDialog/CFontDialog above).
+// ---------------------------------------------------------------------
+class CColorDialog : public CDialog
+{
+public:
+    explicit CColorDialog(COLORREF clrInit = 0, DWORD dwFlags = 0, CWnd* pParentWnd = nullptr);
+    COLORREF GetColor() const;
+    void SetCurrentColor(COLORREF clr);
+};

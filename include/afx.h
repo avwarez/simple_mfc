@@ -251,7 +251,11 @@ public:                                                                        \
     const CRuntimeClass class_name::classCRuntimeClass =                       \
         {#class_name, &base_class_name::classCRuntimeClass, &class_name::CreateObject};
 
-#define RUNTIME_CLASS(class_name) (&class_name::classCRuntimeClass)
+// Real MFC hands back a non-const CRuntimeClass*, and eMule stores the
+// result in plain CRuntimeClass* variables and passes it to APIs typed
+// that way, so the const has to be cast off here rather than at 30 call
+// sites.
+#define RUNTIME_CLASS(class_name) (const_cast<CRuntimeClass*>(&class_name::classCRuntimeClass))
 
 // ---------------------------------------------------------------------
 // CObject — root of the hierarchy. IsSerializable/Serialize are left as
