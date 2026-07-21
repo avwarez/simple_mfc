@@ -1,12 +1,13 @@
-// atlcoll.h — NATIVE implementation (standard C++17 library only).
-// A minimal subset of ATL's collection classes, reimplemented on top of
-// std::vector/std::map. Only the two templates actually used by
-// eMule/srchybrid are provided: CSimpleArray and CRBMap. Real ATL's
-// atlcoll.h is a large internal header (CAtlArray/CAtlList/CAtlMap/
-// CRBTree/...); pulling in the Visual Studio-installed one would redefine
-// POSITION, CSimpleArray, etc. a second time on top of these declarations
-// (the exact C2371 "redefinition; different basic types" that shadowing
-// the real MFC/ATL headers with simple_mfc is meant to avoid).
+// atlcoll.h — the ATL collection/COM surface eMule/srchybrid needs.
+// Only the two templates it actually uses are covered: CSimpleArray and
+// CRBMap. On Windows the real ATL is used for everything it provides (see
+// the note above the #include below); elsewhere they are reimplemented on
+// top of std::vector/std::map, standard C++17 only.
+//
+// Note this file never includes real ATL's own atlcoll.h: that is a large
+// internal header (CAtlArray/CAtlList/CAtlMap/CRBTree/...) which would
+// redefine POSITION on top of afx.h's -- the C2371 "redefinition;
+// different basic types" that shadowing the real headers is meant to avoid.
 #pragma once
 
 #include "afxcoll.h" // POSITION (void*), INT_PTR, BOOL/UINT via afx.h
@@ -14,6 +15,25 @@
 #include <vector>
 #include <map>
 #include <memory>
+
+// ---------------------------------------------------------------------
+// ATL is not MFC. simple_mfc exists to replace MFC, and on a real Windows
+// toolchain ATL ships alongside the compiler whether or not MFC is used --
+// so there the real thing is pulled in rather than reimplemented. That is
+// not just economy, it is required for correctness: eMule/srchybrid also
+// reaches ATL through SDK headers of its own (<atlimage.h> pulls
+// <atlbase.h>), and a second CSimpleArray declared here made every use
+// ambiguous (C2872) in exactly those translation units.
+//
+// atlbase.h also brings the COM smart pointers eMule uses in class member
+// declarations -- CComPtr (CCustomAutoComplete::m_pac), CComBSTR,
+// CComQIPtr, CComVariant -- which must be complete types, not stand-ins.
+//
+// Only the non-Windows build needs hand-written substitutes, below.
+// ---------------------------------------------------------------------
+#ifdef _WIN32
+#include <atlbase.h>
+#else
 
 // ---------------------------------------------------------------------
 // CSimpleArray — flat, contiguous array (ATL's lightweight vector).
@@ -73,6 +93,15 @@ public:
 private:
     std::vector<T> m_data;
 };
+
+#endif // !_WIN32
+
+// CRBMap is declared in real ATL's own atlcoll.h, which atlbase.h does NOT
+// pull in -- so ours stays in play on Windows too. The guard is defensive:
+// __ATLCOLL_H__ is real atlcoll.h's include guard, so should some other
+// header ever drag it in, its CRBMap wins and this one steps aside instead
+// of colliding.
+#ifndef __ATLCOLL_H__
 
 // ---------------------------------------------------------------------
 // CRBMap — ordered (red-black-tree) key/value map. Backed by std::map,
@@ -205,3 +234,5 @@ private:
     // pattern (valid until the next such call or a map modification).
     mutable std::unique_ptr<CPair> m_scratch;
 };
+
+#endif // __ATLCOLL_H__

@@ -183,6 +183,11 @@ public:
 class CGdiObject : public CObject
 {
 public:
+    // Public in real MFC too, and eMule reads it directly as the "is this
+    // object created?" test (`if (theApp.m_fontSymbol.m_hObject)`) and to
+    // pass the raw handle to SendMessage(WM_SETFONT).
+    HGDIOBJ m_hObject = nullptr;
+
     BOOL DeleteObject();
     BOOL Attach(HGDIOBJ hObject);
     HGDIOBJ Detach();
@@ -257,6 +262,17 @@ public:
     CSize GetBitmapDimension() const;
 };
 
+// CRgn (header afxwin.h, deriva da CGdiObject). CCreditsThread holds one
+// by value (`CRgn m_rgnScreen;`), so the forward declaration at the top of
+// this header is not enough -- the class has to be complete.
+class CRgn : public CGdiObject
+{
+public:
+    BOOL CreateRectRgn(int x1, int y1, int x2, int y2);
+    BOOL CreateRectRgnIndirect(const RECT* lpRect);
+    int CombineRgn(CRgn* pRgn1, CRgn* pRgn2, int nCombineMode);
+};
+
 #ifndef _WIN32
 struct tagLOGFONT;
 using LOGFONT = tagLOGFONT;
@@ -281,12 +297,18 @@ class CDC : public CObject
 public:
     static CDC* FromHandle(HDC hDC);
 
+    // Each overload returns the *previously selected object of the same
+    // kind*, not the DC -- that is what makes the idiomatic
+    // `CBitmap *pOld = dc.SelectObject(&bmp); ... dc.SelectObject(pOld);`
+    // restore pattern (CMemDC, CBarShader, ...) compile. Selecting a region
+    // is the odd one out and returns a region-type code. CPalette goes
+    // through SelectPalette in real MFC, so it has no overload here.
     CGdiObject* SelectObject(CGdiObject* pObject);
-    CDC* SelectObject(CFont* pFont);
-    CDC* SelectObject(CBrush* pBrush);
-    CDC* SelectObject(CPen* pPen);
-    CDC* SelectObject(CPalette* pPalette);
-    CDC* SelectObject(CBitmap* pBitmap);
+    virtual CFont* SelectObject(CFont* pFont);
+    CBrush* SelectObject(CBrush* pBrush);
+    CPen* SelectObject(CPen* pPen);
+    CBitmap* SelectObject(CBitmap* pBitmap);
+    int SelectObject(CRgn* pRgn);
     BOOL Attach(HDC hDC);
     HDC Detach();
     COLORREF SetTextColor(COLORREF crColor);
@@ -530,6 +552,14 @@ public:
 class CDialog : public CWnd
 {
 public:
+    // Every eMule dialog passes its IDD (and usually a parent) straight to
+    // the base, e.g. `CAddSourceDlg::CAddSourceDlg(CWnd *pParent)
+    // : CDialog(CAddSourceDlg::IDD, pParent)`. The template can be named by
+    // resource id or by string, and the default constructor exists for the
+    // dialogs created through DYNCREATE.
+    CDialog();
+    explicit CDialog(UINT nIDTemplate, CWnd* pParentWnd = nullptr);
+    explicit CDialog(LPCTSTR lpszTemplateName, CWnd* pParentWnd = nullptr);
     virtual INT_PTR DoModal();
     void EndDialog(int nResult);
     virtual BOOL Create(LPCTSTR lpszTemplateName, CWnd* pParentWnd = nullptr);

@@ -124,12 +124,21 @@ using PCTSTR = const wchar_t*;
 #ifndef VERIFY
 #define VERIFY(f) ASSERT(f)
 #endif
+// DEBUG_ONLY wraps code that must exist only in a debug build -- unlike
+// VERIFY it discards the expression entirely in release, so it is the one
+// place where a side effect is meant to disappear.
+#ifndef DEBUG_ONLY
+#define DEBUG_ONLY(f) (f)
+#endif
 #else
 #ifndef ASSERT
 #define ASSERT(f) ((void)0)
 #endif
 #ifndef VERIFY
 #define VERIFY(f) ((void)(f))
+#endif
+#ifndef DEBUG_ONLY
+#define DEBUG_ONLY(f) ((void)0)
 #endif
 #endif
 #ifndef ASSERT_VALID
@@ -636,6 +645,11 @@ class CException : public CObject
 {
     DECLARE_DYNAMIC(CException)
 public:
+    // The default constructor is what eMule's own exception classes call
+    // implicitly (Exceptions.h derives from CException without naming a base
+    // initializer). Real MFC defaults m_bAutoDelete to TRUE here: an exception
+    // built without an explicit choice is heap-allocated and self-deleting.
+    CException() : m_bAutoDelete(TRUE) {}
     explicit CException(BOOL bAutoDelete) : m_bAutoDelete(bAutoDelete) {}
     void Delete() { if (m_bAutoDelete) delete this; }
     virtual int ReportError(UINT nType = 0, UINT nMessageID = 0);

@@ -461,6 +461,29 @@ public:
     BOOL Seek(UINT nTo);
 };
 
+// ---------------------------------------------------------------------
+// CReBarCtrl — the rebar (band container) common control, host of the
+// main toolbar. CEMuleDlg holds one by value (`CReBarCtrl
+// m_ctlMainTopReBar;`), so until this existed every translation unit that
+// saw EmuleDlg.h -- 68 of them -- died on that one member declaration.
+//
+// REBARBANDINFO comes from the real <commctrl.h> included at the top of
+// this header; the non-Windows stand-in only needs the tag to exist,
+// since it is used by pointer here.
+// ---------------------------------------------------------------------
+#ifndef _WIN32
+struct REBARBANDINFO;
+#endif
+
+class CReBarCtrl : public CWnd
+{
+public:
+    virtual BOOL Create(DWORD dwStyle, const RECT& rect, CWnd* pParentWnd, UINT nID);
+    BOOL InsertBand(UINT uIndex, REBARBANDINFO* prbbi);
+    BOOL GetBandInfo(UINT uBand, REBARBANDINFO* prbbi) const;
+    BOOL SetBandInfo(UINT uBand, REBARBANDINFO* prbbi);
+};
+
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic pop
 #endif

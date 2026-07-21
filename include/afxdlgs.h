@@ -3,6 +3,7 @@
 // dialogs). As in real MFC, it includes afxwin.h.
 #pragma once
 #include "afxwin.h"
+#include "afxcoll.h" // CPtrArray, for CPropertySheet::m_pages
 
 class CTabCtrl; // real header afxcmn.h, only used here as a pointer return type
 
@@ -13,6 +14,13 @@ class CTabCtrl; // real header afxcmn.h, only used here as a pointer return type
 class CPropertyPage : public CDialog
 {
 public:
+    // eMule's preference pages all pass just their IDD; the caption/header
+    // overloads are declared because they are the same constructor set real
+    // MFC exposes, and dwSize defaults keep a plain `CPropertyPage(IDD)` call
+    // unambiguous.
+    CPropertyPage();
+    explicit CPropertyPage(UINT nIDTemplate, UINT nIDCaption = 0);
+    explicit CPropertyPage(LPCTSTR lpszTemplateName, UINT nIDCaption = 0);
     void SetModified(BOOL bChanged = TRUE);
     virtual BOOL OnSetActive();
     // Added during the FRONTEND/GDI blind-spot pass (see
@@ -43,6 +51,18 @@ public:
 class CPropertySheet : public CWnd
 {
 public:
+    // eMule's sheets forward their own (caption, parent, page) constructor
+    // arguments straight to the base, in both the resource-id and the string
+    // form.
+    CPropertySheet();
+    explicit CPropertySheet(UINT nIDCaption, CWnd* pParentWnd = nullptr, UINT iSelectPage = 0);
+    explicit CPropertySheet(LPCTSTR pszCaption, CWnd* pParentWnd = nullptr, UINT iSelectPage = 0);
+
+    // The pages added so far. Public in real MFC, and eMule's
+    // CListViewWalkerPropertySheet hands it straight out
+    // (`CPtrArray& GetPages() { return m_pages; }`).
+    CPtrArray m_pages;
+
     virtual INT_PTR DoModal();
     virtual BOOL Create(CWnd* pParentWnd = nullptr, DWORD dwStyle = (DWORD)-1, DWORD dwExStyle = 0);
     void AddPage(CPropertyPage* pPage);
