@@ -174,10 +174,10 @@ bool IsRectEmptyRaw(LPCRECT r) { return r->left >= r->right || r->top >= r->bott
 
 BOOL CRect::IntersectRect(LPCRECT lpRect1, LPCRECT lpRect2) noexcept
 {
-    long l = std::max(lpRect1->left, lpRect2->left);
-    long t = std::max(lpRect1->top, lpRect2->top);
-    long r = std::min(lpRect1->right, lpRect2->right);
-    long b = std::min(lpRect1->bottom, lpRect2->bottom);
+    long l = std::max<long>(lpRect1->left, lpRect2->left);
+    long t = std::max<long>(lpRect1->top, lpRect2->top);
+    long r = std::min<long>(lpRect1->right, lpRect2->right);
+    long b = std::min<long>(lpRect1->bottom, lpRect2->bottom);
     if (IsRectEmptyRaw(lpRect1) || IsRectEmptyRaw(lpRect2) || l >= r || t >= b)
     {
         SetRectEmpty();
@@ -194,10 +194,10 @@ BOOL CRect::UnionRect(LPCRECT lpRect1, LPCRECT lpRect2) noexcept
     if (empty1 && empty2) { SetRectEmpty(); return FALSE; }
     if (empty1) { *this = CRect(*lpRect2); return TRUE; }
     if (empty2) { *this = CRect(*lpRect1); return TRUE; }
-    long l = std::min(lpRect1->left, lpRect2->left);
-    long t = std::min(lpRect1->top, lpRect2->top);
-    long r = std::max(lpRect1->right, lpRect2->right);
-    long b = std::max(lpRect1->bottom, lpRect2->bottom);
+    long l = std::min<long>(lpRect1->left, lpRect2->left);
+    long t = std::min<long>(lpRect1->top, lpRect2->top);
+    long r = std::max<long>(lpRect1->right, lpRect2->right);
+    long b = std::max<long>(lpRect1->bottom, lpRect2->bottom);
     left = l; top = t; right = r; bottom = b;
     return TRUE;
 }

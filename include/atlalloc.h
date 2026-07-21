@@ -41,7 +41,7 @@ public:
         {
             if (!wasFixed && m_p != nullptr)
             {
-                std::memcpy(m_fixed, m_p, std::min(nElements, m_nElements) * sizeof(T));
+                std::memcpy(m_fixed, m_p, std::min<size_t>(nElements, m_nElements) * sizeof(T));
                 std::free(m_p);
             }
             m_p = FixedPtr();
@@ -52,7 +52,7 @@ public:
             if (pNew == nullptr)
                 return nullptr;
             if (wasFixed && m_p != nullptr)
-                std::memcpy(pNew, m_fixed, std::min(nElements, m_nElements) * sizeof(T));
+                std::memcpy(pNew, m_fixed, std::min<size_t>(nElements, m_nElements) * sizeof(T));
             m_p = pNew;
         }
         m_nElements = nElements;
