@@ -24,6 +24,12 @@ separate "stub" copy and "native" copy.
 | `afxtempl.h` | ✅ | *(header-only)* | **Implemented** — `CArray<>`/`CList<>`/`CMap<>` |
 | `afxmt.h` | ✅ | `afxmt.cpp` | **Implemented** — `CCriticalSection`/`CEvent`/`CMutex`/`CSingleLock` |
 | `atltime.h` | ✅ | `atltime.cpp` | **Implemented** — `CTime`/`CTimeSpan` |
+| `atltypes.h` | ✅ | `atltypes.cpp` | **Implemented** — `CPoint`/`CRect`/`CSize` (ATL/MFC "shared classes", not declared in `afxwin.h`; pure coordinate arithmetic, no GDI/HWND) |
+| `atlenc.h` | ✅ | `atlenc.cpp` | **Implemented** — `Base64Encode`/`Base64EncodeGetRequiredLength` |
+| `atlconv.h` | ✅ | `atlconv.cpp` | **Implemented** — `AtlUnicodeToUTF8`/`_AtlGetConversionACP` |
+| `atlalloc.h` | ✅ | *(header-only)* | **Implemented** — `CTempBuffer<>` (template; fixed/stack storage with a heap fallback, same as real ATL) |
+| `afximpl.h` | ✅ | `afximpl.cpp` | **Implemented** — `AfxGetModuleThreadState`/`CTraceCategory` (the rest of this internal MFC header is macros/struct layout, no other bodies needed) |
+| `afxinet.h` | ✅ | `afxinet.cpp` | **Implemented** — `AfxParseURL` (pure string parsing; MFC's WinInet session/connection classes remain out of scope, see below) |
 | `afxwin.h` | ✅ | — | **Stub only** — `CWnd`/`CDialog`/`CFrameWnd`/`CStatic`/`CEdit`/`CListBox`/`CComboBox`/`CButton`/`CMenu`, `CWinThread`/`CWinApp`, core GDI (`CGdiObject`/`CBitmap`/`CPen`/`CBrush`/`CFont`/`CDC`), message-map macros |
 | `afxext.h` | ✅ | — | **Stub only** — `CControlBar`/`CDialogBar` |
 | `afxdlgs.h` | ✅ | — | **Stub only** — `CPropertyPage`/`CPropertySheet` |
@@ -33,7 +39,7 @@ separate "stub" copy and "native" copy.
 | `afxole.h` | ✅ | — | **Stub only** — `COleDropTarget` |
 | `afxdhtml.h` | ✅ | — | **Stub only** — `CDHtmlDialog` (hierarchy only, no methods used) |
 | `afxdtctl.h` | ✅ | — | **Stub only** — `CDateTimeCtrl` |
-| `atltypes.h` | ✅ | — | **Stub only** — `CPoint`/`CRect`/`CSize` (ATL/MFC "shared classes", not declared in `afxwin.h`) |
+| `atlbase.h` | ✅ | — | **Stub only** — `CRegKey` (Windows registry, no portable equivalent) |
 | `afxsock.h` | ✅ | — | **Stub only** — `CAsyncSocket` |
 
 The "stub only" headers **compile** (syntactically valid declarations,
@@ -57,10 +63,15 @@ from.
 ## Why some headers are not implemented
 
 - **GUI (`afxwin.h`, `afxext.h`, `afxdlgs.h`, `afxdd_.h`, `afxmsg_.h`,
-  `afxcmn.h`, `afxole.h`, `afxdhtml.h`, `afxdtctl.h`, `atltypes.h`)** — `CWnd` and its
+  `afxcmn.h`, `afxole.h`, `afxdhtml.h`, `afxdtctl.h`)** — `CWnd` and its
   subclasses, common controls, GDI drawing, message maps, `DDX_*`: pure
   Win32 concepts (windows, messages, device contexts), with no standard
   C++ equivalent without a dedicated cross-platform UI layer.
+- **COM/registry (`atlbase.h`'s `CRegKey`, `atlcomcli.h`)** — the Windows
+  registry and COM (`IUnknown`/`BSTR`/`VARIANT`) have no portable
+  equivalent; unlike `atltypes.h`'s `CPoint`/`CRect`/`CSize`, which only
+  *live* alongside the GUI headers but are pure value types underneath,
+  these genuinely need the Windows APIs they wrap.
 - **Networking (`afxsock.h`)** — sockets are not "Windows-specific" in a
   strict sense (they also exist on POSIX), but they still require system
   APIs: they are not part of the C++ standard library (no Networking TS in

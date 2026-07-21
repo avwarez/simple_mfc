@@ -1,4 +1,4 @@
-// atlconv.h — reference STUB (declarations only, no implementation).
+// atlconv.h — NATIVE implementation (standard C++17 library only).
 // ATL's string conversion helpers. Only the UTF-8 encoder is declared:
 // it is the one eMule/srchybrid names (StringConversion.cpp, 7 calls,
 // in the two-pass "measure then fill" form the signature supports).

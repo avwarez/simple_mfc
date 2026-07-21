@@ -1,4 +1,4 @@
-// atlenc.h — reference STUB (declarations only, no implementation).
+// atlenc.h — NATIVE implementation (standard C++17 library only).
 // ATL's text encoding helpers. Only the Base64 encoder is declared: it is
 // all eMule/srchybrid uses (SendMail.cpp twice, AsyncProxySocketLayer.cpp
 // once, always the Encode direction; the Base64Encoder/Base64Decoder that
@@ -17,7 +17,13 @@
 // and from the second, shorter form in SendMail.cpp:464, which omits the
 // flags argument on both calls -- hence the defaults.
 #pragma once
-#include "afx.h" // BYTE, BOOL, DWORD, LPSTR
+#include "afx.h" // BYTE, BOOL, DWORD
+
+// Off Windows afx.h only defines the TCHAR-shaped (wide) pointer aliases;
+// on Windows LPSTR comes from <windows.h> (already pulled in by afx.h).
+#ifndef _WIN32
+using LPSTR = char*;
+#endif
 
 // The flag values real atlenc.h defines. NOCRLF is the only one eMule
 // passes; NONE is the default the no-flag call sites rely on.

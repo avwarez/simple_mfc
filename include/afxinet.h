@@ -8,7 +8,8 @@
 // Win32 WinInet API (::InternetOpen, INTERNET_PORT, INTERNET_FLAG_*, ...)
 // straight from the Windows SDK <wininet.h>, which real MFC's afxinet.h
 // pulls in too. The only MFC-level symbol referenced is the free function
-// AfxParseURL, declared below.
+// AfxParseURL, declared below -- NATIVE implementation (afxinet.cpp):
+// pure string parsing (scheme/host/port/path), no WinInet dependency.
 #pragma once
 
 // The service types CInternetSession/CHttpConnection accept. Real MFC
@@ -34,8 +35,6 @@
 using INTERNET_PORT = unsigned short;
 #endif
 
-// Splits a URL into service type / server / object / port. Compile-time
-// declaration only; the WinInet-backed definition lives in the platform's
-// real MFC and is never linked in simple_mfc's declaration-only frontend.
+// Splits a URL into service type / server / object / port.
 BOOL AfxParseURL(LPCTSTR pstrURL, DWORD& dwServiceType, CString& strServer,
                  CString& strObject, INTERNET_PORT& nPort);

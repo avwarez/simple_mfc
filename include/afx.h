@@ -1045,10 +1045,18 @@ private:
 //   ar.Read(pMD4, sizeof pMD4);
 //   ar.Close();
 //
-// Declaration-only, like the frontend headers: the extraction operators
-// have to exist and chain (each returns CArchive&), but nothing here ever
-// runs them. The insertion operators are declared for the same types so a
-// store-direction archive compiles too.
+// NATIVE implementation (afx.cpp): forwards Read/Write to the underlying
+// CFile. The primitive-type operators (BYTE/WORD/int/UINT/long/DWORD/
+// float/double/ULONGLONG) write/read exactly sizeof(T) raw bytes, with no
+// length prefix -- this is real MFC's actual wire format for these types
+// too, so an archive containing only primitives (like eMule's part-file
+// metadata above) round-trips against a file written by real MFC. The
+// CString operators are a documented exception: they use a
+// self-consistent 32-bit length prefix + raw wchar_t payload that is NOT
+// necessarily byte-identical to real MFC's CString::Serialize format
+// (which also encodes a narrow/wide flag and a variable-length count) --
+// eMule's own CArchive usage never reaches this path, so treat CString
+// (de)serialization as round-trip-correct within simple_mfc only.
 // ---------------------------------------------------------------------
 class CArchive
 {
@@ -1087,6 +1095,10 @@ public:
     CArchive& operator<<(double d);
     CArchive& operator<<(ULONGLONG dwdw);
     CArchive& operator<<(const CString& str);
+
+private:
+    CFile* m_pFile;
+    UINT m_nMode;
 };
 
 // Thrown when an archive operation fails; eMule catches it by pointer.

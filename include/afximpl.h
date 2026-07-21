@@ -1,4 +1,6 @@
-// afximpl.h — reference STUB (declarations only, no implementation).
+// afximpl.h — NATIVE implementation (afximpl.cpp) for the two symbols
+// that need bodies (AfxGetModuleThreadState, CTraceCategory's
+// constructor); everything else here is macros/struct layout only.
 // In real MFC this is an INTERNAL implementation header: it ships with
 // MFC's sources (VC/Tools/MSVC/<ver>/ATLMFC/src/mfc), not in the include
 // directory, and applications are not supposed to include it. eMule's
@@ -44,10 +46,10 @@ AFX_MODULE_THREAD_STATE* AFXAPI AfxGetModuleThreadState();
 // The pre-IE4 TOOLINFO layout. MFC keeps it to tell the two apart by
 // size, which is exactly what eMule does:
 //   if (iHit == -1 && pTI != NULL && pTI->cbSize >= sizeof(AFX_OLDTOOLINFO))
-#ifndef _WIN32
-using HWND = void*;
-using UINT_PTR = unsigned long long;
-#endif
+// HWND/UINT_PTR: already brought in by afxwin.h above (both non-_WIN32
+// aliases, identical either way -- HWND to void*, UINT_PTR to
+// std::uintptr_t -- so nothing to add here; a second, differently-typed
+// UINT_PTR alias would conflict with afxwin.h's, not merely shadow it.
 struct AFX_OLDTOOLINFO
 {
     UINT cbSize;

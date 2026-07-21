@@ -1,9 +1,12 @@
-// atltypes.h — reference STUB (declarations only, no implementation).
-// ATL/MFC "shared classes": CPoint/CRect/CSize. Per Microsoft Learn these
-// are NOT declared in afxwin.h like the other GDI classes, but in this
-// dedicated shared header (afxwin.h includes it transitively, as in real
-// MFC). Self-contained: only needs the base primitive typedefs (BOOL,
-// UINT) from afx.h, not the rest of the GUI hierarchy.
+// atltypes.h — NATIVE implementation (standard C++17 library only,
+// atltypes.cpp). ATL/MFC "shared classes": CPoint/CRect/CSize. Per
+// Microsoft Learn these are NOT declared in afxwin.h like the other GDI
+// classes, but in this dedicated shared header (afxwin.h includes it
+// transitively, as in real MFC). Self-contained: only needs the base
+// primitive typedefs (BOOL, UINT) from afx.h, not the rest of the GUI
+// hierarchy -- and, despite living alongside the GUI headers, the classes
+// themselves are pure value types (integer coordinate arithmetic only,
+// no GDI/HWND calls), exactly like real MFC's own implementation of them.
 #pragma once
 #include "afx.h"
 

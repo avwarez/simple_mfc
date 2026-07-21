@@ -16,6 +16,7 @@ IMPLEMENT_DYNAMIC(CSimpleException, CException)
 IMPLEMENT_DYNAMIC(CNotSupportedException, CSimpleException)
 IMPLEMENT_DYNAMIC(CMemoryException, CSimpleException)
 IMPLEMENT_DYNAMIC(CFileException, CException)
+IMPLEMENT_DYNAMIC(CArchiveException, CException)
 IMPLEMENT_DYNAMIC(CFile, CObject)
 IMPLEMENT_DYNAMIC(CStdioFile, CFile)
 IMPLEMENT_DYNAMIC(CMemFile, CFile)
@@ -365,6 +366,38 @@ ULONGLONG CMemFile::Seek(LONGLONG lOff, UINT nFrom)
     return m_pos;
 }
 
+// Hands the contents over as a malloc'd block, matching real MFC's
+// documented contract ("the caller becomes responsible for freeing the
+// buffer"). The vector-backed storage has no malloc'd block to detach in
+// place, so this copies out into a freshly malloc'd one -- externally
+// indistinguishable from a true detach, since either way the caller ends
+// up owning a malloc'd buffer and this CMemFile ends up empty.
+BYTE* CMemFile::Detach()
+{
+    size_t n = m_buffer.size();
+    BYTE* p = static_cast<BYTE*>(std::malloc(n > 0 ? n : 1));
+    if (p != nullptr && n > 0)
+        std::memcpy(p, m_buffer.data(), n);
+    m_buffer.clear();
+    m_pos = 0;
+    return p;
+}
+
+// Takes ownership of the caller's malloc'd buffer. Real MFC keeps the
+// pointer directly as its internal storage; this vector-backed CMemFile
+// copies it in and immediately frees the original -- the caller must not
+// touch lpBuffer after this call either way, so the two are
+// indistinguishable from outside the class.
+void CMemFile::Attach(BYTE* lpBuffer, UINT nBufferSize, UINT /*nGrowBytes*/)
+{
+    if (lpBuffer != nullptr && nBufferSize > 0)
+        m_buffer.assign(lpBuffer, lpBuffer + nBufferSize);
+    else
+        m_buffer.clear();
+    std::free(lpBuffer);
+    m_pos = 0;
+}
+
 // ---------------------------------------------------------------------
 // CFileFind
 // ---------------------------------------------------------------------
@@ -575,3 +608,82 @@ ULONGLONG CFileFind::GetLength() const
 // search string with the file-name/wildcard part stripped but the trailing
 // separator kept), NOT the filesystem root (C:\). Captured in FindFile.
 CString CFileFind::GetRoot() const { return CString(m_root.c_str()); }
+
+// ---------------------------------------------------------------------
+// CArchive — see the class comment in afx.h for the wire-format notes.
+// ---------------------------------------------------------------------
+CArchive::CArchive(CFile* pFile, UINT nMode, int /*nBufSize*/, void* /*lpBuf*/)
+    : m_pFile(pFile), m_nMode(nMode)
+{
+}
+
+CArchive::~CArchive() { Close(); }
+
+BOOL CArchive::IsLoading() const { return (m_nMode & static_cast<UINT>(CArchive::load)) ? TRUE : FALSE; }
+BOOL CArchive::IsStoring() const { return IsLoading() ? FALSE : TRUE; }
+CFile* CArchive::GetFile() const { return m_pFile; }
+
+// Real MFC: "Close does not close the file; it flushes the archive's
+// buffer." The underlying CFile stays open and is the caller's to close.
+void CArchive::Close() { Flush(); }
+void CArchive::Flush() { if (m_pFile != nullptr) m_pFile->Flush(); }
+
+UINT CArchive::Read(void* lpBuf, UINT nMax) { return m_pFile != nullptr ? m_pFile->Read(lpBuf, nMax) : 0; }
+void CArchive::Write(const void* lpBuf, UINT nMax) { if (m_pFile != nullptr) m_pFile->Write(lpBuf, nMax); }
+
+namespace
+{
+template <class T>
+CArchive& ArReadRaw(CArchive& ar, T& v) { ar.Read(&v, sizeof(T)); return ar; }
+template <class T>
+CArchive& ArWriteRaw(CArchive& ar, T v) { ar.Write(&v, sizeof(T)); return ar; }
+} // namespace
+
+CArchive& CArchive::operator>>(BYTE& by) { return ArReadRaw(*this, by); }
+CArchive& CArchive::operator>>(WORD& w) { return ArReadRaw(*this, w); }
+CArchive& CArchive::operator>>(int& i) { return ArReadRaw(*this, i); }
+CArchive& CArchive::operator>>(UINT& u) { return ArReadRaw(*this, u); }
+CArchive& CArchive::operator>>(long& l) { return ArReadRaw(*this, l); }
+CArchive& CArchive::operator>>(DWORD& dw) { return ArReadRaw(*this, dw); }
+CArchive& CArchive::operator>>(float& f) { return ArReadRaw(*this, f); }
+CArchive& CArchive::operator>>(double& d) { return ArReadRaw(*this, d); }
+CArchive& CArchive::operator>>(ULONGLONG& dwdw) { return ArReadRaw(*this, dwdw); }
+
+CArchive& CArchive::operator<<(BYTE by) { return ArWriteRaw(*this, by); }
+CArchive& CArchive::operator<<(WORD w) { return ArWriteRaw(*this, w); }
+CArchive& CArchive::operator<<(int i) { return ArWriteRaw(*this, i); }
+CArchive& CArchive::operator<<(UINT u) { return ArWriteRaw(*this, u); }
+CArchive& CArchive::operator<<(long l) { return ArWriteRaw(*this, l); }
+CArchive& CArchive::operator<<(DWORD dw) { return ArWriteRaw(*this, dw); }
+CArchive& CArchive::operator<<(float f) { return ArWriteRaw(*this, f); }
+CArchive& CArchive::operator<<(double d) { return ArWriteRaw(*this, d); }
+CArchive& CArchive::operator<<(ULONGLONG dwdw) { return ArWriteRaw(*this, dwdw); }
+
+// See the wire-format note on the CArchive class in afx.h: a 32-bit
+// length prefix followed by that many raw wchar_t, round-trip-correct
+// within simple_mfc but not a byte-exact match for real MFC's
+// CString::Serialize.
+CArchive& CArchive::operator>>(CString& str)
+{
+    UINT nLen = 0;
+    Read(&nLen, sizeof(nLen));
+    if (nLen == 0) { str.Empty(); return *this; }
+    std::vector<wchar_t> buf(nLen);
+    Read(buf.data(), static_cast<UINT>(nLen * sizeof(wchar_t)));
+    str.SetString(buf.data(), static_cast<int>(nLen));
+    return *this;
+}
+
+CArchive& CArchive::operator<<(const CString& str)
+{
+    UINT nLen = static_cast<UINT>(str.GetLength());
+    Write(&nLen, sizeof(nLen));
+    if (nLen > 0)
+        Write(str.GetString(), static_cast<UINT>(nLen * sizeof(wchar_t)));
+    return *this;
+}
+
+CArchiveException::CArchiveException(int cause, LPCTSTR lpszArchiveName)
+    : CException(TRUE), m_cause(cause), m_strFileName(lpszArchiveName ? lpszArchiveName : L"")
+{
+}

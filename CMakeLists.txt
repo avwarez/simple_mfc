@@ -8,15 +8,22 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # --- Library --------------------------------------------------------------
-# afxtempl.h is header-only (templates): no source to compile for
-# CArray<>/CList<>/CMap<>. The "declaration-only" headers (afxwin.h,
-# afxsock.h..., see README.md) have no .cpp: they are still exposed via
-# include/ but not linked here, because they are not implemented yet.
+# afxtempl.h/atlalloc.h (CTempBuffer<>) are header-only (templates): no
+# source to compile for CArray<>/CList<>/CMap<>/CTempBuffer<>. The
+# remaining "declaration-only" headers (afxwin.h, afxsock.h..., see
+# README.md) still have no .cpp: they are still exposed via include/ but
+# not linked here, because they are inherently Windows/GUI/COM surfaces,
+# not implemented in portable C++.
 add_library(simple_mfc STATIC
     src/afx.cpp
     src/afxcoll.cpp
+    src/afximpl.cpp
+    src/afxinet.cpp
     src/afxmt.cpp
+    src/atlconv.cpp
+    src/atlenc.cpp
     src/atltime.cpp
+    src/atltypes.cpp
 )
 add_library(simple_mfc::simple_mfc ALIAS simple_mfc)
 
