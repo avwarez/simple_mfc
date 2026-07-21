@@ -91,6 +91,17 @@ constexpr BOOL FALSE_ = 0;
 // _T maps to the L"" prefix and _tcs* to the wcs* family, matching our
 // unconditionally-wide CString.
 #include <tchar.h>
+// BSTR/SysAllocString (CStringT::AllocSysString below): normally pulled
+// in transitively by <windows.h>, but not when a consuming project
+// defines WIN32_LEAN_AND_MEAN (as this library's own CMakeLists.txt
+// does) -- that strips COM/OLE headers from windows.h's default set, so
+// BSTR is otherwise an incomplete/unknown type here regardless of
+// whether AllocSysString is ever called (a class TEMPLATE's declarations
+// are still name-looked-up when the template itself is parsed, not only
+// on instantiation, since BSTR does not depend on the template
+// parameter). Include explicitly rather than relying on the consumer's
+// windows.h configuration.
+#include <oleauto.h>
 #else
 using LPCTSTR = const wchar_t*;
 using LPTSTR = wchar_t*;
