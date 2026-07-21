@@ -56,9 +56,12 @@ using LPDISPATCH = IDispatch*;
 // ---------------------------------------------------------------------
 // CDHtmlDialog (header afxdhtml.h, hierarchy
 // CObject -> CCmdTarget -> CWnd -> CDialog -> CDHtmlDialog). Real MFC
-// also has it implement IDocHostUIHandler; eMule overrides several of
-// that interface's methods with STDMETHOD, so it is inherited here rather
-// than redeclared.
+// also has it implement IDocHostUIHandler, but that interface is
+// deliberately NOT a base here: its methods are pure virtual and this
+// header declares no bodies, so inheriting it would leave every derived
+// eMule dialog abstract and impossible to instantiate. The derived
+// class's own STDMETHOD overrides are plain member declarations and need
+// nothing from the interface.
 // ---------------------------------------------------------------------
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic push
@@ -70,9 +73,6 @@ using LPDISPATCH = IDispatch*;
 #endif
 
 class CDHtmlDialog : public CDialog
-#ifdef _WIN32
-                   , public IDocHostUIHandler
-#endif
 {
 public:
     CDHtmlDialog();

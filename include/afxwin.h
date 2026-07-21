@@ -146,7 +146,39 @@ class CScrollBar; // real header afxwin.h too; only used here as a pointer param
 // ---------------------------------------------------------------------
 // CCmdTarget — base of CWinThread for command routing (header afxwin.h)
 // ---------------------------------------------------------------------
-class CCmdTarget : public CObject {};
+// The routing context OnCmdMsg reports back into; opaque to callers.
+struct AFX_CMDHANDLERINFO;
+#ifndef _WIN32
+struct IUnknown;
+using LPUNKNOWN = IUnknown*;
+using LPVOID = void*;
+#endif
+
+class CCmdTarget : public CObject
+{
+public:
+    // COM plumbing for the nested interface parts. "External" is the
+    // reference count seen by clients; "Internal" is the object's own,
+    // and they differ only when the object is aggregated.
+    DWORD ExternalQueryInterface(const void* iid, LPVOID* ppvObj);
+    DWORD ExternalAddRef();
+    DWORD ExternalRelease();
+    DWORD InternalQueryInterface(const void* iid, LPVOID* ppvObj);
+    DWORD InternalAddRef();
+    DWORD InternalRelease();
+    // Hands out one of this object's interfaces without adding a
+    // reference (eMule: "(IDataObject*)pbdo->GetInterface(&IID_IDataObject)").
+    LPUNKNOWN GetInterface(const void* iid);
+    LPUNKNOWN GetControllingUnknown();
+    void EnableAutomation();
+    void EnableAggregation();
+
+    // Command routing, and the wait-cursor helpers real MFC puts here.
+    virtual BOOL OnCmdMsg(UINT nID, int nCode, void* pExtra, AFX_CMDHANDLERINFO* pHandlerInfo);
+    void BeginWaitCursor();
+    void EndWaitCursor();
+    void RestoreWaitCursor();
+};
 
 // ---------------------------------------------------------------------
 // CWinThread (header afxwin.h, hierarchy CObject -> CCmdTarget -> CWinThread)
