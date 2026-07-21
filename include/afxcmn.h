@@ -428,6 +428,39 @@ public:
     void SetFieldFocus(WORD nField);
 };
 
+// ---------------------------------------------------------------------
+// CProgressCtrl (header afxcmn.h, deriva da CWnd)
+// ---------------------------------------------------------------------
+class CProgressCtrl : public CWnd
+{
+public:
+    virtual BOOL Create(DWORD dwStyle, const RECT& rect, CWnd* pParentWnd, UINT nID);
+    void SetRange(short nLower, short nUpper);
+    void SetRange32(int nLower, int nUpper);
+    void GetRange(int& nLower, int& nUpper);
+    int SetPos(int nPos);
+    int GetPos();
+    int OffsetPos(int nPos);
+    int SetStep(int nStep);
+    int StepIt();
+    BOOL SetMarquee(BOOL fMarqueeMode, int nInterval);
+};
+
+// ---------------------------------------------------------------------
+// CAnimateCtrl (header afxcmn.h, deriva da CWnd)
+// ---------------------------------------------------------------------
+class CAnimateCtrl : public CWnd
+{
+public:
+    virtual BOOL Create(DWORD dwStyle, const RECT& rect, CWnd* pParentWnd, UINT nID);
+    BOOL Open(LPCTSTR lpszFileName);
+    BOOL Open(UINT nID);
+    BOOL Play(UINT nFrom, UINT nTo, UINT nRep);
+    BOOL Stop();
+    BOOL Close();
+    BOOL Seek(UINT nTo);
+};
+
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic pop
 #endif

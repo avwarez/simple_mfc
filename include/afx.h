@@ -410,6 +410,12 @@ public:
         std::transform(b.begin(), b.end(), b.begin(), lower);
         return a.compare(b);
     }
+    // Real MFC's Collate/CollateNoCase are locale-aware (Win32 lstrcmp/
+    // CompareString); this portable build maps them to the ordinary
+    // ordinal Compare/CompareNoCase (eMule's KadTagStr overrides Collate
+    // and super-calls __super::Collate).
+    int Collate(PCXSTR psz) const { return Compare(psz); }
+    int CollateNoCase(PCXSTR psz) const { return CompareNoCase(psz); }
     int Delete(int iIndex, int nCount = 1)
     {
         if (iIndex < 0 || static_cast<size_t>(iIndex) >= m_data.size()) return GetLength();
