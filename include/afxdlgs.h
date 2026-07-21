@@ -101,6 +101,7 @@ public:
     int GetPageIndex(CPropertyPage* pPage);
     CPropertyPage* GetPage(int nPage) const;
     int GetPageCount() const;
+    int GetActiveIndex() const;
     CTabCtrl* GetTabControl() const;
     BOOL SetActivePage(int nPage);
     BOOL SetActivePage(CPropertyPage* pPage);

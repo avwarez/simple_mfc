@@ -353,6 +353,16 @@ public:
     CSize GetViewportExt() const;
     CPoint GetWindowOrg() const;
     CPoint GetViewportOrg() const;
+    virtual CSize SetWindowExt(int cx, int cy);
+    CSize SetWindowExt(SIZE size);
+    virtual CSize SetViewportExt(int cx, int cy);
+    CSize SetViewportExt(SIZE size);
+    virtual CPoint SetWindowOrg(int x, int y);
+    CPoint SetWindowOrg(POINT point);
+    virtual CPoint SetViewportOrg(int x, int y);
+    CPoint SetViewportOrg(POINT point);
+    virtual int SelectClipRgn(CRgn* pRgn);
+    int SelectClipRgn(CRgn* pRgn, int nMode);
     int SetBkMode(int nBkMode);
     BOOL CreateCompatibleDC(CDC* pDC);
     HDC GetSafeHdc();
@@ -511,6 +521,21 @@ public:
     BOOL IsWindowEnabled() const;
     CWnd* GetParent() const;
     CWnd* GetDlgItem(int nID) const;
+    // The dialog-item helpers. Each one that is missing does not simply
+    // fail to resolve: the unqualified call falls through to the global
+    // Win32 function of the same name, which then rejects the arity
+    // because it wants a leading HWND.
+    int GetDlgCtrlID() const;
+    int GetDlgItemText(int nID, LPTSTR lpStr, int nMaxCount) const;
+    int GetDlgItemText(int nID, CString& rString) const;
+    void SetDlgItemInt(int nID, UINT nValue, BOOL bSigned = TRUE);
+    UINT GetDlgItemInt(int nID, BOOL* lpTrans = nullptr, BOOL bSigned = TRUE) const;
+    void CheckDlgButton(int nIDButton, UINT nCheck);
+    void CheckRadioButton(int nIDFirstButton, int nIDLastButton, int nIDCheckButton);
+    // Runs the DDX exchange in either direction.
+    BOOL UpdateData(BOOL bSaveAndValidate = TRUE);
+    void SetFont(CFont* pFont, BOOL bRedraw = TRUE);
+    CFont* GetFont() const;
     CDC* GetDC();
     int ReleaseDC(CDC* pDC);
     BOOL RedrawWindow(LPCRECT lpRectUpdate = nullptr, CRgn* prgnUpdate = nullptr,
@@ -662,6 +687,8 @@ class CStatic : public CWnd
 public:
     HBITMAP SetBitmap(HBITMAP hBitmap);
     HBITMAP GetBitmap() const;
+    HICON SetIcon(HICON hIcon);
+    HICON GetIcon() const;
 };
 
 class CEdit : public CWnd
@@ -670,6 +697,8 @@ public:
     void SetSel(DWORD dwSelection, BOOL bNoScroll = FALSE);
     void SetSel(int nStartChar, int nEndChar, BOOL bNoScroll = FALSE);
     void LimitText(int nChars = 0);
+    void SetLimitText(UINT nMax);
+    UINT GetLimitText() const;
     DWORD GetSel() const;
     void GetSel(int& nStartChar, int& nEndChar) const;
     void ReplaceSel(LPCTSTR lpszNewText, BOOL bCanUndo = FALSE);

@@ -92,6 +92,10 @@ struct CHARRANGE;
 class CImageList : public CObject
 {
 public:
+    // The wrapped handle, public in real MFC; eMule tests it directly
+    // (`piml == NULL || piml->m_hImageList == NULL`).
+    HIMAGELIST m_hImageList = nullptr;
+
     BOOL DeleteImageList();
     int Add(CBitmap* pbmImage, CBitmap* pbmMask);
     int Add(CBitmap* pbmImage, COLORREF crMask);
@@ -157,6 +161,11 @@ public:
 class CTreeCtrl : public CWnd
 {
 public:
+    // Checkbox state, which is really item state bits; eMule's directory
+    // tree toggles them (`SetCheck(hItem, !GetCheck(hItem))`).
+    BOOL GetCheck(HTREEITEM hItem) const;
+    BOOL SetCheck(HTREEITEM hItem, BOOL fCheck = TRUE);
+
     HTREEITEM InsertItem(LPTVINSERTSTRUCT lpInsertStruct);
     HTREEITEM InsertItem(UINT nMask, LPCTSTR lpszItem, int nImage, int nSelectedImage,
                           UINT nState, UINT nStateMask, LPARAM lParam,
@@ -232,6 +241,8 @@ public:
     // Starts the POSITION-based walk over the selection that the already
     // declared GetNextSelectedItem continues.
     POSITION GetFirstSelectedItemPosition() const;
+    int GetSelectionMark() const;
+    int SetSelectionMark(int iIndex);
     int HitTest(LVHITTESTINFO* pHitTestInfo) const;
     int HitTest(CPoint pt, UINT* pFlags = nullptr) const;
     BOOL EnsureVisible(int nItem, BOOL bPartialOK);
@@ -280,6 +291,8 @@ public:
 class CTabCtrl : public CWnd
 {
 public:
+    CImageList* SetImageList(CImageList* pImageList);
+    CImageList* GetImageList() const;
     // Doc: "6 overload, il più semplice: ..." — only this simplest one
     // was captured with a full signature; the other 5 are not declared,
     // except the TCITEM* overload below (added: FRONTEND/GDI blind-spot
