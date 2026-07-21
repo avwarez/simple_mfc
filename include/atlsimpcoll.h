@@ -7,11 +7,10 @@
 // simple enough that backing it with std::vector is less work than
 // stubbing it. Interface checked against the Microsoft Learn
 // CSimpleArray class page -- note GetData is const and returns a
-// non-const T*, and operator[] has no const overload; both are ATL's
-// actual shape, not oversights.
+// non-const T*, which is ATL's actual shape, not an oversight.
 //
 // eMule/srchybrid uses Add / GetSize / GetData / RemoveAll / RemoveAt /
-// Remove / Find / operator[], across 29 files.
+// Remove / Find / operator[] (both const and not), across 29 files.
 #pragma once
 
 #include "afx.h" // BOOL/TRUE/FALSE
@@ -35,6 +34,12 @@ public:
     int GetSize() const { return static_cast<int>(m_data.size()); }
 
     T& operator[](int nIndex) { return m_data[static_cast<size_t>(nIndex)]; }
+    // The Learn CSimpleArray page lists only the non-const subscript, but
+    // the const one is real: eMule indexes CSimpleArray members from its
+    // own const methods, and that code compiles against real ATL. Same
+    // situation as CDC::SelectObject(HGDIOBJ) -- the page is incomplete.
+    // Removing this on the page's authority cost 17 files in one round.
+    const T& operator[](int nIndex) const { return m_data[static_cast<size_t>(nIndex)]; }
 
     // const, returning a non-const pointer: that is ATL's declaration.
     T* GetData() const { return const_cast<T*>(m_data.data()); }
