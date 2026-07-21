@@ -21,6 +21,18 @@ public:
     CPropertyPage();
     explicit CPropertyPage(UINT nIDTemplate, UINT nIDCaption = 0);
     explicit CPropertyPage(LPCTSTR lpszTemplateName, UINT nIDCaption = 0);
+
+    // The raw Win32 page descriptor. eMule sets the tab label through it
+    // (`m_psp.pszTitle = m_strCaption;`), which is also why m_strCaption
+    // has to outlive the assignment -- it owns the string m_psp points at.
+#ifndef _WIN32
+    struct PROPSHEETPAGE
+    {
+        LPCTSTR pszTitle;
+    };
+#endif
+    PROPSHEETPAGE m_psp;
+
     void SetModified(BOOL bChanged = TRUE);
     virtual BOOL OnSetActive();
     // Added during the FRONTEND/GDI blind-spot pass (see
@@ -30,6 +42,13 @@ public:
     // pages, invisible to the original ".Method("/"->Method(" scan.
     virtual BOOL OnApply();
     virtual BOOL OnKillActive();
+
+protected:
+    // Protected in real MFC too -- only the derived page sets its own
+    // caption, which eMule does in every OnInitDialog.
+    CString m_strCaption;
+    CString m_strHeaderTitle;
+    CString m_strHeaderSubTitle;
 };
 
 // ---------------------------------------------------------------------
@@ -62,6 +81,18 @@ public:
     // CListViewWalkerPropertySheet hands it straight out
     // (`CPtrArray& GetPages() { return m_pages; }`).
     CPtrArray m_pages;
+
+    // The raw Win32 sheet descriptor, which eMule pokes directly to turn a
+    // sheet into a wizard (`sheet.m_psh.dwFlags |= PSH_WIZARD`). Real
+    // PROPSHEETHEADER comes from <prsht.h> via the <commctrl.h> afxwin.h
+    // already includes; off Windows only the flags field is ever touched.
+#ifndef _WIN32
+    struct PROPSHEETHEADER
+    {
+        DWORD dwFlags;
+    };
+#endif
+    PROPSHEETHEADER m_psh;
 
     virtual INT_PTR DoModal();
     virtual BOOL Create(CWnd* pParentWnd = nullptr, DWORD dwStyle = (DWORD)-1, DWORD dwExStyle = 0);

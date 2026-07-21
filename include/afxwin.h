@@ -49,6 +49,14 @@ typedef long (*AFX_THREADPROC)(void*);
 #ifdef _WIN32
 #include <windows.h>
 #include <commctrl.h> // TOOLINFO is a commctrl.h type, not windows.h
+#include <shlwapi.h>  // PathFindExtension/PathAddBackslash & co, which
+                      // eMule calls unqualified expecting MFC to have
+                      // pulled them in (real MFC's headers do)
+#include <shobjidl.h> // ITaskbarList3: CEMuleDlg holds one as a CComPtr
+                      // member, so all 81 TUs that see EmuleDlg.h need the
+                      // interface declared. Shell COM, not MFC -- eMule
+                      // never includes it itself either, it inherits it
+                      // from the MFC headers exactly like this.
 #else
 using HWND = void*;
 using HINSTANCE = void*;
@@ -144,6 +152,9 @@ public:
     virtual BOOL InitInstance();
     virtual int ExitInstance();
     virtual int Run();
+    // How a thread with m_bAutoDelete cleared is disposed of; eMule's
+    // CGDIThread/CPreviewThread override it.
+    virtual void Delete();
 };
 
 // ---------------------------------------------------------------------
@@ -168,6 +179,10 @@ public:
     BOOL WriteProfileInt(LPCTSTR lpszSection, LPCTSTR lpszEntry, int nValue);
     CString GetProfileString(LPCTSTR lpszSection, LPCTSTR lpszEntry, LPCTSTR lpszDefault = nullptr);
     virtual BOOL OnIdle(LONG lCount);
+    // The predefined system cursors (IDC_SIZEWE etc.), as opposed to
+    // LoadCursor's application resources.
+    HCURSOR LoadStandardCursor(LPCTSTR lpszCursorName) const;
+    HICON LoadStandardIcon(LPCTSTR lpszIconName) const;
 };
 
 // ---------------------------------------------------------------------
@@ -321,6 +336,9 @@ public:
     CPoint MoveTo(int x, int y);
     CPoint MoveTo(POINT point);
     COLORREF SetBkColor(COLORREF crColor);
+    COLORREF GetBkColor() const;
+    BOOL DeleteDC();
+    int GetMapMode() const;
     int SetBkMode(int nBkMode);
     BOOL CreateCompatibleDC(CDC* pDC);
     HDC GetSafeHdc();
@@ -790,4 +808,10 @@ class CDataExchange
 public:
     CWnd* m_pDlgWnd;
     BOOL m_bSaveAndValidate;
+
+    // Called by every DDX_ routine to resolve a control id to its HWND;
+    // eMule's own DDX helpers (CColorButton) call it directly.
+    HWND PrepareCtrl(int nIDC);
+    HWND PrepareEditCtrl(int nIDC);
+    void Fail();
 };

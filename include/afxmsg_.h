@@ -23,8 +23,29 @@
 // Microsoft, inferred by pattern from the afxmsg_.h source.
 #define ON_BN_CLICKED(id, memberFxn)      ON_CONTROL(/*BN_CLICKED*/ 0, id, memberFxn)
 #define ON_EN_CHANGE(id, memberFxn)       ON_CONTROL(/*EN_CHANGE*/ 0, id, memberFxn)
+#define ON_EN_KILLFOCUS(id, memberFxn)    ON_CONTROL(/*EN_KILLFOCUS*/ 0, id, memberFxn)
+#define ON_EN_SETFOCUS(id, memberFxn)     ON_CONTROL(/*EN_SETFOCUS*/ 0, id, memberFxn)
+#define ON_EN_UPDATE(id, memberFxn)       ON_CONTROL(/*EN_UPDATE*/ 0, id, memberFxn)
 #define ON_CBN_SELCHANGE(id, memberFxn)   ON_CONTROL(/*CBN_SELCHANGE*/ 0, id, memberFxn)
+#define ON_CBN_SELENDOK(id, memberFxn)    ON_CONTROL(/*CBN_SELENDOK*/ 0, id, memberFxn)
 #define ON_STN_CLICKED(id, memberFxn)     ON_CONTROL(/*STN_CLICKED*/ 0, id, memberFxn)
+#define ON_STN_DBLCLK(id, memberFxn)      ON_CONTROL(/*STN_DBLCLK*/ 0, id, memberFxn)
+
+// Ranges: one handler for a contiguous block of command ids / notifications.
+#define ON_COMMAND_RANGE(id, idLast, memberFxn)
+#define ON_NOTIFY_EX(wNotifyCode, id, memberFxn)
+#define ON_NOTIFY_EX_RANGE(wNotifyCode, id, idLast, memberFxn)
+
+// Reflection: a control handles its own notification instead of letting it
+// go to the parent, which is how eMule's control subclasses (CListCtrlX,
+// CEditDelayed, ...) intercept messages meant for their owner. The _EX
+// forms let the handler return a BOOL to say whether the parent should see
+// the message too; unlike the macros above, the reflected forms take no id
+// (the sender is the control itself).
+#define ON_CONTROL_REFLECT(wNotifyCode, memberFxn)
+#define ON_CONTROL_REFLECT_EX(wNotifyCode, memberFxn)
+#define ON_NOTIFY_REFLECT(wNotifyCode, memberFxn)
+#define ON_NOTIFY_REFLECT_EX(wNotifyCode, memberFxn)
 
 // ON_UPDATE_COMMAND_UI is intentionally NOT declared here: it is not part
 // of the real-world usage this subset targets. Note: Microsoft Learn

@@ -113,6 +113,14 @@ public:
     CRect(POINT point, SIZE size);
     CRect(POINT topLeft, POINT bottomRight);
 
+    // Real MFC's CRect converts implicitly to the raw pointer types, which
+    // is what lets eMule pass a CRect straight into an API expecting an
+    // LPRECT (`GetClientRect(rClient)`). Without these the call silently
+    // falls through to the global ::GetClientRect(HWND, LPRECT) instead,
+    // and fails there.
+    operator LPRECT() noexcept { return this; }
+    operator LPCRECT() const noexcept { return this; }
+
     int Height() const noexcept;
     int Width() const noexcept;
     BOOL PtInRect(POINT point) const noexcept;

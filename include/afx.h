@@ -410,6 +410,17 @@ public:
     void Append(PCXSTR pszSrc, int nLength) { if (pszSrc && nLength > 0) m_data.append(pszSrc, static_cast<size_t>(nLength)); }
     void AppendChar(XCHAR ch) { m_data += ch; }
 
+    // Windows-only interop, declaration-only like the rest of the frontend
+    // surface: both hand off to Win32 (LoadStringW / SysAllocString) and
+    // have no portable meaning. eMule loads its UI strings from a language
+    // DLL, hence the explicit-module and explicit-language overloads.
+#ifdef _WIN32
+    BOOL LoadString(UINT nID);
+    BOOL LoadString(HINSTANCE hInstance, UINT nID);
+    BOOL LoadString(HINSTANCE hInstance, UINT nID, WORD wLanguageID);
+    BSTR AllocSysString() const;
+#endif
+
     int Compare(PCXSTR psz) const { return m_data.compare(psz); }
     int CompareNoCase(PCXSTR psz) const
     {
@@ -736,7 +747,14 @@ public:
     {
         modeRead = 0x0000, modeWrite = 0x0001, modeReadWrite = 0x0002,
         modeCreate = 0x1000, modeNoTruncate = 0x2000,
-        shareExclusive = 0x0010, shareDenyNone = 0x0040,
+        shareCompat = 0x0000, shareExclusive = 0x0010,
+        shareDenyWrite = 0x0020, shareDenyRead = 0x0030, shareDenyNone = 0x0040,
+        modeNoInherit = 0x0080,
+        // Cache hints, passed by eMule when it streams a file end to end.
+        // Values are real MFC's, which is why they sit far above the mode
+        // flags rather than continuing the sequence.
+        osNoBuffer = 0x10000, osWriteThrough = 0x20000,
+        osRandomAccess = 0x40000, osSequentialScan = 0x80000,
         typeBinary = 0x0000, typeText = 0x4000
     };
     enum SeekPosition { begin = 0, current = 1, end = 2 };

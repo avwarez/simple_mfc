@@ -43,6 +43,12 @@ public:
     virtual int Receive(void* lpBuf, int nBufLen, int nFlags = 0);
     int SendTo(const void* lpBuf, int nBufLen, UINT nHostPort,
                LPCTSTR lpszHostAddress = nullptr, int nFlags = 0);
+    // eMule's UDP sockets take the raw-sockaddr form so they can read the
+    // peer address without going through a CString round-trip.
+    virtual int ReceiveFrom(void* lpBuf, int nBufLen, SOCKADDR* lpSockAddr,
+                             int* lpSockAddrLen, int nFlags = 0);
+    virtual int ReceiveFrom(void* lpBuf, int nBufLen, CString& rSocketAddress,
+                             UINT& rSocketPort, int nFlags = 0);
     BOOL Listen(int nConnectionBacklog = 5);
     virtual BOOL Accept(CAsyncSocket& rConnectedSocket,
                          SOCKADDR* lpSockAddr = nullptr, int* lpSockAddrLen = nullptr);

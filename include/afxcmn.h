@@ -260,6 +260,15 @@ public:
     void ReplaceSel(LPCTSTR lpszNewText, BOOL bCanUndo = FALSE);
     void GetSel(CHARRANGE& cr) const;
     void GetSel(long& nStartChar, long& nEndChar) const;
+    // Clipboard/undo, which CHTRichEditCtrl exposes to its own callers
+    // (`void CopySelectedItems() { Copy(); }`).
+    void Copy();
+    void Cut();
+    void Paste();
+    BOOL Undo();
+    BOOL CanUndo() const;
+    void Clear();
+    void EmptyUndoBuffer();
 };
 
 // ---------------------------------------------------------------------
