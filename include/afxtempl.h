@@ -168,25 +168,35 @@ public:
     const CPair* PGetFirstAssoc() const
     {
         if (m_map.empty()) return nullptr;
-        m_scratch = std::make_unique<CPair>(CPair{m_map.begin()->first, m_map.begin()->second});
+        // Built with new, not make_unique: CPair is an aggregate with a
+        // const key, so it has no constructor for make_unique to forward
+        // its argument to.
+        m_scratch.reset(new CPair{m_map.begin()->first, m_map.begin()->second});
         return m_scratch.get();
     }
     const CPair* PGetNextAssoc(const CPair* pAssocRet) const
     {
         auto it = m_map.find(pAssocRet->key);
         if (it == m_map.end() || ++it == m_map.end()) return nullptr;
-        m_scratch = std::make_unique<CPair>(CPair{it->first, it->second});
+        m_scratch.reset(new CPair{it->first, it->second});
         return m_scratch.get();
     }
     const CPair* PLookup(ARG_KEY key) const
     {
         auto it = m_map.find(key);
         if (it == m_map.end()) return nullptr;
-        m_scratch = std::make_unique<CPair>(CPair{it->first, it->second});
+        m_scratch.reset(new CPair{it->first, it->second});
         return m_scratch.get();
     }
+    // The non-const forms real MFC also declares; eMule walks a map it
+    // holds by value and assigns the result to a plain CPair*.
+    CPair* PGetFirstAssoc() { return const_cast<CPair*>(AsConst().PGetFirstAssoc()); }
+    CPair* PGetNextAssoc(const CPair* pAssocRet) { return const_cast<CPair*>(AsConst().PGetNextAssoc(pAssocRet)); }
+    CPair* PLookup(ARG_KEY key) { return const_cast<CPair*>(AsConst().PLookup(key)); }
 
 private:
+    const CMap& AsConst() const { return *this; }
+
     MapT m_map;
     mutable std::unique_ptr<CPair> m_scratch;
 };

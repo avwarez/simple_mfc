@@ -76,6 +76,10 @@ public:
     CPoint operator+(SIZE size) const noexcept;
     CPoint operator+(POINT point) const noexcept;
     class CRect operator+(const RECT* lpRect) const noexcept;
+    CPoint operator-(SIZE size) const noexcept;
+    class CSize operator-(POINT point) const noexcept;
+    class CRect operator-(const RECT* lpRect) const noexcept;
+    CPoint operator-() const noexcept;
 };
 
 // ---------------------------------------------------------------------
@@ -95,6 +99,7 @@ public:
     void operator-=(SIZE size) noexcept;
     CSize operator+(SIZE size) const noexcept;
     CSize operator-(SIZE size) const noexcept;
+    CSize operator-() const noexcept;
     CPoint operator+(POINT point) const noexcept;
     CPoint operator-(POINT point) const noexcept;
     CRect operator+(const RECT* lpRect) const noexcept;
@@ -165,4 +170,12 @@ public:
     void operator-=(LPCRECT lpRect) noexcept;
     void operator&=(const RECT& rect) noexcept;
     void operator|=(const RECT& rect) noexcept;
+    CRect operator+(POINT point) const noexcept;
+    CRect operator+(SIZE size) const noexcept;
+    CRect operator+(LPCRECT lpRect) const noexcept;
+    CRect operator-(POINT point) const noexcept;
+    CRect operator-(SIZE size) const noexcept;
+    CRect operator-(LPCRECT lpRect) const noexcept;
+    CRect operator&(const RECT& rect2) const noexcept;
+    CRect operator|(const RECT& rect2) const noexcept;
 };

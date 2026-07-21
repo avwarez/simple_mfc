@@ -450,6 +450,46 @@ BOOL CFileFind::GetLastWriteTime(CTime& refTime) const
 }
 
 BOOL CFileFind::GetCreationTime(CTime& /*refTime*/) const { return FALSE; }
+
+// The FILETIME forms. FILETIME is a Windows type, so off Windows these
+// have nothing to fill in and report failure, exactly like the creation/
+// access times above.
+#ifdef _WIN32
+BOOL CFileFind::GetLastWriteTime(FILETIME* pTimeStamp) const
+{
+    if (pTimeStamp == nullptr)
+        return FALSE;
+    WIN32_FILE_ATTRIBUTE_DATA data{};
+    if (!::GetFileAttributesExW(m_current.path().wstring().c_str(), GetFileExInfoStandard, &data))
+        return FALSE;
+    *pTimeStamp = data.ftLastWriteTime;
+    return TRUE;
+}
+BOOL CFileFind::GetCreationTime(FILETIME* pTimeStamp) const
+{
+    if (pTimeStamp == nullptr)
+        return FALSE;
+    WIN32_FILE_ATTRIBUTE_DATA data{};
+    if (!::GetFileAttributesExW(m_current.path().wstring().c_str(), GetFileExInfoStandard, &data))
+        return FALSE;
+    *pTimeStamp = data.ftCreationTime;
+    return TRUE;
+}
+BOOL CFileFind::GetLastAccessTime(FILETIME* pTimeStamp) const
+{
+    if (pTimeStamp == nullptr)
+        return FALSE;
+    WIN32_FILE_ATTRIBUTE_DATA data{};
+    if (!::GetFileAttributesExW(m_current.path().wstring().c_str(), GetFileExInfoStandard, &data))
+        return FALSE;
+    *pTimeStamp = data.ftLastAccessTime;
+    return TRUE;
+}
+#else
+BOOL CFileFind::GetLastWriteTime(FILETIME*) const { return FALSE; }
+BOOL CFileFind::GetCreationTime(FILETIME*) const { return FALSE; }
+BOOL CFileFind::GetLastAccessTime(FILETIME*) const { return FALSE; }
+#endif
 BOOL CFileFind::GetLastAccessTime(CTime& /*refTime*/) const { return FALSE; }
 
 BOOL CFileFind::IsTemporary() const

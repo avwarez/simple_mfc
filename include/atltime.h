@@ -16,7 +16,7 @@ class CTimeSpan
 {
 public:
     CTimeSpan() noexcept : m_span(0) {}
-    explicit CTimeSpan(long long timeSpan) noexcept : m_span(timeSpan) {}
+    CTimeSpan(long long timeSpan) noexcept : m_span(timeSpan) {}
     CTimeSpan(long lDays, int nHours, int nMins, int nSecs) noexcept
         : m_span(static_cast<long long>(lDays) * 86400 + nHours * 3600 + nMins * 60 + nSecs) {}
 
@@ -50,7 +50,7 @@ class CTime
 {
 public:
     CTime() noexcept : m_time(0) {}
-    explicit CTime(__time64_t time) noexcept : m_time(time) {}
+    CTime(__time64_t time) noexcept : m_time(time) {}
     CTime(int nYear, int nMonth, int nDay, int nHour, int nMin, int nSec, int nDST = -1);
 
     static CTime GetCurrentTime() noexcept { return CTime(static_cast<__time64_t>(std::time(nullptr))); }
@@ -81,12 +81,15 @@ public:
 
     CTimeSpan operator-(const CTime& o) const { return CTimeSpan(m_time - o.m_time); }
     CTime operator+(const CTimeSpan& s) const { return CTime(m_time + s.GetTotalSeconds()); }
-    bool operator<(const CTime& o) const noexcept { return m_time < o.m_time; }
-    bool operator==(const CTime& o) const noexcept { return m_time == o.m_time; }
-    bool operator!=(const CTime& o) const noexcept { return m_time != o.m_time; }
-    bool operator>(const CTime& o) const noexcept { return m_time > o.m_time; }
-    bool operator<=(const CTime& o) const noexcept { return m_time <= o.m_time; }
-    bool operator>=(const CTime& o) const noexcept { return m_time >= o.m_time; }
+    // By value, as real MFC declares them -- which also lets a plain 0
+    // convert through the (non-explicit) __time64_t constructor above,
+    // the form eMule uses ("if (lastSeenComplete == 0)").
+    bool operator<(CTime o) const noexcept { return m_time < o.m_time; }
+    bool operator==(CTime o) const noexcept { return m_time == o.m_time; }
+    bool operator!=(CTime o) const noexcept { return m_time != o.m_time; }
+    bool operator>(CTime o) const noexcept { return m_time > o.m_time; }
+    bool operator<=(CTime o) const noexcept { return m_time <= o.m_time; }
+    bool operator>=(CTime o) const noexcept { return m_time >= o.m_time; }
 
 private:
     // std::localtime (standard C++, <ctime>) uses an internal static

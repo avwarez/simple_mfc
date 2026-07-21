@@ -14,6 +14,14 @@
 #include "afx.h"
 #include "atltypes.h"
 #include <cstddef> // offsetof, used by METHOD_PROLOGUE below
+
+// ---------------------------------------------------------------------
+// afx_msg is real MFC's marker keyword on every message-handler declaration
+// (`afx_msg void OnPaint();`). It expands to nothing -- but it MUST be defined,
+// otherwise `afx_msg void Foo();` parses as two adjacent declarations and every
+// handler line becomes a C2144 syntax error. eMule uses it 816 times, so its
+// absence alone was cascading through 150+ files.
+#define afx_msg
 // Real MFC makes the template collections (CArray/CList/CMap and the
 // CTypedPtr* wrappers) and the concrete string maps available transitively
 // through the standard <afxwin.h> include chain; eMule/srchybrid relies on
@@ -125,8 +133,17 @@ struct tagMSG;
 using MSG = tagMSG;
 using LPMSG = MSG*;
 #endif
+// The owner-draw callback structures. Bare-tag forward declarations, so
+// they merge with the real winuser.h definitions rather than conflicting
+// (same rule as tagMSG above).
 struct tagMEASUREITEMSTRUCT;
 using LPMEASUREITEMSTRUCT = tagMEASUREITEMSTRUCT*;
+struct tagDRAWITEMSTRUCT;
+using LPDRAWITEMSTRUCT = tagDRAWITEMSTRUCT*;
+struct tagCOMPAREITEMSTRUCT;
+using LPCOMPAREITEMSTRUCT = tagCOMPAREITEMSTRUCT*;
+struct tagDELETEITEMSTRUCT;
+using LPDELETEITEMSTRUCT = tagDELETEITEMSTRUCT*;
 class CScrollBar; // real header afxwin.h too; only used here as a pointer parameter
 
 // Real MFC's CWnd-derived classes intentionally hide the base Create()
@@ -185,6 +202,12 @@ public:
 // ---------------------------------------------------------------------
 class CWinThread : public CCmdTarget
 {
+public:
+    // Not on the Learn CWinThread page (which lists only m_bAutoDelete,
+    // m_hThread, m_nThreadID, m_pActiveWnd, m_pMainWnd), but real: eMule
+    // clears it directly ("m_pThread->m_pThreadParams = NULL;").
+    LPVOID m_pThreadParams = nullptr;
+
 public:
     BOOL m_bAutoDelete;
     void* m_hThread;
@@ -416,6 +439,11 @@ public:
     // is the odd one out and returns a region-type code. CPalette goes
     // through SelectPalette in real MFC, so it has no overload here.
     CGdiObject* SelectObject(CGdiObject* pObject);
+    // Not on the Learn reference page, which lists only the six
+    // CGdiObject-typed forms, but real: eMule assigns this one's result
+    // to an HGDIOBJ and passes a CBitmap *object* (converted through
+    // CGdiObject::operator HGDIOBJ) as the argument.
+    HGDIOBJ SelectObject(HGDIOBJ hObject);
     virtual CFont* SelectObject(CFont* pFont);
     CBrush* SelectObject(CBrush* pBrush);
     CPen* SelectObject(CPen* pPen);
@@ -773,6 +801,12 @@ public:
     virtual void OnMenuSelect(UINT nItemID, UINT nFlags, HMENU hSysMenu);
     virtual void OnInitMenuPopup(CMenu* pPopupMenu, UINT nIndex, BOOL bSysMenu);
     virtual void OnCancelMode();
+    // afx_msg, not virtual: real MFC dispatches these through the message
+    // map, and Learn declares them exactly this way.
+    afx_msg void OnMeasureItem(int nIDCtl, LPMEASUREITEMSTRUCT lpMeasureItemStruct);
+    afx_msg void OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct);
+    afx_msg int OnCompareItem(int nIDCtl, LPCOMPAREITEMSTRUCT lpCompareItemStruct);
+    afx_msg void OnDeleteItem(int nIDCtl, LPDELETEITEMSTRUCT lpDeleteItemStruct);
     virtual void OnNcPaint();
     virtual BOOL OnNcActivate(BOOL bActive);
     virtual LRESULT OnNcHitTest(CPoint point);
@@ -1051,13 +1085,6 @@ public:
 // are NOT declared here: they really belong to the afxmsg_.h header,
 // which afxwin.h includes below (as in real MFC: a single
 // #include "afxwin.h" also exposes the ON_* macros).
-// ---------------------------------------------------------------------
-// afx_msg is real MFC's marker keyword on every message-handler declaration
-// (`afx_msg void OnPaint();`). It expands to nothing -- but it MUST be defined,
-// otherwise `afx_msg void Foo();` parses as two adjacent declarations and every
-// handler line becomes a C2144 syntax error. eMule uses it 816 times, so its
-// absence alone was cascading through 150+ files.
-#define afx_msg
 #define DECLARE_MESSAGE_MAP()
 #define BEGIN_MESSAGE_MAP(theClass, baseClass)
 #define END_MESSAGE_MAP()

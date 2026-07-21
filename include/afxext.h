@@ -111,6 +111,9 @@ public:
     // The client rectangle minus this bar's borders.
     virtual void CalcInsideRect(CRect& rect, BOOL bHorz) const;
     CFrameWnd* GetDockingFrame() const;
+    void SetBorders(int cxLeft = 0, int cyTop = 0, int cxRight = 0, int cyBottom = 0);
+    void SetBorders(LPCRECT lpRect);
+    CRect GetBorders() const;
     DWORD GetBarStyle();
     void SetBarStyle(DWORD dwStyle);
     virtual CSize CalcFixedLayout(BOOL bStretch, BOOL bHorz);

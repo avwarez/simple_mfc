@@ -394,9 +394,15 @@ public:
     explicit CStringT(XCHAR ch, int nRepeat = 1) : m_data(static_cast<size_t>(nRepeat < 0 ? 0 : nRepeat), ch) {}
     // Cross-character (YCHAR) sources convert; explicit, matching real ATL's
     // CSTRING_EXPLICIT so a char/wchar_t mismatch is never silently narrowed.
-    explicit CStringT(PCYSTR pszSrc) { if (pszSrc) m_data = Convert(pszSrc, std::char_traits<YCHAR>::length(pszSrc)); }
-    explicit CStringT(PCYSTR pch, int nLength) { if (pch && nLength > 0) m_data = Convert(pch, static_cast<size_t>(nLength)); }
-    explicit CStringT(const CStringT<YCHAR>& strSrc) { m_data = Convert(strSrc.GetString(), static_cast<size_t>(strSrc.GetLength())); }
+    // NOT explicit, matching real ATL: it marks these CSTRING_EXPLICIT,
+    // which expands to nothing unless _CSTRING_EXPLICIT_CONSTRUCTORS is
+    // defined -- and eMule does not define it. That implicit conversion is
+    // what makes comparing a wide CString against a narrow literal work
+    // ("strReqDir == OP_INCOMPLETE_SHARED_FILES", a char[] in Opcodes.h),
+    // along with the +=/= narrow forms.
+    CStringT(PCYSTR pszSrc) { if (pszSrc) m_data = Convert(pszSrc, std::char_traits<YCHAR>::length(pszSrc)); }
+    CStringT(PCYSTR pch, int nLength) { if (pch && nLength > 0) m_data = Convert(pch, static_cast<size_t>(nLength)); }
+    CStringT(const CStringT<YCHAR>& strSrc) { m_data = Convert(strSrc.GetString(), static_cast<size_t>(strSrc.GetLength())); }
 
     CStringT& operator=(const CStringT&) = default;
     CStringT& operator=(CStringT&&) noexcept = default;
@@ -791,11 +797,20 @@ public:
 // definitions still end up in dependency order.
 class CTime;
 struct CFileStatus;
+#ifndef _WIN32
+struct FILETIME;
+#endif
 
 class CFile : public CObject
 {
     DECLARE_DYNAMIC(CFile)
 public:
+    // "Usually contains the operating-system file handle" (Learn). Public
+    // in real MFC, with a conversion operator alongside it, which is how
+    // eMule hands a CFile straight to a Win32 call.
+    HANDLE m_hFile = nullptr;
+    operator HANDLE() const { return m_hFile; }
+
     enum OpenFlags
     {
         modeRead = 0x0000, modeWrite = 0x0001, modeReadWrite = 0x0002,
@@ -944,6 +959,11 @@ public:
     virtual BOOL GetLastWriteTime(CTime& refTime) const;
     virtual BOOL GetCreationTime(CTime& refTime) const;
     virtual BOOL GetLastAccessTime(CTime& refTime) const;
+    // Real MFC offers each timestamp in raw FILETIME form as well, which
+    // is what eMule uses when it only needs to compare two of them.
+    virtual BOOL GetLastWriteTime(FILETIME* pTimeStamp) const;
+    virtual BOOL GetCreationTime(FILETIME* pTimeStamp) const;
+    virtual BOOL GetLastAccessTime(FILETIME* pTimeStamp) const;
     BOOL IsTemporary() const;
     BOOL IsArchived() const;
     BOOL IsCompressed() const;
