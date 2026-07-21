@@ -127,6 +127,13 @@ class CMap : public CObject
 public:
     struct CPair
     {
+        // The constructor is what makes this work with eMule's key types:
+        // aggregate initialisation ({k, v}) copy-initialises each member,
+        // and CCKey (MapKey.h) declares its copy constructor explicit,
+        // which forbids exactly that. Direct-initialising in a member
+        // initialiser list is allowed and does the same thing.
+        CPair(const KEY& k, const VALUE& v) : key(k), value(v) {}
+
         const KEY key;
         VALUE value;
     };
@@ -171,21 +178,21 @@ public:
         // Built with new, not make_unique: CPair is an aggregate with a
         // const key, so it has no constructor for make_unique to forward
         // its argument to.
-        m_scratch.reset(new CPair{m_map.begin()->first, m_map.begin()->second});
+        m_scratch.reset(new CPair(m_map.begin()->first, m_map.begin()->second));
         return m_scratch.get();
     }
     const CPair* PGetNextAssoc(const CPair* pAssocRet) const
     {
         auto it = m_map.find(pAssocRet->key);
         if (it == m_map.end() || ++it == m_map.end()) return nullptr;
-        m_scratch.reset(new CPair{it->first, it->second});
+        m_scratch.reset(new CPair(it->first, it->second));
         return m_scratch.get();
     }
     const CPair* PLookup(ARG_KEY key) const
     {
         auto it = m_map.find(key);
         if (it == m_map.end()) return nullptr;
-        m_scratch.reset(new CPair{it->first, it->second});
+        m_scratch.reset(new CPair(it->first, it->second));
         return m_scratch.get();
     }
     // The non-const forms real MFC also declares; eMule walks a map it
