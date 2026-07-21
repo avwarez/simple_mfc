@@ -58,6 +58,9 @@ typedef long (*AFX_THREADPROC)(void*);
                       // never includes it itself either, it inherits it
                       // from the MFC headers exactly like this.
 #else
+// __stdcall on Windows, where it is part of the callback's type; nothing
+// to express off it.
+#define CALLBACK
 using HWND = void*;
 using HINSTANCE = void*;
 using HDC = void*;
@@ -310,6 +313,12 @@ public:
 class CDC : public CObject
 {
 public:
+    // The wrapped device contexts, public in real MFC. CMemDC copies them
+    // straight across (`m_hDC = pDC->m_hDC;`) and clears them on release,
+    // so both have to be assignable members rather than accessors.
+    HDC m_hDC = nullptr;
+    HDC m_hAttribDC = nullptr;
+
     static CDC* FromHandle(HDC hDC);
 
     // Each overload returns the *previously selected object of the same
@@ -339,6 +348,11 @@ public:
     COLORREF GetBkColor() const;
     BOOL DeleteDC();
     int GetMapMode() const;
+    // The mapping-mode extents/origins CMemDC mirrors from the DC it wraps.
+    CSize GetWindowExt() const;
+    CSize GetViewportExt() const;
+    CPoint GetWindowOrg() const;
+    CPoint GetViewportOrg() const;
     int SetBkMode(int nBkMode);
     BOOL CreateCompatibleDC(CDC* pDC);
     HDC GetSafeHdc();
@@ -447,7 +461,24 @@ public:
     void GetWindowRect(LPRECT lpRect) const;
     virtual BOOL Create(LPCTSTR lpszClassName, LPCTSTR lpszWindowName, DWORD dwStyle,
                          const RECT& rect, CWnd* pParentWnd, UINT nID, CCreateContext* pContext = nullptr);
+    // The window handle, a public member in real MFC. eMule reads it
+    // constantly, both as a validity test and to hand the raw handle to
+    // Win32 calls.
+    HWND m_hWnd = nullptr;
+
+    UINT_PTR SetTimer(UINT_PTR nIDEvent, UINT nElapse,
+                       void(CALLBACK* lpfnTimer)(HWND, UINT, UINT_PTR, DWORD) = nullptr);
+    BOOL KillTimer(UINT_PTR nIDEvent);
+    UINT IsDlgButtonChecked(int nIDButton) const;
+
     LRESULT SendMessage(UINT message, WPARAM wParam = 0, LPARAM lParam = 0);
+    // Addresses a child control by id instead of by CWnd. eMule relies on
+    // the trailing defaults (`SendDlgItemMessage(IDC_IP, EM_SETREADONLY,
+    // TRUE)` passes no lParam).
+    LRESULT SendDlgItemMessage(int nID, UINT message, WPARAM wParam = 0, LPARAM lParam = 0);
+    // The message being handled right now; static because it is thread
+    // state, not window state.
+    static const MSG* GetCurrentMessage();
     void SetWindowText(LPCTSTR lpszString);
     void MoveWindow(int x, int y, int nWidth, int nHeight, BOOL bRepaint = TRUE);
     void MoveWindow(LPCRECT lpRect, BOOL bRepaint = TRUE);
@@ -515,7 +546,9 @@ public:
     virtual LRESULT WindowProc(UINT message, WPARAM wParam, LPARAM lParam);
     virtual LRESULT DefWindowProc(UINT message, WPARAM wParam, LPARAM lParam);
     virtual void DoDataExchange(CDataExchange* pDX);
-    virtual int OnToolHitTest(CPoint point, TOOLINFO* pTI) const;
+    // INT_PTR, not int: eMule's CMuleStatusBarCtrl overrides this and a
+    // narrower return type is not a legal override (C2555).
+    virtual INT_PTR OnToolHitTest(CPoint point, TOOLINFO* pTI) const;
     virtual BOOL OnWndMsg(UINT message, WPARAM wParam, LPARAM lParam, LRESULT* pResult);
     virtual BOOL OnChildNotify(UINT message, WPARAM wParam, LPARAM lParam, LRESULT* pResult);
     virtual BOOL OnNotify(WPARAM wParam, LPARAM lParam, LRESULT* pResult);
@@ -675,6 +708,9 @@ public:
     int AddString(LPCTSTR lpszString);
     DWORD_PTR GetItemData(int nIndex) const;
     int SetItemData(int nIndex, DWORD_PTR dwItemData);
+    // The same per-item slot as GetItemData, typed as a pointer.
+    void* GetItemDataPtr(int nIndex) const;
+    int SetItemDataPtr(int nIndex, void* pData);
     void ResetContent();
     int GetLBText(int nIndex, LPTSTR lpszText) const;
     void GetLBText(int nIndex, CString& rString) const;
@@ -797,6 +833,23 @@ int AfxMessageBox(LPCTSTR lpszText, UINT nType = 0, UINT nIDHelp = 0);
 BOOL AfxIsValidString(LPCTSTR lpsz, int nLength = -1);
 BOOL AfxIsValidString(const char* lpsz, int nLength = -1);
 BOOL AfxIsValidAddress(const void* lp, UINT nBytes, BOOL bReadWrite = TRUE);
+// Registers a window class on the fly, for windows that need a cursor or
+// background brush of their own (eMule's CColourPopup, CDownloadQueue).
+LPCTSTR AFXAPI AfxRegisterWndClass(UINT nClassStyle, HCURSOR hCursor = nullptr,
+                                    HBRUSH hbrBackground = nullptr, HICON hIcon = nullptr);
+
+// ---------------------------------------------------------------------
+// CWaitCursor — shows the hourglass for as long as the object is alive;
+// eMule declares one at the top of its slow operations and lets scope
+// exit restore the cursor. No base class in real MFC either.
+// ---------------------------------------------------------------------
+class CWaitCursor
+{
+public:
+    CWaitCursor();
+    ~CWaitCursor();
+    void Restore();
+};
 
 // ---------------------------------------------------------------------
 // CDataExchange — object passed to DoDataExchange (header afxwin.h per
@@ -815,3 +868,8 @@ public:
     HWND PrepareEditCtrl(int nIDC);
     void Fail();
 };
+
+// Real MFC's afxwin.h ends by pulling in the DDX_*/DDV_* routines, which
+// is why applications only ever include afxwin.h. Placed last because
+// afxdd_.h takes CDataExchange (declared just above) by pointer.
+#include "afxdd_.h"

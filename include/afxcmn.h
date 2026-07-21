@@ -229,6 +229,9 @@ public:
     BOOL Update(int nItem);
     int FindItem(LVFINDINFO* pFindInfo, int nStart = -1) const;
     UINT GetSelectedCount() const;
+    // Starts the POSITION-based walk over the selection that the already
+    // declared GetNextSelectedItem continues.
+    POSITION GetFirstSelectedItemPosition() const;
     int HitTest(LVHITTESTINFO* pHitTestInfo) const;
     int HitTest(CPoint pt, UINT* pFlags = nullptr) const;
     BOOL EnsureVisible(int nItem, BOOL bPartialOK);
@@ -310,6 +313,8 @@ public:
     UINT CommandToIndex(UINT nID) const;
     BOOL EnableButton(int nID, BOOL bEnable = TRUE);
     BOOL GetButton(int nIndex, LPTBBUTTON lpButton) const;
+    CImageList* GetImageList() const;
+    CImageList* SetImageList(CImageList* pImageList);
     // Added during the FRONTEND/GDI blind-spot pass (see
     // ../../mfc_scan_srchybrid.md addendum): both are called via
     // qualified super-call in a CToolBarCtrl-derived class.

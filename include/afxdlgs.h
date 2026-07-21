@@ -99,6 +99,8 @@ public:
     void AddPage(CPropertyPage* pPage);
     void SetTitle(LPCTSTR lpszText, UINT nStyle = 0);
     int GetPageIndex(CPropertyPage* pPage);
+    CPropertyPage* GetPage(int nPage) const;
+    int GetPageCount() const;
     CTabCtrl* GetTabControl() const;
     BOOL SetActivePage(int nPage);
     BOOL SetActivePage(CPropertyPage* pPage);

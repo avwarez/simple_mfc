@@ -821,6 +821,12 @@ public:
     ULONGLONG GetLength() const override { return m_buffer.size(); }
     void SetLength(ULONGLONG dwNewLen) override { m_buffer.resize(static_cast<size_t>(dwNewLen)); }
     ULONGLONG GetPosition() const override { return m_pos; }
+    // Hands the memory buffer over to the caller, who becomes responsible
+    // for free()ing it (eMule does exactly that in CEncryptedStreamSocket).
+    // Declaration-only: the vector-backed storage above has no detachable
+    // malloc'd block to give away, and the compile-check never links.
+    BYTE* Detach();
+    void Attach(BYTE* lpBuffer, UINT nBufferSize, UINT nGrowBytes = 0);
 
 protected:
     // Real MFC's protected data members. eMule's CSafeMemFile reads m_lpBuffer
