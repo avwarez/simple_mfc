@@ -9,6 +9,7 @@
 #include "afxwin.h"
 
 class CArchive; // real header afxx.h family; not implemented (see afx.h), only used here as a pointer
+class CHeaderCtrl; // defined below; CListCtrl::GetHeaderCtrl returns it
 
 // ---------------------------------------------------------------------
 // Win32 primitive type stand-ins needed by the signatures below. Most
@@ -84,6 +85,7 @@ constexpr int LVCFMT_LEFT = 0;
 struct CHARFORMAT;
 struct CHARFORMAT2;
 struct CHARRANGE;
+struct EDITSTREAM;
 #endif
 
 // ---------------------------------------------------------------------
@@ -163,6 +165,9 @@ class CTreeCtrl : public CWnd
 public:
     // Checkbox state, which is really item state bits; eMule's directory
     // tree toggles them (`SetCheck(hItem, !GetCheck(hItem))`).
+    HTREEITEM GetFirstVisibleItem() const;
+    COLORREF SetBkColor(COLORREF clr);
+    COLORREF GetBkColor() const;
     BOOL GetCheck(HTREEITEM hItem) const;
     BOOL SetCheck(HTREEITEM hItem, BOOL fCheck = TRUE);
 
@@ -241,6 +246,13 @@ public:
     // Starts the POSITION-based walk over the selection that the already
     // declared GetNextSelectedItem continues.
     POSITION GetFirstSelectedItemPosition() const;
+    CHeaderCtrl* GetHeaderCtrl() const;
+    BOOL SetItemCount(int nItems);
+    BOOL GetSubItemRect(int iItem, int iSubItem, int nArea, CRect& ref) const;
+    // The long form real MFC offers alongside the LVITEM one; eMule uses
+    // it to set text, image, state and indent in a single call.
+    BOOL SetItem(int nItem, int nSubItem, UINT nMask, LPCTSTR lpszItem, int nImage,
+                 UINT nState, UINT nStateMask, LPARAM lParam, int nIndent);
     int GetSelectionMark() const;
     int SetSelectionMark(int iIndex);
     int HitTest(LVHITTESTINFO* pHitTestInfo) const;
@@ -267,6 +279,11 @@ public:
     void SetSel(long nStartChar, long nEndChar);
     void SetSel(CHARRANGE& cr);
     DWORD SetEventMask(DWORD dwEventMask);
+    DWORD GetEventMask() const;
+    BOOL SetAutoURLDetect(BOOL bEnable = TRUE);
+    UINT GetLimitText() const;
+    long StreamOut(int nFormat, EDITSTREAM& es);
+    long StreamIn(int nFormat, EDITSTREAM& es);
     COLORREF SetBackgroundColor(BOOL bSysColor, COLORREF cr);
     void LimitText(long nChars = 0);
     DWORD GetSelectionCharFormat(CHARFORMAT& cf) const;
@@ -293,6 +310,9 @@ class CTabCtrl : public CWnd
 public:
     CImageList* SetImageList(CImageList* pImageList);
     CImageList* GetImageList() const;
+    void SetPadding(CSize size);
+    BOOL GetItem(int nItem, TCITEM* pTabCtrlItem) const;
+    BOOL SetItem(int nItem, TCITEM* pTabCtrlItem);
     // Doc: "6 overload, il più semplice: ..." — only this simplest one
     // was captured with a full signature; the other 5 are not declared,
     // except the TCITEM* overload below (added: FRONTEND/GDI blind-spot
@@ -328,6 +348,11 @@ public:
     BOOL GetButton(int nIndex, LPTBBUTTON lpButton) const;
     CImageList* GetImageList() const;
     CImageList* SetImageList(CImageList* pImageList);
+    BOOL AddButtons(int nNumButtons, LPTBBUTTON lpButtons);
+    BOOL InsertButton(int nIndex, LPTBBUTTON lpButton);
+    BOOL DeleteButton(int nIndex);
+    DWORD SetExtendedStyle(DWORD dwExStyle);
+    DWORD GetExtendedStyle() const;
     // Added during the FRONTEND/GDI blind-spot pass (see
     // ../../mfc_scan_srchybrid.md addendum): both are called via
     // qualified super-call in a CToolBarCtrl-derived class.

@@ -20,3 +20,49 @@ CString CTime::Format(const wchar_t* pszFormat) const
     size_t n = std::wcsftime(buf, sizeof(buf) / sizeof(buf[0]), pszFormat, &t);
     return CString(n > 0 ? buf : L"");
 }
+
+CString CTimeSpan::Format(const wchar_t* pszFormat) const
+{
+    // A span is a duration, not a point in time, so wcsftime is not
+    // applicable: %H must stay within 0-23 with the overflow carried by
+    // %D, and a negative span formats from its magnitude.
+    long long span = m_span < 0 ? -m_span : m_span;
+    CString result;
+    for (const wchar_t* p = pszFormat; p && *p; ++p) {
+        if (*p != L'%') {
+            result += *p;
+            continue;
+        }
+        wchar_t buf[32];
+        switch (*++p) {
+        case L'D':
+            swprintf(buf, 32, L"%lld", span / 86400);
+            result += buf;
+            break;
+        case L'H':
+            swprintf(buf, 32, L"%02lld", (span / 3600) % 24);
+            result += buf;
+            break;
+        case L'M':
+            swprintf(buf, 32, L"%02lld", (span / 60) % 60);
+            result += buf;
+            break;
+        case L'S':
+            swprintf(buf, 32, L"%02lld", span % 60);
+            result += buf;
+            break;
+        case L'%':
+            result += L'%';
+            break;
+        case L'\0':
+            return result; // trailing '%', nothing to interpret
+        default:
+            // Unknown specifier: real MFC leaves it as-is rather than
+            // dropping it, which keeps a malformed format visible.
+            result += L'%';
+            result += *p;
+            break;
+        }
+    }
+    return result;
+}

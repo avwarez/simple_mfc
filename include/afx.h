@@ -188,6 +188,16 @@ using PCTSTR = const wchar_t*;
 #define ATLTRACE2(...) ((void)0)
 #endif
 
+// Split a 64-bit value into its two halves. eMule uses them wherever a
+// file size has to be handed to a Win32 API that still takes the low and
+// high DWORDs separately.
+#ifndef LODWORD
+#define LODWORD(l) ((DWORD)((unsigned long long)(l)&0xFFFFFFFFULL))
+#endif
+#ifndef HIDWORD
+#define HIDWORD(l) ((DWORD)(((unsigned long long)(l) >> 32) & 0xFFFFFFFFULL))
+#endif
+
 // ---------------------------------------------------------------------
 // Lightweight MFC-style RTTI (does not use the compiler's typeid/
 // dynamic_cast, exactly like real MFC: a chain of CRuntimeClass walkable
@@ -225,12 +235,21 @@ public:                                                                     \
     const CRuntimeClass class_name::classCRuntimeClass = \
         {#class_name, &base_class_name::classCRuntimeClass, nullptr};
 
-#define DECLARE_DYNCREATE(class_name) DECLARE_DYNAMIC(class_name)
+// CreateObject must be a STATIC MEMBER, not a free function: the classes
+// created this way (eMule's worker threads -- CAICHSyncThread,
+// CPreviewThread, ...) deliberately keep their constructor protected so
+// nothing but AfxBeginThread(RUNTIME_CLASS(...)) can instantiate them. A
+// free function has no access to it (C2248); a member of the class does.
+// Real MFC declares it inside the class for exactly this reason.
+#define DECLARE_DYNCREATE(class_name)                                          \
+    DECLARE_DYNAMIC(class_name)                                                \
+public:                                                                        \
+    static CObject* CreateObject();
 
-#define IMPLEMENT_DYNCREATE(class_name, base_class_name)                      \
-    static CObject* AFX_CreateObject_##class_name() { return new class_name; } \
+#define IMPLEMENT_DYNCREATE(class_name, base_class_name)                       \
+    CObject* class_name::CreateObject() { return new class_name; }             \
     const CRuntimeClass class_name::classCRuntimeClass =                       \
-        {#class_name, &base_class_name::classCRuntimeClass, &AFX_CreateObject_##class_name};
+        {#class_name, &base_class_name::classCRuntimeClass, &class_name::CreateObject};
 
 #define RUNTIME_CLASS(class_name) (&class_name::classCRuntimeClass)
 
@@ -682,6 +701,15 @@ public:
     virtual BOOL GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pnHelpContext = nullptr) const = 0;
 };
 
+// Thrown for an operation a class does not implement; eMule's Kademlia
+// I/O layer uses it for the unimplemented halves of its stream classes.
+class CNotSupportedException : public CSimpleException
+{
+    DECLARE_DYNAMIC(CNotSupportedException)
+public:
+    CNotSupportedException() = default;
+};
+
 class CMemoryException : public CSimpleException
 {
     DECLARE_DYNAMIC(CMemoryException)
@@ -793,6 +821,12 @@ class CStdioFile : public CFile
 public:
     CStdioFile() = default;
     CStdioFile(LPCTSTR lpszFileName, UINT nOpenFlags) : CFile(lpszFileName, nOpenFlags) {}
+    // Real MFC also wraps an already-open FILE*.
+    explicit CStdioFile(FILE* pOpenStream) : m_pStream(pOpenStream) {}
+
+    // The underlying stream, a public member in real MFC. eMule's
+    // CSafeBufferedFile reads it directly to fflush/setvbuf the buffer.
+    FILE* m_pStream = nullptr;
 
     virtual LPTSTR ReadString(LPTSTR lpsz, UINT nMax);
     virtual BOOL ReadString(CString& rString);
@@ -865,6 +899,14 @@ public:
     void Close() { m_it = std::filesystem::directory_iterator(); m_pending.reset(); }
     BOOL IsDirectory() const;
     virtual BOOL IsDots() const;
+    // Attribute queries. std::filesystem exposes no notion of the Windows
+    // "system"/"hidden"/"archive" bits, so off Windows these answer FALSE
+    // rather than guessing (a leading dot is a convention, not an
+    // attribute). eMule uses IsSystem to skip system folders when scanning
+    // shared directories.
+    BOOL IsSystem() const;
+    BOOL IsHidden() const;
+    BOOL IsReadOnly() const;
     virtual CString GetFileName() const;
     virtual CString GetFilePath() const;
     ULONGLONG GetLength() const;

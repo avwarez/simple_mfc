@@ -12,6 +12,7 @@
 const CRuntimeClass CObject::classCRuntimeClass = {"CObject", nullptr, nullptr};
 IMPLEMENT_DYNAMIC(CException, CObject)
 IMPLEMENT_DYNAMIC(CSimpleException, CException)
+IMPLEMENT_DYNAMIC(CNotSupportedException, CSimpleException)
 IMPLEMENT_DYNAMIC(CMemoryException, CSimpleException)
 IMPLEMENT_DYNAMIC(CFileException, CException)
 IMPLEMENT_DYNAMIC(CFile, CObject)
@@ -402,6 +403,31 @@ BOOL CFileFind::IsDirectory() const
     std::error_code ec;
     return std::filesystem::is_directory(m_current.path(), ec) ? TRUE : FALSE;
 }
+
+// The Windows file-attribute bits. std::filesystem models none of them,
+// so they are read from the real API where there is one and reported as
+// absent everywhere else.
+#ifdef _WIN32
+static BOOL HasFileAttribute(const std::filesystem::path& p, DWORD dwAttr)
+{
+    DWORD attrs = ::GetFileAttributesW(p.wstring().c_str());
+    return (attrs != INVALID_FILE_ATTRIBUTES && (attrs & dwAttr)) ? TRUE : FALSE;
+}
+BOOL CFileFind::IsSystem() const { return HasFileAttribute(m_current.path(), FILE_ATTRIBUTE_SYSTEM); }
+BOOL CFileFind::IsHidden() const { return HasFileAttribute(m_current.path(), FILE_ATTRIBUTE_HIDDEN); }
+BOOL CFileFind::IsReadOnly() const { return HasFileAttribute(m_current.path(), FILE_ATTRIBUTE_READONLY); }
+#else
+BOOL CFileFind::IsSystem() const { return FALSE; }
+BOOL CFileFind::IsHidden() const { return FALSE; }
+BOOL CFileFind::IsReadOnly() const
+{
+    std::error_code ec;
+    auto perms = std::filesystem::status(m_current.path(), ec).permissions();
+    if (ec)
+        return FALSE;
+    return (perms & std::filesystem::perms::owner_write) == std::filesystem::perms::none ? TRUE : FALSE;
+}
+#endif
 
 BOOL CFileFind::IsDots() const
 {

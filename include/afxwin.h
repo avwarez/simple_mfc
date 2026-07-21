@@ -28,7 +28,10 @@ class CRgn;
 class CPalette;
 class CCreateContext;
 class CDataExchange;
-typedef long (*AFX_THREADPROC)(void*);
+// Real MFC's signature: UINT __cdecl f(LPVOID). Both halves matter --
+// eMule's thread functions return UINT and are declared AFX_CDECL, so a
+// `long (*)(void*)` rejected every one of them at AfxBeginThread.
+typedef UINT(AFX_CDECL* AFX_THREADPROC)(void*);
 
 // ---------------------------------------------------------------------
 // Win32 primitive handle/type stand-ins (normally from windef.h/winnt.h
@@ -90,6 +93,7 @@ using CREATESTRUCT = tagCREATESTRUCT;
 using LPCREATESTRUCT = CREATESTRUCT*;
 struct HELPINFO;
 struct TOOLINFO;
+struct WINDOWPLACEMENT;
 #endif
 
 // ---------------------------------------------------------------------
@@ -184,6 +188,10 @@ public:
     virtual BOOL OnIdle(LONG lCount);
     // The predefined system cursors (IDC_SIZEWE etc.), as opposed to
     // LoadCursor's application resources.
+    HICON LoadIcon(UINT nIDResource) const;
+    HICON LoadIcon(LPCTSTR lpszResourceName) const;
+    HCURSOR LoadCursor(UINT nIDResource) const;
+    HCURSOR LoadCursor(LPCTSTR lpszResourceName) const;
     HCURSOR LoadStandardCursor(LPCTSTR lpszCursorName) const;
     HICON LoadStandardIcon(LPCTSTR lpszIconName) const;
 };
@@ -309,6 +317,27 @@ public:
     BOOL CreatePointFont(int nPointSize, LPCTSTR lpszFaceName, CDC* pDC = nullptr);
 };
 
+// ---------------------------------------------------------------------
+// CCreateContext (header afxwin.h, no base class) — the bundle MFC passes
+// around while creating a frame/view. eMule declares one on the stack and
+// fills in m_pNewViewClass to host a CFormView pane, so the forward
+// declaration at the top of this header is not enough.
+// ---------------------------------------------------------------------
+class CDocument;
+class CDocTemplate;
+class CView;
+class CFrameWnd;
+
+class CCreateContext
+{
+public:
+    CRuntimeClass* m_pNewViewClass = nullptr;
+    CDocument* m_pCurrentDoc = nullptr;
+    CDocTemplate* m_pNewDocTemplate = nullptr;
+    CView* m_pLastView = nullptr;
+    CFrameWnd* m_pCurrentFrame = nullptr;
+};
+
 // CDC (header afxwin.h, hierarchy CObject -> CDC)
 class CDC : public CObject
 {
@@ -318,6 +347,13 @@ public:
     // so both have to be assignable members rather than accessors.
     HDC m_hDC = nullptr;
     HDC m_hAttribDC = nullptr;
+    // TRUE while the DC is a printer DC. Public in real MFC, and eMule's
+    // list controls branch on it to skip screen-only drawing.
+    BOOL m_bPrinting = FALSE;
+
+    // Lets a CDC be handed to a raw Win32 call that wants an HDC, which
+    // eMule does directly (`FillRect(*pDC, &rc, hBrush)`).
+    operator HDC() const { return m_hDC; }
 
     static CDC* FromHandle(HDC hDC);
 
@@ -346,6 +382,8 @@ public:
     CPoint MoveTo(POINT point);
     COLORREF SetBkColor(COLORREF crColor);
     COLORREF GetBkColor() const;
+    COLORREF GetTextColor() const;
+    BOOL DrawFrameControl(LPRECT lpRect, UINT nType, UINT nState);
     BOOL DeleteDC();
     int GetMapMode() const;
     // The mapping-mode extents/origins CMemDC mirrors from the DC it wraps.
@@ -526,6 +564,19 @@ public:
     // Win32 function of the same name, which then rejects the arity
     // because it wants a leading HWND.
     int GetDlgCtrlID() const;
+    // Window traversal and style queries. GetFocus/GetCapture are static
+    // in real MFC and return CWnd*, not a raw HWND -- eMule assigns the
+    // result straight to a CWnd* (`CWnd *pWndFocus = GetFocus();`).
+    static CWnd* GetFocus();
+    static CWnd* GetCapture();
+    CWnd* GetWindow(UINT nCmd) const;
+    CWnd* ChildWindowFromPoint(POINT point) const;
+    DWORD GetExStyle() const;
+    BOOL GetWindowPlacement(WINDOWPLACEMENT* lpwndpl) const;
+    BOOL SetWindowPlacement(const WINDOWPLACEMENT* lpwndpl);
+    BOOL EnableToolTips(BOOL bEnable = TRUE);
+    // Routes the current message to the default window procedure.
+    LRESULT Default();
     int GetDlgItemText(int nID, LPTSTR lpStr, int nMaxCount) const;
     int GetDlgItemText(int nID, CString& rString) const;
     void SetDlgItemInt(int nID, UINT nValue, BOOL bSigned = TRUE);
@@ -682,6 +733,21 @@ public:
     virtual void OnInitialUpdate();
 };
 
+// ---------------------------------------------------------------------
+// CScrollBar (header afxwin.h, deriva da CWnd). Reaches eMule as the
+// third parameter of OnHScroll/OnVScroll, where it needs to be complete.
+// ---------------------------------------------------------------------
+class CScrollBar : public CWnd
+{
+public:
+    int SetScrollPos(int nPos, BOOL bRedraw = TRUE);
+    int GetScrollPos() const;
+    void SetScrollRange(int nMinPos, int nMaxPos, BOOL bRedraw = TRUE);
+    void GetScrollRange(int* lpMinPos, int* lpMaxPos) const;
+    BOOL EnableScrollBar(UINT nArrowFlags = 0);
+    void ShowScrollBar(BOOL bShow = TRUE);
+};
+
 class CStatic : public CWnd
 {
 public:
@@ -699,6 +765,7 @@ public:
     void LimitText(int nChars = 0);
     void SetLimitText(UINT nMax);
     UINT GetLimitText() const;
+    BOOL ShowBalloonTip(LPCTSTR lpszTitle, LPCTSTR lpszText, int ttiIcon = 0);
     DWORD GetSel() const;
     void GetSel(int& nStartChar, int& nEndChar) const;
     void ReplaceSel(LPCTSTR lpszNewText, BOOL bCanUndo = FALSE);
@@ -707,6 +774,9 @@ public:
 class CListBox : public CWnd
 {
 public:
+    // Hit-testing by point; the high word of the result says whether the
+    // point actually fell inside the item.
+    UINT ItemFromPoint(POINT pt, BOOL& bOutside) const;
     int GetCount() const;
     int GetCurSel() const;
     int SetCurSel(int nSelect);
@@ -740,6 +810,8 @@ public:
     // The same per-item slot as GetItemData, typed as a pointer.
     void* GetItemDataPtr(int nIndex) const;
     int SetItemDataPtr(int nIndex, void* pData);
+    void SetHorizontalExtent(UINT nExtent);
+    UINT GetHorizontalExtent() const;
     void ResetContent();
     int GetLBText(int nIndex, LPTSTR lpszText) const;
     void GetLBText(int nIndex, CString& rString) const;
@@ -769,6 +841,7 @@ public:
     BOOL DestroyMenu();
     HMENU Detach();
     BOOL Attach(HMENU hMenu);
+    BOOL CreateMenu();
     BOOL CreatePopupMenu();
     BOOL TrackPopupMenu(UINT nFlags, int x, int y, CWnd* pWnd, LPCRECT lpRect = nullptr);
     UINT CheckMenuItem(UINT nIDCheckItem, UINT nCheck);
@@ -902,3 +975,5 @@ public:
 // is why applications only ever include afxwin.h. Placed last because
 // afxdd_.h takes CDataExchange (declared just above) by pointer.
 #include "afxdd_.h"
+// Real MFC exposes the standard resource symbols through the same chain.
+#include "afxres.h"

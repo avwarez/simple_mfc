@@ -67,6 +67,20 @@ protected:
 #pragma warning(disable : 4266)
 #endif
 
+// ---------------------------------------------------------------------
+// CPropertyPageEx — the Wizard97-style page (header/subtitle band).
+// eMule's CDlgPageWizard derives from it.
+// ---------------------------------------------------------------------
+class CPropertyPageEx : public CPropertyPage
+{
+public:
+    CPropertyPageEx();
+    explicit CPropertyPageEx(UINT nIDTemplate, UINT nIDCaption = 0,
+                              UINT nIDHeaderTitle = 0, UINT nIDHeaderSubTitle = 0);
+    explicit CPropertyPageEx(LPCTSTR lpszTemplateName, UINT nIDCaption = 0,
+                              UINT nIDHeaderTitle = 0, UINT nIDHeaderSubTitle = 0);
+};
+
 class CPropertySheet : public CWnd
 {
 public:
@@ -102,6 +116,11 @@ public:
     CPropertyPage* GetPage(int nPage) const;
     int GetPageCount() const;
     int GetActiveIndex() const;
+    // Rebuilds the raw PROPSHEETPAGE array from m_pages before the sheet
+    // is created; eMule's own sheet calls it after reordering its pages.
+    BOOL BuildPropPageArray();
+    // Wizard97 sheets: lets the tab row wrap onto several lines.
+    void EnableStackedTabs(BOOL bStacked);
     CTabCtrl* GetTabControl() const;
     BOOL SetActivePage(int nPage);
     BOOL SetActivePage(CPropertyPage* pPage);
@@ -150,4 +169,24 @@ public:
     CString GetFileTitle() const;
     POSITION GetStartPosition() const;
     CString GetNextPathName(POSITION& pos) const;
+};
+
+// ---------------------------------------------------------------------
+// CFontDialog — the common Choose-Font dialog (header afxdlgs.h, same
+// CCommonDialog branch as CFileDialog above). eMule opens it from the
+// display preferences page and reads the chosen LOGFONT back out.
+// ---------------------------------------------------------------------
+class CFontDialog : public CDialog
+{
+public:
+    explicit CFontDialog(LOGFONT* lplfInitial = nullptr, DWORD dwFlags = 0,
+                         CDC* pdcPrinter = nullptr, CWnd* pParentWnd = nullptr);
+    void GetCurrentFont(LOGFONT* lplf);
+    CString GetFaceName() const;
+    int GetSize() const;
+    COLORREF GetColor() const;
+    BOOL IsBold() const;
+    BOOL IsItalic() const;
+    BOOL IsUnderline() const;
+    BOOL IsStrikeOut() const;
 };

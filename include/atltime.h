@@ -28,6 +28,12 @@ public:
     long long GetTotalHours() const noexcept { return m_span / 3600; }
     long long GetTotalMinutes() const noexcept { return m_span / 60; }
 
+    // Real MFC's CTimeSpan format specifiers: %D total days, %H hours,
+    // %M minutes, %S seconds (each zero-padded to two digits except %D),
+    // %% a literal percent. Deliberately not strftime: a span is a
+    // duration, so %H can exceed 23 only via %D carrying the days.
+    CString Format(const wchar_t* pszFormat) const;
+
     CTimeSpan operator+(const CTimeSpan& o) const { return CTimeSpan(m_span + o.m_span); }
     CTimeSpan operator-(const CTimeSpan& o) const { return CTimeSpan(m_span - o.m_span); }
 
@@ -50,6 +56,19 @@ public:
     static CTime GetCurrentTime() noexcept { return CTime(static_cast<__time64_t>(std::time(nullptr))); }
 
     CString Format(const wchar_t* pszFormat) const;
+
+    // Fills the caller's struct with the broken-down local time and hands
+    // it back, so it can be used inline (`safe_mktime(t.GetLocalTm(&tm))`).
+    // Real MFC allows a null pointer and then returns a pointer to shared
+    // per-thread storage; that variant has no thread-safe standard C++
+    // equivalent, so passing a buffer is the supported form here.
+    std::tm* GetLocalTm(std::tm* ptm) const noexcept
+    {
+        if (ptm == nullptr)
+            return nullptr;
+        *ptm = Tm();
+        return ptm;
+    }
 
     int GetYear() const noexcept { return Tm().tm_year + 1900; }
     int GetMonth() const noexcept { return Tm().tm_mon + 1; }
