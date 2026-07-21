@@ -1,13 +1,13 @@
-// atlcoll.h — the ATL collection/COM surface eMule/srchybrid needs.
-// Only the two templates it actually uses are covered: CSimpleArray and
-// CRBMap. On Windows the real ATL is used for everything it provides (see
-// the note above the #include below); elsewhere they are reimplemented on
-// top of std::vector/std::map, standard C++17 only.
+// atlcoll.h — CRBMap, the one ATL collection eMule/srchybrid uses from
+// this header (BarShader.h's span map). Backed by std::map, standard
+// C++17 only. Interface checked against the Microsoft Learn CRBMap and
+// CRBTree class pages -- CRBMap derives from CRBTree there, so most of
+// the members below are documented on the latter.
 //
-// Note this file never includes real ATL's own atlcoll.h: that is a large
-// internal header (CAtlArray/CAtlList/CAtlMap/CRBTree/...) which would
-// redefine POSITION on top of afx.h's -- the C2371 "redefinition;
-// different basic types" that shadowing the real headers is meant to avoid.
+// Real ATL's atlcoll.h also carries CAtlArray/CAtlList/CAtlMap/CRBTree.
+// None are declared here: eMule names none of them, and CAtlList in
+// particular would redefine POSITION on top of afx.h's -- the C2371
+// "redefinition; different basic types" that shadowing is meant to avoid.
 #pragma once
 
 #include "afxcoll.h" // POSITION (void*), INT_PTR, BOOL/UINT via afx.h
@@ -17,91 +17,20 @@
 #include <memory>
 
 // ---------------------------------------------------------------------
-// ATL is not MFC. simple_mfc exists to replace MFC, and on a real Windows
-// toolchain ATL ships alongside the compiler whether or not MFC is used --
-// so there the real thing is pulled in rather than reimplemented. That is
-// not just economy, it is required for correctness: eMule/srchybrid also
-// reaches ATL through SDK headers of its own (<atlimage.h> pulls
-// <atlbase.h>), and a second CSimpleArray declared here made every use
-// ambiguous (C2872) in exactly those translation units.
+// ATL is a separate library from MFC, and the project's rule was to defer
+// to the real one on Windows rather than reimplement it. That rule had to
+// change: with simple_mfc shadowing MFC's headers, real ATL's atlstr.h
+// contributes ATL::CString while afx.h contributes ::CString, and ATL's
+// automatic "using namespace ATL" then makes every unqualified use
+// ambiguous (C2872). So the ATL surface eMule/srchybrid reaches is now
+// shadowed too -- see atlbase.h for the scope and its limits.
 //
-// atlbase.h also brings the COM smart pointers eMule uses in class member
-// declarations -- CComPtr (CCustomAutoComplete::m_pac), CComBSTR,
-// CComQIPtr, CComVariant -- which must be complete types, not stand-ins.
-//
-// Only the non-Windows build needs hand-written substitutes, below.
+// CSimpleArray moved to atlsimpcoll.h, which is where real ATL declares
+// it; atlbase.h below pulls it in, exactly as real ATL does.
 // ---------------------------------------------------------------------
-#ifdef _WIN32
-#include <atlbase.h>
-#else
+#include "atlbase.h"
 
-// ---------------------------------------------------------------------
-// CSimpleArray — flat, contiguous array (ATL's lightweight vector).
-// Backed by std::vector; GetData() hands out the contiguous buffer, the
-// same guarantee real ATL makes. The optional second template parameter
-// mirrors ATL's TEqual policy slot but is unused here: Find/Remove use
-// operator== directly, which is only instantiated for element types that
-// are actually searched (so struct element types that never call Find
-// don't need an operator==, matching real ATL template behaviour).
-// ---------------------------------------------------------------------
-template <class T, class TEqual = void>
-class CSimpleArray
-{
-public:
-    CSimpleArray() = default;
 
-    int GetSize() const { return static_cast<int>(m_data.size()); }
-
-    T& operator[](int nIndex) { return m_data[static_cast<size_t>(nIndex)]; }
-    const T& operator[](int nIndex) const { return m_data[static_cast<size_t>(nIndex)]; }
-
-    T* GetData() { return m_data.data(); }
-    const T* GetData() const { return m_data.data(); }
-
-    BOOL Add(const T& t) { m_data.push_back(t); return TRUE; }
-
-    BOOL Remove(const T& t)
-    {
-        int i = Find(t);
-        if (i < 0) return FALSE;
-        return RemoveAt(i);
-    }
-
-    BOOL RemoveAt(int nIndex)
-    {
-        if (nIndex < 0 || nIndex >= GetSize()) return FALSE;
-        m_data.erase(m_data.begin() + nIndex);
-        return TRUE;
-    }
-
-    void RemoveAll() { m_data.clear(); }
-
-    int Find(const T& t) const
-    {
-        for (size_t i = 0; i < m_data.size(); ++i)
-            if (m_data[i] == t) return static_cast<int>(i);
-        return -1;
-    }
-
-    BOOL SetAtIndex(int nIndex, const T& t)
-    {
-        if (nIndex < 0 || nIndex >= GetSize()) return FALSE;
-        m_data[static_cast<size_t>(nIndex)] = t;
-        return TRUE;
-    }
-
-private:
-    std::vector<T> m_data;
-};
-
-#endif // !_WIN32
-
-// CRBMap is declared in real ATL's own atlcoll.h, which atlbase.h does NOT
-// pull in -- so ours stays in play on Windows too. The guard is defensive:
-// __ATLCOLL_H__ is real atlcoll.h's include guard, so should some other
-// header ever drag it in, its CRBMap wins and this one steps aside instead
-// of colliding.
-#ifndef __ATLCOLL_H__
 
 // ---------------------------------------------------------------------
 // CRBMap — ordered (red-black-tree) key/value map. Backed by std::map,
@@ -129,7 +58,7 @@ public:
 
     CRBMap() = default;
 
-    INT_PTR GetCount() const { return static_cast<INT_PTR>(m_map.size()); }
+    size_t GetCount() const { return m_map.size(); }
     bool IsEmpty() const { return m_map.empty(); }
 
     POSITION SetAt(const KEY& key, const VALUE& value)
@@ -234,5 +163,3 @@ private:
     // pattern (valid until the next such call or a map modification).
     mutable std::unique_ptr<CPair> m_scratch;
 };
-
-#endif // __ATLCOLL_H__
