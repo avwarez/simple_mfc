@@ -117,7 +117,27 @@ public:
     DWORD GetBarStyle();
     void SetBarStyle(DWORD dwStyle);
     virtual CSize CalcFixedLayout(BOOL bStretch, BOOL bHorz);
+    // Defers a show/hide until the frame recalculates its layout.
+    void DelayShow(BOOL bShow);
 };
+
+// ---------------------------------------------------------------------
+// CDockBar — the strip along one edge of a frame that holds the control
+// bars docked there. eMule reads it off a bar to find out where that bar
+// currently sits, so it needs to be a complete type, not a forward
+// declaration.
+// ---------------------------------------------------------------------
+class CControlBar;
+
+class CDockBar : public CControlBar
+{
+public:
+    int FindBar(CControlBar* pBar, int nPos = 0) const;
+    CControlBar* GetDockedControlBar(int nPos) const;
+    BOOL IsHorz() const;
+    CPtrArray m_arrBars;
+};
+
 
 // ---------------------------------------------------------------------
 // CDialogBar — modeless dialog hosted inside a control bar

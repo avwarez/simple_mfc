@@ -49,6 +49,10 @@ template <class TYPE, class ARG_TYPE = const TYPE&>
 class CList : public CObject
 {
 public:
+    // Real MFC's CList takes a block size; eMule constructs some of its
+    // lists with one.
+    explicit CList(INT_PTR /*nBlockSize*/ = 10) {}
+
     POSITION AddHead(ARG_TYPE e) { return m_impl.AddHead(e); }
     POSITION AddTail(ARG_TYPE e) { return m_impl.AddTail(e); }
     TYPE& GetHead() { return m_impl.GetHead(); }
@@ -235,7 +239,9 @@ public:
     TYPE& GetAt(POSITION position) { return reinterpret_cast<TYPE&>(BASE_CLASS::GetAt(position)); }
     TYPE GetAt(POSITION position) const { return reinterpret_cast<TYPE>(BASE_CLASS::GetAt(position)); }
     void SetAt(POSITION pos, TYPE newElement) { BASE_CLASS::SetAt(pos, newElement); }
-    POSITION Find(TYPE searchValue, POSITION startAfter = nullptr) const { return BASE_CLASS::Find(searchValue, startAfter); }
+    // Find is deliberately NOT redeclared here: real MFC lets it come
+    // from the base, so the parameter stays void* and eMule's
+    // "filelist.Find((void*)file)" resolves without a cast to TYPE.
     POSITION InsertBefore(POSITION position, TYPE newElement) { return BASE_CLASS::InsertBefore(position, newElement); }
     POSITION InsertAfter(POSITION position, TYPE newElement) { return BASE_CLASS::InsertAfter(position, newElement); }
 };

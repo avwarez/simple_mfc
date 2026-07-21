@@ -83,7 +83,7 @@ public:
 
 // CPropertySheetEx is the Wizard97 sheet that goes with CPropertyPageEx
 // above; eMule's setup wizard casts its GetParent() to one.
-class CPropertySheetEx;
+
 
 class CPropertySheet : public CWnd
 {
@@ -139,6 +139,24 @@ public:
     // derive from CDialog), and MiniMule-style code super-calls it as
     // "CPropertySheet::OnInitDialog()".
     virtual BOOL OnInitDialog();
+};
+
+// ---------------------------------------------------------------------
+// CPropertySheetEx — the Wizard97 sheet that goes with CPropertyPageEx.
+// eMule's setup wizard casts its GetParent() to one and drives it, so a
+// forward declaration is not enough.
+// ---------------------------------------------------------------------
+class CPropertySheetEx : public CPropertySheet
+{
+public:
+    CPropertySheetEx();
+    explicit CPropertySheetEx(UINT nIDCaption, CWnd* pParentWnd = nullptr, UINT iSelectPage = 0,
+                               HBITMAP hbmWatermark = nullptr, HPALETTE hpalWatermark = nullptr,
+                               HBITMAP hbmHeader = nullptr);
+    explicit CPropertySheetEx(LPCTSTR pszCaption, CWnd* pParentWnd = nullptr, UINT iSelectPage = 0,
+                               HBITMAP hbmWatermark = nullptr, HPALETTE hpalWatermark = nullptr,
+                               HBITMAP hbmHeader = nullptr);
+    void SetWizardMode();
 };
 
 #if defined(__GNUC__) || defined(__clang__)

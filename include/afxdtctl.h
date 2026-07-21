@@ -67,6 +67,8 @@ public:
     BOOL SetTime(const CTime* pTimeNew);
     DWORD GetTime(CTime& timeDest) const;
     DWORD GetTime(LPSYSTEMTIME pTimeDest) const;
+    // The SYSTEMTIME form, alongside the CTime one above.
+    BOOL SetTime(LPSYSTEMTIME pTimeNew);
     // Valid only while the drop-down is open (real MFC returns NULL
     // otherwise), which is exactly when eMule recolours it.
     CMonthCalCtrl* GetMonthCalCtrl() const;

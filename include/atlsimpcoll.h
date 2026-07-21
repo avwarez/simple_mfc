@@ -3,19 +3,31 @@
 // here too.
 //
 // This one is a real implementation rather than a declaration-only stub:
-// ATL's own CSimpleArray is header-only inline code, and the container is
-// simple enough that backing it with std::vector is less work than
-// stubbing it. Interface checked against the Microsoft Learn
-// CSimpleArray class page -- note GetData is const and returns a
-// non-const T*, which is ATL's actual shape, not an oversight.
+// ATL's own CSimpleArray is header-only inline code. It deliberately
+// keeps ATL's storage model -- a single malloc'd block in a public m_aT,
+// with m_nSize/m_nAllocSize beside it -- instead of hiding a std::vector,
+// because eMule/srchybrid reaches straight into it:
 //
-// eMule/srchybrid uses Add / GetSize / GetData / RemoveAll / RemoveAt /
-// Remove / Find / operator[] (both const and not), across 29 files.
+//   CKnownFile **ppRotated = (CKnownFile**)malloc(m_aFiles.m_nAllocSize * ...);
+//   ...
+//   m_aFiles.m_aT = ppRotated;          // SharedFileList.cpp
+//
+// which only works if the buffer really is one malloc'd block the array
+// owns. Interface checked against the Microsoft Learn CSimpleArray page:
+// GetData is const and returns a non-const T*, which is ATL's actual
+// shape, not an oversight. The page omits the const subscript operator,
+// but eMule indexes const arrays and compiles against real ATL, so that
+// one is real as well -- the page is incomplete.
+//
+// eMule uses Add / GetSize / GetData / RemoveAll / RemoveAt / Remove /
+// Find / operator[], across 29 files.
 #pragma once
 
 #include "afx.h" // BOOL/TRUE/FALSE
 
-#include <vector>
+#include <cstdlib>
+#include <cstring>
+#include <new>
 
 // The optional second template parameter mirrors ATL's TEqual policy slot
 // but is unused here: Find/Remove use operator== directly, which is only
@@ -26,25 +38,47 @@ template <class T, class TEqual = void>
 class CSimpleArray
 {
 public:
-    CSimpleArray() = default;
-    CSimpleArray(const CSimpleArray<T, TEqual>& src) = default;
-    CSimpleArray<T, TEqual>& operator=(const CSimpleArray<T, TEqual>& src) = default;
-    ~CSimpleArray() = default;
+    // All three are public in real ATL, and eMule assigns m_aT directly.
+    T* m_aT;
+    int m_nSize;
+    int m_nAllocSize;
 
-    int GetSize() const { return static_cast<int>(m_data.size()); }
+    CSimpleArray() : m_aT(nullptr), m_nSize(0), m_nAllocSize(0) {}
 
-    T& operator[](int nIndex) { return m_data[static_cast<size_t>(nIndex)]; }
-    // The Learn CSimpleArray page lists only the non-const subscript, but
-    // the const one is real: eMule indexes CSimpleArray members from its
-    // own const methods, and that code compiles against real ATL. Same
-    // situation as CDC::SelectObject(HGDIOBJ) -- the page is incomplete.
-    // Removing this on the page's authority cost 17 files in one round.
-    const T& operator[](int nIndex) const { return m_data[static_cast<size_t>(nIndex)]; }
+    CSimpleArray(const CSimpleArray<T, TEqual>& src) : m_aT(nullptr), m_nSize(0), m_nAllocSize(0)
+    {
+        for (int i = 0; i < src.GetSize(); ++i)
+            Add(src[i]);
+    }
 
-    // const, returning a non-const pointer: that is ATL's declaration.
-    T* GetData() const { return const_cast<T*>(m_data.data()); }
+    CSimpleArray<T, TEqual>& operator=(const CSimpleArray<T, TEqual>& src)
+    {
+        if (this != &src) {
+            RemoveAll();
+            for (int i = 0; i < src.GetSize(); ++i)
+                Add(src[i]);
+        }
+        return *this;
+    }
 
-    BOOL Add(const T& t) { m_data.push_back(t); return TRUE; }
+    ~CSimpleArray() { RemoveAll(); }
+
+    int GetSize() const { return m_nSize; }
+
+    T& operator[](int nIndex) { return m_aT[nIndex]; }
+    const T& operator[](int nIndex) const { return m_aT[nIndex]; }
+
+    T* GetData() const { return m_aT; }
+
+    BOOL Add(const T& t)
+    {
+        if (m_nSize == m_nAllocSize && !Grow(m_nAllocSize == 0 ? 4 : m_nAllocSize * 2))
+            return FALSE;
+        // Placement new: the block is raw malloc'd memory.
+        ::new (static_cast<void*>(m_aT + m_nSize)) T(t);
+        ++m_nSize;
+        return TRUE;
+    }
 
     BOOL Remove(const T& t)
     {
@@ -54,27 +88,54 @@ public:
 
     BOOL RemoveAt(int nIndex)
     {
-        if (nIndex < 0 || nIndex >= GetSize()) return FALSE;
-        m_data.erase(m_data.begin() + nIndex);
+        if (nIndex < 0 || nIndex >= m_nSize)
+            return FALSE;
+        m_aT[nIndex].~T();
+        if (nIndex < m_nSize - 1)
+            std::memmove(static_cast<void*>(m_aT + nIndex), static_cast<void*>(m_aT + nIndex + 1),
+                         static_cast<size_t>(m_nSize - nIndex - 1) * sizeof(T));
+        --m_nSize;
         return TRUE;
     }
 
-    void RemoveAll() { m_data.clear(); }
+    void RemoveAll()
+    {
+        for (int i = 0; i < m_nSize; ++i)
+            m_aT[i].~T();
+        std::free(m_aT);
+        m_aT = nullptr;
+        m_nSize = 0;
+        m_nAllocSize = 0;
+    }
 
     int Find(const T& t) const
     {
-        for (size_t i = 0; i < m_data.size(); ++i)
-            if (m_data[i] == t) return static_cast<int>(i);
+        for (int i = 0; i < m_nSize; ++i)
+            if (m_aT[i] == t)
+                return i;
         return -1;
     }
 
     BOOL SetAtIndex(int nIndex, const T& t)
     {
-        if (nIndex < 0 || nIndex >= GetSize()) return FALSE;
-        m_data[static_cast<size_t>(nIndex)] = t;
+        if (nIndex < 0 || nIndex >= m_nSize)
+            return FALSE;
+        m_aT[nIndex] = t;
         return TRUE;
     }
 
 private:
-    std::vector<T> m_data;
+    // realloc, as real ATL does: that is what makes m_aT a block the
+    // caller can swap for one of its own.
+    BOOL Grow(int nNewAllocSize)
+    {
+        if (nNewAllocSize <= m_nAllocSize)
+            return TRUE;
+        void* pNew = std::realloc(m_aT, static_cast<size_t>(nNewAllocSize) * sizeof(T));
+        if (pNew == nullptr)
+            return FALSE;
+        m_aT = static_cast<T*>(pNew);
+        m_nAllocSize = nNewAllocSize;
+        return TRUE;
+    }
 };

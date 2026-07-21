@@ -51,6 +51,8 @@ using LPDISPATCH = IDispatch*;
 #define DHTML_EVENT_ONMOUSEOVER(elemName, memberFxn)
 #define DHTML_EVENT_ONMOUSEOUT(elemName, memberFxn)
 #define DHTML_EVENT_ONKEYDOWN(elemName, memberFxn)
+#define DHTML_EVENT_ONKEYPRESS(elemName, memberFxn)
+#define DHTML_EVENT_ONKEYUP(elemName, memberFxn)
 #define DHTML_EVENT(dispid, elemName, memberFxn)
 
 // ---------------------------------------------------------------------
@@ -104,6 +106,13 @@ public:
     HRESULT GetElementHtml(LPCTSTR szElementId, BSTR* pbstrText);
     HRESULT SetElementProperty(LPCTSTR szElementId, DISPID dispid, VARIANT* pVar);
     IHTMLDocument2* GetHtmlDocument() const;
+    // The document the control currently hosts, held for the dialog's
+    // lifetime; eMule reads it directly.
+    CComPtr<IHTMLDocument2> m_spHtmlDoc;
+    // The template form, which deduces the interface from the pointer it
+    // is given ("GetElementInterface(_T(\"openIncomingLink\"), &a)").
+    template <class Q>
+    HRESULT GetElementInterface(LPCTSTR szElementId, Q** ppElement);
 #endif
 
     // Called once per hosted control so a derived dialog can substitute

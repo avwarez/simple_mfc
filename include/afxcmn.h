@@ -82,7 +82,12 @@ constexpr int LVCFMT_LEFT = 0;
 // where simple_mfc never instantiates them, keeps the incomplete stand-ins.
 #ifdef _WIN32
 #include <richedit.h>
-#include <richole.h>  // IRichEditOle, which <richedit.h> does NOT declare --
+#include <richole.h>
+// TTF_* tool flags and AFX_OLDTOOLINFO, which eMule's status-bar and
+// tooltip subclasses use when they fill a TOOLINFO by hand.
+#ifndef AFX_OLDTOOLINFO
+#define AFX_OLDTOOLINFO TTTOOLINFOW
+#endif  // IRichEditOle, which <richedit.h> does NOT declare --
                       // real MFC's afxcmn.h includes it here for the same
                       // reason: CRichEditCtrl::GetIRichEditOle returns it.
 #else
@@ -331,6 +336,11 @@ public:
     BOOL SetTextBkColor(COLORREF cr);
     BOOL SetBkImage(LVBKIMAGE* plvbkImage);
     BOOL SetBkImage(HBITMAP hbm, BOOL bTile = TRUE, int xOffsetPercent = 0, int yOffsetPercent = 0);
+    // The LVITEM form of SetItemState, alongside the mask/flags one above.
+    BOOL SetItemState(int nItem, LVITEM* pItem);
+    // The check-box column that LVS_EX_CHECKBOXES turns on.
+    BOOL GetCheck(int nItem) const;
+    BOOL SetCheck(int nItem, BOOL fCheck = TRUE);
 };
 
 // ---------------------------------------------------------------------
@@ -387,6 +397,9 @@ public:
     // The OLE interface behind the control, which eMule queries to embed
     // images in the rich text.
     IRichEditOle* GetIRichEditOle() const;
+    // Keeps (or drops) the selection highlight when focus leaves.
+    void HideSelection(BOOL bHide, BOOL bPerm);
+    void SetOptions(WORD wOp, DWORD dwFlags);
 };
 
 // ---------------------------------------------------------------------
@@ -425,6 +438,9 @@ public:
     // inside the tabs; eMule sizes its embedded views with it.
     void AdjustRect(BOOL bLarger, LPRECT lpRect);
     int SetMinTabWidth(int cx);
+    // TCIS_* item state (highlighted/buttonpressed).
+    DWORD GetItemState(int nItem, DWORD dwMask) const;
+    BOOL SetItemState(int nItem, DWORD dwMask, DWORD dwState);
 };
 
 // ---------------------------------------------------------------------
@@ -525,6 +541,8 @@ public:
     int GetToolCount() const;
     // Forces an immediate repaint of the tip currently showing.
     void Update();
+    // Converts between the tip's text rectangle and its window rectangle.
+    void AdjustRect(LPRECT lprc, BOOL bLarger = TRUE);
 };
 
 // ---------------------------------------------------------------------

@@ -10,6 +10,8 @@
 // eMule/srchybrid's own direct <winsock2.h> include is processed.
 #ifdef _WIN32
 #include <winsock2.h>
+#include <iphlpapi.h> // GetIpErrorString and the IP helper API, which
+                      // eMule's Pinger.cpp calls alongside <icmpapi.h>.
 #include <ipexport.h> // IPAddr and the ICMP reply/status types: <icmpapi.h>,
                       // which eMule includes directly, uses them without
                       // declaring them.

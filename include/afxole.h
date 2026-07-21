@@ -47,6 +47,8 @@ public:
     void BeginEnumFormats();
     BOOL GetNextFormat(LPFORMATETC lpFormatEtc);
     LPDATAOBJECT m_lpDataObject;
+    // Hands out the wrapped interface without releasing ownership.
+    LPDATAOBJECT GetIDataObject(BOOL bAddRef);
 };
 
 // ---------------------------------------------------------------------

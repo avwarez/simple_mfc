@@ -368,6 +368,8 @@ class CStringArray : public CObject
 {
     DECLARE_DYNAMIC(CStringArray)
 public:
+    CString* GetData() { return m_impl.GetData(); }
+    const CString* GetData() const { return m_impl.GetData(); }
     INT_PTR Add(const CString& e) { return m_impl.Add(e); }
     INT_PTR Append(const CStringArray& src) { return m_impl.Append(src.m_impl); }
     void Copy(const CStringArray& src) { m_impl.Copy(src.m_impl); }

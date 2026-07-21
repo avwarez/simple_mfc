@@ -48,10 +48,21 @@ int CException::ReportError(UINT /*nType*/, UINT /*nMessageID*/)
     // Real MFC opens a MessageBox (Win32). Here, with no GUI available,
     // we print to stderr: an equivalent "headless" behavior.
     wchar_t buf[512]{};
-    // GetErrorMessage is not virtual on the CException base in real MFC;
-    // the subclasses (CFileException, CSimpleException) expose it.
+    GetErrorMessage(buf, 512);
     std::fwprintf(stderr, L"[CException] %ls\n", buf[0] ? buf : L"(no message)");
     return 0;
+}
+
+// Declared virtual on the base, as real MFC does -- eMule calls it
+// through a plain "const CException&" (OtherFunctions.cpp:1793), which
+// only compiles if the base has it. (An earlier note here claimed the
+// opposite; the compile check disproved it.) The base itself knows no
+// message, so it reports failure and the subclasses override.
+BOOL CException::GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pnHelpContext) const
+{
+    if (pnHelpContext) *pnHelpContext = 0;
+    if (lpszError && nMaxError) lpszError[0] = _T('\0');
+    return FALSE;
 }
 
 // ---------------------------------------------------------------------

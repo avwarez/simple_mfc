@@ -108,6 +108,10 @@ struct HELPINFO;
 struct TOOLINFO;
 struct WINDOWPLACEMENT;
 struct NCCALCSIZE_PARAMS;
+struct tagMENUINFO;
+using MENUINFO = tagMENUINFO;
+using LPMENUINFO = MENUINFO*;
+using LPCMENUINFO = const MENUINFO*;
 struct MENUITEMINFOW;
 using MENUITEMINFO = MENUITEMINFOW;
 using LPMENUITEMINFO = MENUITEMINFO*;
@@ -217,6 +221,9 @@ public:
     CWnd* m_pActiveWnd;
 
     CWinThread();
+    // The worker-thread form: eMule constructs one directly with its
+    // thread procedure and parameter.
+    CWinThread(AFX_THREADPROC pfnThreadProc, LPVOID pParam);
     BOOL CreateThread(DWORD dwCreateFlags = 0, UINT nStackSize = 0,
                        SECURITY_ATTRIBUTES* lpSecurityAttrs = nullptr);
     DWORD ResumeThread();
@@ -557,6 +564,9 @@ public:
     UINT GetBoundsRect(LPRECT lpRectBounds, UINT flags);
     BOOL ScrollDC(int dx, int dy, LPCRECT lpRectScroll, LPCRECT lpRectClip,
                   CRgn* pRgnUpdate, LPRECT lpRectUpdate);
+    // The CString-taking form, alongside the count-based one above.
+    CSize TabbedTextOut(int x, int y, const CString& str, int nTabPositions,
+                        int* lpnTabStopPositions, int nTabOrigin);
 };
 
 // Device-context helpers (header afxwin.h). Real MFC derives each from CDC
@@ -647,7 +657,7 @@ public:
     HICON SetIcon(HICON hIcon, BOOL bBigIcon);
     BOOL IsWindowVisible() const;
     virtual BOOL DestroyWindow();
-    BOOL SetWindowPos(CWnd* pWndInsertAfter, int x, int y, int cx, int cy, UINT nFlags);
+    BOOL SetWindowPos(const CWnd* pWndInsertAfter, int x, int y, int cx, int cy, UINT nFlags);
     void UpdateWindow();
     void ScreenToClient(LPPOINT lpPoint) const;
     void ScreenToClient(LPRECT lpRect) const;
@@ -681,6 +691,20 @@ public:
     static CWnd* GetCapture();
     CWnd* GetWindow(UINT nCmd) const;
     CWnd* ChildWindowFromPoint(POINT point) const;
+    CWnd* ChildWindowFromPoint(POINT point, UINT nFlags) const;
+    BOOL IsIconic() const;
+    BOOL IsZoomed() const;
+    BOOL FlashWindow(BOOL bInvert);
+    BOOL IsChild(const CWnd* pWnd) const;
+    CWnd* SetActiveWindow();
+    CWnd* GetActiveWindow();
+    void MapWindowPoints(CWnd* pwndTo, LPRECT lpRect) const;
+    void MapWindowPoints(CWnd* pwndTo, LPPOINT lpPoint, UINT nCount) const;
+    int SetWindowRgn(HRGN hRgn, BOOL bRedraw);
+    int GetWindowRgn(HRGN hRgn) const;
+    // Undocumented on the Learn CWnd page, but eMule calls it unqualified
+    // from a dialog member, so MFC declares it somewhere in this chain.
+    void PrepareForHelp();
     DWORD GetExStyle() const;
     BOOL GetScrollInfo(int nBar, SCROLLINFO* lpScrollInfo, UINT nMask = 0x17 /*SIF_ALL*/);
     BOOL SetScrollInfo(int nBar, SCROLLINFO* lpScrollInfo, BOOL bRedraw = TRUE);
@@ -811,6 +835,7 @@ public:
     virtual void OnMenuSelect(UINT nItemID, UINT nFlags, HMENU hSysMenu);
     virtual void OnInitMenuPopup(CMenu* pPopupMenu, UINT nIndex, BOOL bSysMenu);
     virtual void OnCancelMode();
+    afx_msg BOOL OnDeviceChange(UINT nEventType, DWORD_PTR dwData);
     // afx_msg, not virtual: real MFC dispatches these through the message
     // map, and Learn declares them exactly this way.
     afx_msg void OnMeasureItem(int nIDCtl, LPMEASUREITEMSTRUCT lpMeasureItemStruct);
@@ -931,6 +956,10 @@ public:
 class CEdit : public CWnd
 {
 public:
+    // The edit control's formatting rectangle.
+    void SetRect(LPCRECT lpRect);
+    void SetRectNP(LPCRECT lpRect);
+    void GetRect(LPRECT lpRect) const;
     virtual BOOL Create(DWORD dwStyle, const RECT& rect, CWnd* pParentWnd, UINT nID);
     void SetSel(DWORD dwSelection, BOOL bNoScroll = FALSE);
     void SetSel(int nStartChar, int nEndChar, BOOL bNoScroll = FALSE);
@@ -1049,6 +1078,9 @@ public:
     BOOL GetMenuItemInfo(UINT uItem, LPMENUITEMINFO lpMenuItemInfo, BOOL fByPos = FALSE) const;
     BOOL SetMenuItemInfo(UINT uItem, LPMENUITEMINFO lpMenuItemInfo, BOOL fByPos = FALSE);
     UINT GetMenuItemID(int nPos) const;
+    UINT GetMenuState(UINT nID, UINT nFlags) const;
+    BOOL GetMenuInfo(LPMENUINFO lpcmi) const;
+    BOOL SetMenuInfo(LPCMENUINFO lpcmi);
 
     // Added during the FRONTEND/GDI blind-spot pass (see
     // ../../mfc_scan_srchybrid.md addendum): CTitledMenu (TitledMenu.h),
@@ -1095,7 +1127,11 @@ public:
 // are NOT declared here: they really belong to the afxmsg_.h header,
 // which afxwin.h includes below (as in real MFC: a single
 // #include "afxwin.h" also exposes the ON_* macros).
-#define DECLARE_MESSAGE_MAP()
+// Real MFC's expansion ends with "protected:", so the handlers declared
+// after it in a class body are protected -- which is what makes a derived
+// class's qualified super-call (CTrayDialog::OnSysCommand(...)) legal.
+// Expanding to nothing left them private and produced C2248.
+#define DECLARE_MESSAGE_MAP() protected:
 #define BEGIN_MESSAGE_MAP(theClass, baseClass)
 #define END_MESSAGE_MAP()
 
@@ -1123,6 +1159,8 @@ void AfxSetResourceHandle(HINSTANCE hInstResource);
 CWnd* AfxGetMainWnd();
 LPCTSTR AfxGetAppName();
 int AfxMessageBox(LPCTSTR lpszText, UINT nType = 0, UINT nIDHelp = 0);
+// The resource-id form, which real MFC declares alongside the string one.
+int AfxMessageBox(UINT nIDPrompt, UINT nType = 0, UINT nIDHelp = (UINT)-1);
 // Real MFC provides BOTH char-widths (afx.h): eMule's kademlia/Tag.h passes a
 // narrow LPCSTR, other call sites the wide LPCTSTR, so declare both overloads.
 BOOL AfxIsValidString(LPCTSTR lpsz, int nLength = -1);

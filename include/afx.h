@@ -154,7 +154,11 @@ using PCTSTR = const wchar_t*;
 #define ENSURE_ARG(f) ASSERT(f)
 #endif
 #ifndef TRACE
+#ifdef _MSC_VER
+#define TRACE __noop   // valid called AND bare, as real MFC's is
+#else
 #define TRACE(...) ((void)0)
+#endif
 #endif
 #ifndef TRACE0
 #define TRACE0(sz) ((void)0)
@@ -256,6 +260,15 @@ public:                                                                        \
 // that way, so the const has to be cast off here rather than at 30 call
 // sites.
 #define RUNTIME_CLASS(class_name) (const_cast<CRuntimeClass*>(&class_name::classCRuntimeClass))
+
+// Checked downcasts. DYNAMIC_DOWNCAST tests the runtime class and yields
+// NULL on a mismatch; STATIC_DOWNCAST asserts instead.
+CObject* AfxDynamicDownCast(CRuntimeClass* pClass, CObject* pObject);
+CObject* AfxStaticDownCast(CRuntimeClass* pClass, CObject* pObject);
+#define DYNAMIC_DOWNCAST(class_name, pObject)                                  \
+    ((class_name*)AfxDynamicDownCast(RUNTIME_CLASS(class_name), pObject))
+#define STATIC_DOWNCAST(class_name, pObject)                                   \
+    ((class_name*)AfxStaticDownCast(RUNTIME_CLASS(class_name), pObject))
 
 // ---------------------------------------------------------------------
 // CObject — root of the hierarchy. IsSerializable/Serialize are left as
@@ -711,6 +724,11 @@ struct hash<CStringT<Ch, Tr>>
 // ---------------------------------------------------------------------
 class CException : public CObject
 {
+public:
+    // Declared on the base in real MFC, which is how eMule can call it
+    // through a plain CException*.
+    virtual BOOL GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pnHelpContext = nullptr) const;
+
     DECLARE_DYNAMIC(CException)
 public:
     // The default constructor is what eMule's own exception classes call
@@ -817,6 +835,10 @@ class CFile : public CObject
 {
     DECLARE_DYNAMIC(CFile)
 public:
+    // The path this file was opened with. Protected in real MFC, and
+    // eMule's CSafeFile passes it to AfxThrowFileException.
+    CString m_strFileName;
+
     // "Usually contains the operating-system file handle" (Learn). Public
     // in real MFC, with a conversion operator alongside it, which is how
     // eMule hands a CFile straight to a Win32 call.
@@ -945,6 +967,17 @@ private:
 // afx.cpp, and any including code such as eMule's) see the same name too.
 // ---------------------------------------------------------------------
 #undef FindNextFile
+#ifdef _WIN32
+// The #undef above dropped winbase.h's FindNextFile macro so CFileFind's
+// member below keeps its real name. eMule also calls the plain Win32
+// function under that name ("while (... && FindNextFile(hSearch, &fd))"),
+// so forward it explicitly to the W entry point the macro used to pick.
+inline BOOL FindNextFile(HANDLE hFindFile, LPWIN32_FIND_DATAW lpFindFileData)
+{
+    return ::FindNextFileW(hFindFile, lpFindFileData);
+}
+#endif
+
 class CFileFind : public CObject
 {
     DECLARE_DYNAMIC(CFileFind)
@@ -989,6 +1022,75 @@ private:
     std::filesystem::directory_iterator m_it;
     std::optional<std::filesystem::directory_entry> m_pending;
     std::filesystem::directory_entry m_current;
+};
+
+// ---------------------------------------------------------------------
+// CArchive — the serialization stream MFC layers over a CFile. eMule
+// reads its saved part-file metadata through one:
+//
+//   CArchive ar(&sdFile, CArchive::load);
+//   ar >> nTotal >> nRemaining >> nFragments;
+//   ar.Read(pMD4, sizeof pMD4);
+//   ar.Close();
+//
+// Declaration-only, like the frontend headers: the extraction operators
+// have to exist and chain (each returns CArchive&), but nothing here ever
+// runs them. The insertion operators are declared for the same types so a
+// store-direction archive compiles too.
+// ---------------------------------------------------------------------
+class CArchive
+{
+public:
+    enum Mode { store = 0, load = 1, bNoFlushOnDelete = 2, bNoByteSwap = 4 };
+
+    CArchive(CFile* pFile, UINT nMode, int nBufSize = 4096, void* lpBuf = nullptr);
+    ~CArchive();
+
+    BOOL IsLoading() const;
+    BOOL IsStoring() const;
+    CFile* GetFile() const;
+    void Close();
+    void Flush();
+    UINT Read(void* lpBuf, UINT nMax);
+    void Write(const void* lpBuf, UINT nMax);
+
+    CArchive& operator>>(BYTE& by);
+    CArchive& operator>>(WORD& w);
+    CArchive& operator>>(int& i);
+    CArchive& operator>>(UINT& u);
+    CArchive& operator>>(long& l);
+    CArchive& operator>>(DWORD& dw);
+    CArchive& operator>>(float& f);
+    CArchive& operator>>(double& d);
+    CArchive& operator>>(ULONGLONG& dwdw);
+    CArchive& operator>>(CString& str);
+
+    CArchive& operator<<(BYTE by);
+    CArchive& operator<<(WORD w);
+    CArchive& operator<<(int i);
+    CArchive& operator<<(UINT u);
+    CArchive& operator<<(long l);
+    CArchive& operator<<(DWORD dw);
+    CArchive& operator<<(float f);
+    CArchive& operator<<(double d);
+    CArchive& operator<<(ULONGLONG dwdw);
+    CArchive& operator<<(const CString& str);
+};
+
+// Thrown when an archive operation fails; eMule catches it by pointer.
+class CArchiveException : public CException
+{
+    DECLARE_DYNAMIC(CArchiveException)
+public:
+    enum Cause
+    {
+        none, generic, readOnly, endOfFile, writeOnly, badIndex,
+        badClass, badSchema
+    };
+
+    explicit CArchiveException(int cause = CArchiveException::none, LPCTSTR lpszArchiveName = nullptr);
+    int m_cause;
+    CString m_strFileName;
 };
 
 // The time classes, and with them CFileStatus (see the forward
