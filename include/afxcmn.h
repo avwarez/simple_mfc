@@ -82,12 +82,7 @@ constexpr int LVCFMT_LEFT = 0;
 // where simple_mfc never instantiates them, keeps the incomplete stand-ins.
 #ifdef _WIN32
 #include <richedit.h>
-#include <richole.h>
-// TTF_* tool flags and AFX_OLDTOOLINFO, which eMule's status-bar and
-// tooltip subclasses use when they fill a TOOLINFO by hand.
-#ifndef AFX_OLDTOOLINFO
-#define AFX_OLDTOOLINFO TTTOOLINFOW
-#endif  // IRichEditOle, which <richedit.h> does NOT declare --
+#include <richole.h>  // IRichEditOle, which <richedit.h> does NOT declare --
                       // real MFC's afxcmn.h includes it here for the same
                       // reason: CRichEditCtrl::GetIRichEditOle returns it.
 #else
