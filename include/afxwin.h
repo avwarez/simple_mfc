@@ -1310,6 +1310,29 @@ public:
 // DECLARE_MESSAGE_MAP is defined much earlier in this header, right after
 // the AFX_MSGMAP structures, because CCmdTarget itself uses it.
 //
+// PTM ("pointer to member") is real MFC's own name for the pair below,
+// and it is not cosmetic. A hand-written entry forms a pointer to member
+// WITHOUT the address-of operator:
+//   static_cast<LRESULT (AFX_MSG_CALL CWnd::*)(void)>(_OnThemeChanged)
+// which MSVC accepts only as an extension, and diagnoses as C4867 --
+// "error C4867", not a warning, so it stops the compile. Real MFC wraps
+// every message map in exactly this push/disable/pop, which is why the
+// same eMule sources build against it; without the pair, ButtonsTabCtrl
+// and ClosableTabCtrl still failed after the maps themselves were made
+// real. 4640 is the second one real MFC silences here (the function-local
+// static the map array is).
+#ifdef _MSC_VER
+#define PTM_WARNING_DISABLE __pragma(warning(push)) __pragma(warning(disable : 4867))
+#define PTM_WARNING_RESTORE __pragma(warning(pop))
+#define AFX_MSGMAP_WARNING_DISABLE __pragma(warning(push)) __pragma(warning(disable : 4640))
+#define AFX_MSGMAP_WARNING_RESTORE __pragma(warning(pop))
+#else
+#define PTM_WARNING_DISABLE
+#define PTM_WARNING_RESTORE
+#define AFX_MSGMAP_WARNING_DISABLE
+#define AFX_MSGMAP_WARNING_RESTORE
+#endif
+//
 // BEGIN/END_MESSAGE_MAP open and close the entry array. They are
 // reproduced from real MFC rather than stubbed because eMule writes
 // entries by hand and they have to land inside that array -- see the
@@ -1319,12 +1342,14 @@ public:
 // of the class), and TheBaseClass is what END_MESSAGE_MAP links the
 // base map through.
 #define BEGIN_MESSAGE_MAP(theClass, baseClass)                             \
+    PTM_WARNING_DISABLE                                                    \
     const AFX_MSGMAP* theClass::GetMessageMap() const                      \
         { return GetThisMessageMap(); }                                    \
     const AFX_MSGMAP* PASCAL theClass::GetThisMessageMap()                 \
     {                                                                      \
         typedef theClass ThisClass;                                        \
         typedef baseClass TheBaseClass;                                    \
+        AFX_MSGMAP_WARNING_DISABLE                                         \
         static const AFX_MSGMAP_ENTRY _messageEntries[] =                  \
         {
 
@@ -1334,6 +1359,7 @@ public:
 // definitions have to be templates themselves, and ThisClass has to name
 // the specialization, not the bare template.
 #define BEGIN_TEMPLATE_MESSAGE_MAP(theClass, type_name, baseClass)         \
+    PTM_WARNING_DISABLE                                                    \
     template <typename type_name>                                          \
     const AFX_MSGMAP* theClass<type_name>::GetMessageMap() const           \
         { return GetThisMessageMap(); }                                    \
@@ -1342,6 +1368,7 @@ public:
     {                                                                      \
         typedef theClass<type_name> ThisClass;                             \
         typedef baseClass TheBaseClass;                                    \
+        AFX_MSGMAP_WARNING_DISABLE                                         \
         static const AFX_MSGMAP_ENTRY _messageEntries[] =                  \
         {
 
@@ -1351,10 +1378,12 @@ public:
 #define END_MESSAGE_MAP()                                                  \
             { 0, 0, 0, 0, AfxSig_end, (AFX_PMSG)0 }                        \
         };                                                                 \
+        AFX_MSGMAP_WARNING_RESTORE                                         \
         static const AFX_MSGMAP messageMap =                               \
             { &TheBaseClass::GetThisMessageMap, &_messageEntries[0] };     \
         return &messageMap;                                                \
-    }
+    }                                                                      \
+    PTM_WARNING_RESTORE
 
 #include "afxmsg_.h"
 

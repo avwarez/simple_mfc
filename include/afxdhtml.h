@@ -94,6 +94,10 @@ public:
     // The DOCHOSTUIFLAG_* bits returned from GetHostInfo; eMule ORs in
     // DOCHOSTUIFLAG_DIALOG and DISABLE_HELP_MENU to strip browser chrome.
     DWORD m_dwHostFlags;
+    // ...and puts them back through this setter rather than assigning the
+    // member (MiniMule.cpp:114) -- real MFC's version also refreshes the
+    // host, which a plain assignment would not.
+    void SetHostFlags(DWORD dwFlags);
 
     void Navigate(LPCTSTR lpszURL, DWORD dwFlags = 0, LPCTSTR lpszTargetFrameName = nullptr,
                   LPCTSTR lpszHeaders = nullptr, LPVOID lpvPostData = nullptr, DWORD dwPostDataLen = 0);
