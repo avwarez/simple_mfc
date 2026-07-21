@@ -546,6 +546,8 @@ extern const CRect rectDefault;
 constexpr DWORD WS_OVERLAPPEDWINDOW = 0x00CF0000;
 #endif
 
+class CControlBar; // real header afxext.h; only a pointer parameter here
+
 class CFrameWnd : public CWnd
 {
 public:
@@ -554,6 +556,9 @@ public:
                          CWnd* pParentWnd = nullptr, LPCTSTR lpszMenuName = nullptr,
                          DWORD dwExStyle = 0, CCreateContext* pContext = nullptr);
     virtual void RecalcLayout(BOOL bNotify = TRUE);
+    // CControlBar lives in afxext.h (which includes us, not vice versa), so
+    // forward-declared just above for this pointer parameter.
+    void ShowControlBar(CControlBar* pBar, BOOL bShow, BOOL bDelay);
 };
 
 class CStatic : public CWnd

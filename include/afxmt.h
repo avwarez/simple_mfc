@@ -22,6 +22,13 @@ class CSyncObject : public CObject
 public:
     virtual BOOL Lock(DWORD dwTimeout = 0xFFFFFFFF) = 0;
     virtual BOOL Unlock() = 0;
+    // Real MFC exposes the underlying Win32 handle by implicit conversion
+    // (used e.g. by eMule's UploadBandwidthThrottler::GetSocketAvailableEvent,
+    // which returns a CEvent where a HANDLE is expected). This portable
+    // implementation has no real OS handle, so m_hObject stays null -- the
+    // operator exists to satisfy those call sites at compile time.
+    HANDLE m_hObject = nullptr;
+    operator HANDLE() const { return m_hObject; }
 };
 
 // ---------------------------------------------------------------------

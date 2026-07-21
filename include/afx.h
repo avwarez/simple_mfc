@@ -45,6 +45,7 @@ using UINT = unsigned int;
 using WORD = unsigned short;
 using BYTE = unsigned char;
 using DWORD = unsigned long;
+using HANDLE = void*;   // identical to <windows.h>'s `typedef void* HANDLE`
 using LONG = long;
 using LONGLONG = long long;
 using ULONGLONG = unsigned long long;
@@ -157,6 +158,25 @@ using PCTSTR = const wchar_t*;
 #endif
 #ifndef TRACE3
 #define TRACE3(sz, p1, p2, p3) ((void)0)
+#endif
+// ATL diagnostic macros. eMule mixes ATL headers with MFC and uses ATLASSERT/
+// ATLVERIFY/ATLTRACE (real ATL defines them in atldef.h). Mirror the same
+// _DEBUG-gated semantics as the MFC ones above; #ifndef-guarded so a genuine
+// <atldef.h> in the same TU still wins.
+#ifndef ATLASSERT
+#define ATLASSERT(expr) ASSERT(expr)
+#endif
+#ifndef ATLVERIFY
+#define ATLVERIFY(expr) VERIFY(expr)
+#endif
+#ifndef ATLASSUME
+#define ATLASSUME(expr) ASSERT(expr)
+#endif
+#ifndef ATLTRACE
+#define ATLTRACE(...) ((void)0)
+#endif
+#ifndef ATLTRACE2
+#define ATLTRACE2(...) ((void)0)
 #endif
 
 // ---------------------------------------------------------------------
@@ -373,6 +393,10 @@ public:
 
     void Format(PCXSTR pszFormat, ...) { va_list a; va_start(a, pszFormat); m_data = VFormat(pszFormat, a); va_end(a); }
     void AppendFormat(PCXSTR pszFormat, ...) { va_list a; va_start(a, pszFormat); m_data += VFormat(pszFormat, a); va_end(a); }
+    // va_list variants (real MFC CString::FormatV/AppendFormatV) -- eMule's
+    // CRichEditStream forwards a captured va_list into AppendFormatV.
+    void FormatV(PCXSTR pszFormat, va_list args) { m_data = VFormat(pszFormat, args); }
+    void AppendFormatV(PCXSTR pszFormat, va_list args) { m_data += VFormat(pszFormat, args); }
     void Append(PCXSTR pszSrc) { if (pszSrc) m_data += pszSrc; }
     void Append(PCXSTR pszSrc, int nLength) { if (pszSrc && nLength > 0) m_data.append(pszSrc, static_cast<size_t>(nLength)); }
     void AppendChar(XCHAR ch) { m_data += ch; }

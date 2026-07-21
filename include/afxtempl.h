@@ -182,12 +182,19 @@ public:
     POSITION AddHead(TYPE newElement) { return BASE_CLASS::AddHead(newElement); }
     POSITION AddTail(TYPE newElement) { return BASE_CLASS::AddTail(newElement); }
     TYPE& GetHead() { return reinterpret_cast<TYPE&>(BASE_CLASS::GetHead()); }
+    TYPE GetHead() const { return reinterpret_cast<TYPE>(BASE_CLASS::GetHead()); }
     TYPE& GetTail() { return reinterpret_cast<TYPE&>(BASE_CLASS::GetTail()); }
+    TYPE GetTail() const { return reinterpret_cast<TYPE>(BASE_CLASS::GetTail()); }
     TYPE RemoveHead() { return reinterpret_cast<TYPE>(BASE_CLASS::RemoveHead()); }
     TYPE RemoveTail() { return reinterpret_cast<TYPE>(BASE_CLASS::RemoveTail()); }
     TYPE& GetNext(POSITION& rPosition) { return reinterpret_cast<TYPE&>(BASE_CLASS::GetNext(rPosition)); }
+    // const traversal overloads (real MFC has them): selected when the list is
+    // accessed through a const reference (e.g. inside eMule's const getters).
+    TYPE GetNext(POSITION& rPosition) const { return reinterpret_cast<TYPE>(BASE_CLASS::GetNext(rPosition)); }
     TYPE& GetPrev(POSITION& rPosition) { return reinterpret_cast<TYPE&>(BASE_CLASS::GetPrev(rPosition)); }
+    TYPE GetPrev(POSITION& rPosition) const { return reinterpret_cast<TYPE>(BASE_CLASS::GetPrev(rPosition)); }
     TYPE& GetAt(POSITION position) { return reinterpret_cast<TYPE&>(BASE_CLASS::GetAt(position)); }
+    TYPE GetAt(POSITION position) const { return reinterpret_cast<TYPE>(BASE_CLASS::GetAt(position)); }
     void SetAt(POSITION pos, TYPE newElement) { BASE_CLASS::SetAt(pos, newElement); }
     POSITION Find(TYPE searchValue, POSITION startAfter = nullptr) const { return BASE_CLASS::Find(searchValue, startAfter); }
     POSITION InsertBefore(POSITION position, TYPE newElement) { return BASE_CLASS::InsertBefore(position, newElement); }

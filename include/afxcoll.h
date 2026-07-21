@@ -63,6 +63,25 @@ public:
         return ref;
     }
     T& GetAt(POSITION position) { return **static_cast<Iter*>(position); }
+    // const traversal overloads (real MFC has them): they advance the caller's
+    // POSITION (which is external state) but never mutate the list itself.
+    const T& GetNext(POSITION& rPosition) const
+    {
+        auto* box = static_cast<Iter*>(rPosition);
+        const T& ref = **box;
+        ++(*box);
+        if (*box == m_list.end()) { delete box; rPosition = nullptr; }
+        return ref;
+    }
+    const T& GetPrev(POSITION& rPosition) const
+    {
+        auto* box = static_cast<Iter*>(rPosition);
+        const T& ref = **box;
+        if (*box == m_list.begin()) { delete box; rPosition = nullptr; }
+        else { --(*box); }
+        return ref;
+    }
+    const T& GetAt(POSITION position) const { return **static_cast<Iter*>(position); }
 
     void SetAt(POSITION position, T v) { **static_cast<Iter*>(position) = std::move(v); }
     void RemoveAt(POSITION position)
@@ -161,14 +180,19 @@ public:
     POSITION AddHead(CObject* e) { return m_impl.AddHead(e); }
     POSITION AddTail(CObject* e) { return m_impl.AddTail(e); }
     CObject*& GetHead() { return m_impl.GetHead(); }
+    CObject* GetHead() const { return m_impl.GetHead(); }
     CObject*& GetTail() { return m_impl.GetTail(); }
+    CObject* GetTail() const { return m_impl.GetTail(); }
     CObject* RemoveHead() { return m_impl.RemoveHead(); }
     CObject* RemoveTail() { return m_impl.RemoveTail(); }
     POSITION GetHeadPosition() const { return m_impl.GetHeadPosition(); }
     POSITION GetTailPosition() const { return m_impl.GetTailPosition(); }
     CObject*& GetNext(POSITION& rPosition) { return m_impl.GetNext(rPosition); }
+    CObject* GetNext(POSITION& rPosition) const { return m_impl.GetNext(rPosition); }
     CObject*& GetPrev(POSITION& rPosition) { return m_impl.GetPrev(rPosition); }
+    CObject* GetPrev(POSITION& rPosition) const { return m_impl.GetPrev(rPosition); }
     CObject*& GetAt(POSITION position) { return m_impl.GetAt(position); }
+    CObject* GetAt(POSITION position) const { return m_impl.GetAt(position); }
     void SetAt(POSITION pos, CObject* e) { m_impl.SetAt(pos, e); }
     void RemoveAt(POSITION position) { m_impl.RemoveAt(position); }
     void RemoveAll() { m_impl.RemoveAll(); }
@@ -190,18 +214,23 @@ public:
     POSITION AddHead(void* e) { return m_impl.AddHead(e); }
     POSITION AddTail(void* e) { return m_impl.AddTail(e); }
     void*& GetHead() { return m_impl.GetHead(); }
+    void* GetHead() const { return m_impl.GetHead(); }
     void*& GetTail() { return m_impl.GetTail(); }
+    void* GetTail() const { return m_impl.GetTail(); }
     void* RemoveHead() { return m_impl.RemoveHead(); }
     void* RemoveTail() { return m_impl.RemoveTail(); }
     POSITION GetHeadPosition() const { return m_impl.GetHeadPosition(); }
     POSITION GetTailPosition() const { return m_impl.GetTailPosition(); }
     void*& GetNext(POSITION& rPosition) { return m_impl.GetNext(rPosition); }
+    void* GetNext(POSITION& rPosition) const { return m_impl.GetNext(rPosition); }
     void*& GetPrev(POSITION& rPosition) { return m_impl.GetPrev(rPosition); }
+    void* GetPrev(POSITION& rPosition) const { return m_impl.GetPrev(rPosition); }
     POSITION Find(void* searchValue, POSITION startAfter = nullptr) const { return m_impl.Find(searchValue, startAfter); }
     POSITION FindIndex(INT_PTR nIndex) const { return m_impl.FindIndex(nIndex); }
     POSITION InsertBefore(POSITION position, void* e) { return m_impl.InsertBefore(position, e); }
     POSITION InsertAfter(POSITION position, void* e) { return m_impl.InsertAfter(position, e); }
     void*& GetAt(POSITION position) { return m_impl.GetAt(position); }
+    void* GetAt(POSITION position) const { return m_impl.GetAt(position); }
     void SetAt(POSITION pos, void* e) { m_impl.SetAt(pos, e); }
     void RemoveAt(POSITION position) { m_impl.RemoveAt(position); }
     INT_PTR GetCount() const { return m_impl.GetCount(); }
