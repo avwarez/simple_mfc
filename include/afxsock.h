@@ -75,3 +75,6 @@ public:
 // Global function to initialize Windows Sockets in an MFC thread
 // ---------------------------------------------------------------------
 BOOL AfxSocketInit(void* lpwsaData = nullptr);
+// The matching teardown. eMule takes its address to install it as the
+// module's socket-termination hook (see sockimpl.h).
+void AFX_CDECL AfxSocketTerm();
