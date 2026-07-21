@@ -741,6 +741,11 @@ class CMemFile : public CFile
     DECLARE_DYNAMIC(CMemFile)
 public:
     CMemFile() = default;
+    // Real MFC's CMemFile(UINT nGrowBytes) constructor. eMule's CSafeMemFile
+    // forwards to it (SafeFile.h:98). nGrowBytes only tunes reallocation
+    // growth, which this std::vector-backed implementation handles
+    // automatically, so the argument is accepted and ignored.
+    explicit CMemFile(UINT /*nGrowBytes*/) {}
     UINT Read(void* lpBuf, UINT nCount) override;
     void Write(const void* lpBuf, UINT nCount) override;
     ULONGLONG Seek(LONGLONG lOff, UINT nFrom) override;

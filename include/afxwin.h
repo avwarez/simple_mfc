@@ -722,6 +722,7 @@ CWinApp* AfxGetApp();
 void* AfxGetInstanceHandle();
 void* AfxGetResourceHandle();
 CWnd* AfxGetMainWnd();
+LPCTSTR AfxGetAppName();
 int AfxMessageBox(LPCTSTR lpszText, UINT nType = 0, UINT nIDHelp = 0);
 
 // ---------------------------------------------------------------------

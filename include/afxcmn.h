@@ -64,6 +64,9 @@ using TC_ITEM = TCITEM; // older-SDK alias, used interchangeably with TCITEM in 
 struct TBBUTTON;
 using LPTBBUTTON = TBBUTTON*;
 struct TBBUTTONINFO;
+struct HDITEM;
+using HD_ITEM = HDITEM; // older-SDK alias
+struct COMBOBOXEXITEM;
 #endif
 #ifndef LVCFMT_LEFT
 constexpr int LVCFMT_LEFT = 0;
@@ -322,6 +325,62 @@ public:
     void Activate(BOOL bActivate);
     void RelayEvent(LPMSG lpMsg);
     void DelTool(CWnd* pWnd, UINT_PTR nIDTool = 0);
+};
+
+// ---------------------------------------------------------------------
+// CHeaderCtrl (header afxcmn.h, deriva da CWnd). eMule reaches it mostly
+// via CListCtrl::GetHeaderCtrl() and calls SetItem/GetItemCount/
+// Set-GetImageList/Set-GetOrderArray; Attach/Detach are inherited CWnd.
+// ---------------------------------------------------------------------
+class CHeaderCtrl : public CWnd
+{
+public:
+    int GetItemCount() const;
+    BOOL GetItem(int nPos, HDITEM* pHeaderItem) const;
+    BOOL SetItem(int nPos, HDITEM* pHeaderItem);
+    int InsertItem(int nPos, HDITEM* pHeaderItem);
+    BOOL DeleteItem(int nPos);
+    BOOL GetItemRect(int nIndex, LPRECT lpRect) const;
+    CImageList* SetImageList(CImageList* pImageList);
+    CImageList* GetImageList() const;
+    BOOL SetOrderArray(int iCount, int* piArray);
+    BOOL GetOrderArray(int* piArray, int iCount);
+};
+
+// ---------------------------------------------------------------------
+// CSpinButtonCtrl (header afxcmn.h, deriva da CWnd)
+// ---------------------------------------------------------------------
+class CSpinButtonCtrl : public CWnd
+{
+public:
+    virtual BOOL Create(DWORD dwStyle, const RECT& rect, CWnd* pParentWnd, UINT nID);
+    int SetPos(int nPos);
+    int GetPos() const;
+    void SetRange(short nLower, short nUpper);
+    void SetRange32(int nLower, int nUpper);
+    DWORD GetRange() const;
+    void GetRange32(int& lower, int& upper) const;
+    CWnd* SetBuddy(CWnd* pWndBuddy);
+    CWnd* GetBuddy() const;
+    UINT SetBase(int nBase);
+    UINT GetBase() const;
+};
+
+// ---------------------------------------------------------------------
+// CComboBoxEx (header afxcmn.h, deriva da CComboBox in real MFC)
+// ---------------------------------------------------------------------
+class CComboBoxEx : public CComboBox
+{
+public:
+    int InsertItem(const COMBOBOXEXITEM* pCBItem);
+    int DeleteItem(int iIndex);
+    BOOL GetItem(COMBOBOXEXITEM* pCBItem) const;
+    BOOL SetItem(const COMBOBOXEXITEM* pCBItem);
+    int GetCount() const;
+    CComboBox* GetComboBoxCtrl();
+    CEdit* GetEditCtrl();
+    CImageList* SetImageList(CImageList* pImageList);
+    CImageList* GetImageList() const;
 };
 
 #if defined(__GNUC__) || defined(__clang__)

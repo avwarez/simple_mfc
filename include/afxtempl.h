@@ -79,6 +79,23 @@ private:
 // POSITION is a box around a std::unordered_map iterator, the same
 // convention/limitation as CList (see the comment in afxcoll.h).
 // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// HashKey<ARG_KEY> — real MFC's primary hashing template (afxtempl.h).
+// Our CMap is backed by std::unordered_map (std::hash), so simple_mfc never
+// calls HashKey itself; but eMule/srchybrid provides full specializations
+// (`template<> UINT AFXAPI HashKey(const CCKey&)` in MapKey.h/ShaHashset.h/
+// DeadSourceList.h), which are only well-formed if this primary template is
+// visible -- otherwise MSVC reports C2912 "not a specialization of a function
+// template". The default body mirrors real MFC's identity hash and is valid
+// for pointer/integral keys; class keys are always user-specialized.
+// ---------------------------------------------------------------------
+template <class ARG_KEY>
+UINT AFXAPI HashKey(ARG_KEY key)
+{
+    return static_cast<UINT>(reinterpret_cast<std::uintptr_t>(
+                                 (void*)(std::uintptr_t)key) >> 4);
+}
+
 template <class KEY, class ARG_KEY, class VALUE, class ARG_VALUE>
 class CMap : public CObject
 {
