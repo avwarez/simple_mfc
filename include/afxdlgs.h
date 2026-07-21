@@ -175,10 +175,15 @@ public:
 // hierarchy CObject -> CCmdTarget -> CWnd -> CDialog -> CCommonDialog ->
 // CFileDialog). eMule constructs it directly (6-arg ctor), calls DoModal
 // (inherited) + GetPathName, and reads m_ofn.lpstrTitle. m_ofn is the real
-// OPENFILENAME (from <commdlg.h>, pulled in by <windows.h> now that
-// WIN32_LEAN_AND_MEAN is gone); a minimal portable stand-in otherwise.
+// OPENFILENAME/CHOOSEFONT/CHOOSECOLOR, declared in <commdlg.h> -- NOT
+// pulled in by a bare <windows.h> when WIN32_LEAN_AND_MEAN is defined
+// (as this library's own CMakeLists.txt does for its MSVC build), so
+// included explicitly here rather than assumed; a minimal portable
+// stand-in otherwise.
 // ---------------------------------------------------------------------
-#ifndef _WIN32
+#ifdef _WIN32
+#include <commdlg.h>
+#else
 struct OPENFILENAME { LPCTSTR lpstrTitle; };
 #endif
 class CFileDialog : public CDialog

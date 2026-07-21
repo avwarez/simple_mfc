@@ -155,10 +155,13 @@ int main()
 
     // CTempBuffer<T> (atlalloc.h): both the fixed (stack) and heap paths.
     {
-        CTempBuffer<int, 64> small; // 64 bytes fixed => fits 16 ints
-        small.Allocate(4);
-        for (int i = 0; i < 4; ++i) small[i] = i * i;
-        assert(small[3] == 9);
+        // Not named "small": that's a legacy MIDL typedef for char,
+        // declared in <rpcndr.h> (pulled in transitively by <oleauto.h>
+        // on _WIN32), and collides as a spurious redeclaration.
+        CTempBuffer<int, 64> smallBuf; // 64 bytes fixed => fits 16 ints
+        smallBuf.Allocate(4);
+        for (int i = 0; i < 4; ++i) smallBuf[i] = i * i;
+        assert(smallBuf[3] == 9);
 
         CTempBuffer<int, 16> big; // 16 bytes fixed => only 4 ints; ask for more
         big.Allocate(100);
