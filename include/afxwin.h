@@ -561,6 +561,21 @@ public:
     void ShowControlBar(CControlBar* pBar, BOOL bShow, BOOL bDelay);
 };
 
+// ---------------------------------------------------------------------
+// CView — base of the document/view classes (header afxwin.h, hierarchy
+// CObject -> CCmdTarget -> CWnd -> CView). eMule/srchybrid uses no
+// document/view architecture at all: it only needs CView as the base of
+// CFormView (afxext.h), which CTransferWnd/CSearchResultsWnd derive from
+// to host a dialog template inside the main frame. So the document half
+// (GetDocument/OnUpdate/OnDraw against CDocument) is deliberately absent
+// -- every message handler those two override already comes from CWnd.
+// ---------------------------------------------------------------------
+class CView : public CWnd
+{
+public:
+    virtual void OnInitialUpdate();
+};
+
 class CStatic : public CWnd
 {
 public:
