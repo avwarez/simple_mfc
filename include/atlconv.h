@@ -8,7 +8,14 @@
 // Signature verified against the Microsoft Learn ATL text encoding
 // functions page.
 #pragma once
-#include "afx.h" // LPCWSTR, LPSTR
+#include "afx.h"
+
+// Off Windows these narrow/wide pointer aliases do not exist (afx.h only
+// defines the TCHAR-shaped ones); on Windows they come from <windows.h>.
+#ifndef _WIN32
+using LPCWSTR = const wchar_t*;
+using LPSTR = char*;
+#endif
 
 // Returns the number of bytes required when szDest is NULL and nDest 0,
 // which is exactly how eMule sizes its buffer before the second call.

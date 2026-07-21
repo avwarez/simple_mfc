@@ -20,6 +20,8 @@
 #pragma once
 #include "afxwin.h"
 #include "afxocc.h"
+#include "atlbase.h" // CComPtr, which m_spHtmlDoc below is; real MFC's
+                     // afxdhtml.h pulls ATL in for exactly this reason.
 
 // The browser host interfaces (IDocHostUIHandler, DOCHOSTUIFLAG_*) and
 // the DOM (IHTMLDocument2, IHTMLElement). All Windows SDK headers, not
