@@ -21,12 +21,18 @@
     #include "afxtempl.h"
     #include "afxmt.h"
     #include "atltime.h"
+    #include "atltypes.h"
+    #include "atlenc.h"
+    #include "atlconv.h"
 #elif defined(SIMPLE_MFC_USE_REAL_MFC)
     #include <afx.h>
     #include <afxcoll.h>
     #include <afxtempl.h>
     #include <afxmt.h>
     #include <atltime.h>
+    #include <atltypes.h>
+    #include <atlenc.h>
+    #include <atlconv.h>
 #else
     #error "Define either SIMPLE_MFC_USE_NATIVE or SIMPLE_MFC_USE_REAL_MFC"
 #endif
@@ -74,8 +80,10 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <random>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace
 {
@@ -1401,6 +1409,256 @@ static void TestMutex()
 }
 
 // ---------------------------------------------------------------------
+// Pattern-driven cases: instead of one hand-picked value per assertion,
+// generate N inputs from a fixed-seed PRNG and run the same call on each.
+// std::mt19937's algorithm is fully specified by the standard, so a given
+// seed produces a byte-identical draw sequence in both probes -- they are
+// two separate processes/binaries, but compiled from this same source
+// file (see the file header), so "the same seed" really does mean "the
+// same inputs" here, with no need to serialize/replay anything between
+// them. Each case gets a unique, self-describing label (e.g.
+// "Pattern.CString.Format.03") so a mismatch in compare.cmake's output
+// names the exact iteration to reproduce, without re-running anything.
+// ---------------------------------------------------------------------
+namespace
+{
+constexpr unsigned kPatternSeed = 20260722u;
+
+// A short, printable-ASCII-only random word: CString/CRC-style tests
+// intentionally avoid non-ASCII input, matching the documented,
+// deliberately-deferred MakeUpper/MakeLower/CompareNoCase gap (see
+// README.md "Known conformance gaps") -- this generator is not the place
+// to accidentally re-open it.
+std::string RandomAsciiWord(std::mt19937& rng, int minLen, int maxLen)
+{
+    std::uniform_int_distribution<int> lenDist(minLen, maxLen);
+    std::uniform_int_distribution<int> chDist('a', 'z');
+    int n = lenDist(rng);
+    std::string s;
+    s.reserve(static_cast<size_t>(n));
+    for (int i = 0; i < n; ++i)
+        s.push_back(static_cast<char>(chDist(rng)));
+    return s;
+}
+
+bool IsLeapYear(int y) { return (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0); }
+
+int DaysInMonth(int y, int m)
+{
+    static const int kDays[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    if (m == 2 && IsLeapYear(y)) return 29;
+    return kDays[m - 1];
+}
+} // namespace
+
+static void TestPatternCString()
+{
+    std::mt19937 rng(kPatternSeed);
+    std::uniform_int_distribution<int> intDist(-100000, 100000);
+    std::uniform_real_distribution<double> fltDist(-10000.0, 10000.0);
+    std::uniform_int_distribution<int> widthDist(0, 12);
+    std::uniform_int_distribution<int> precDist(0, 6);
+
+    for (int i = 0; i < 40; ++i)
+    {
+        char label[64];
+        std::snprintf(label, sizeof(label), "Pattern.CString.Format.%02d", i);
+
+        int n = intDist(rng);
+        double d = fltDist(rng);
+        std::string word = RandomAsciiWord(rng, 1, 10);
+        int width = widthDist(rng);
+        int prec = precDist(rng);
+
+        CStringA wordA(word.c_str());
+        CString wordW(wordA); // explicit cross-width (narrow->wide) converting ctor
+
+        CString fmt;
+        switch (i % 5)
+        {
+        case 0: fmt.Format(L"%d|%s", n, (LPCTSTR)wordW); break;
+        case 1: fmt.Format(L"%*d", width, n); break;
+        case 2: fmt.Format(L"%.*f", prec, d); break;
+        case 3: fmt.Format(L"%08X", static_cast<unsigned int>(n)); break;
+        default: fmt.Format(L"[%-*s]=%+d", width, (LPCTSTR)wordW, n); break;
+        }
+        Line(label, fmt);
+    }
+}
+
+static void TestPatternCRectAndPoint()
+{
+    std::mt19937 rng(kPatternSeed + 1);
+    std::uniform_int_distribution<int> coordDist(-500, 500);
+    std::uniform_int_distribution<int> sizeDist(0, 300);
+
+    for (int i = 0; i < 40; ++i)
+    {
+        // Every rng draw is its own statement, deliberately: argument
+        // evaluation order is unspecified by the standard, and while both
+        // probes are built by the same compiler (so it would be
+        // consistent in practice), there is no reason to depend on that.
+        int l1 = coordDist(rng);
+        int t1v = coordDist(rng);
+        int w1 = sizeDist(rng);
+        int h1 = sizeDist(rng);
+        CRect r1(l1, t1v, l1 + w1, t1v + h1);
+        int l2 = coordDist(rng);
+        int t2v = coordDist(rng);
+        int w2 = sizeDist(rng);
+        int h2 = sizeDist(rng);
+        CRect r2(l2, t2v, l2 + w2, t2v + h2);
+
+        char label[64];
+        std::snprintf(label, sizeof(label), "Pattern.CRect.%02d", i);
+
+        CRect inter = r1 & r2;
+        CRect uni = r1 | r2;
+        std::string s = "inter=(" + std::to_string(inter.left) + "," + std::to_string(inter.top) + "," +
+                         std::to_string(inter.right) + "," + std::to_string(inter.bottom) + ") union=(" +
+                         std::to_string(uni.left) + "," + std::to_string(uni.top) + "," +
+                         std::to_string(uni.right) + "," + std::to_string(uni.bottom) + ") w1=" +
+                         std::to_string(r1.Width()) + " h1=" + std::to_string(r1.Height()) +
+                         " empty1=" + (r1.IsRectEmpty() ? "1" : "0");
+        Line(label, s);
+
+        int px = coordDist(rng);
+        int py = coordDist(rng);
+        CPoint p(px, py);
+        char labelPt[64];
+        std::snprintf(labelPt, sizeof(labelPt), "Pattern.CRect.PtInRect.%02d", i);
+        LineBool(labelPt, r1.PtInRect(p) != FALSE);
+
+        char labelSub[64];
+        std::snprintf(labelSub, sizeof(labelSub), "Pattern.CRect.Subtract.%02d", i);
+        CRect sub;
+        BOOL subOk = sub.SubtractRect(&r1, &r2);
+        std::string subStr = std::string(subOk ? "1:" : "0:") + "(" + std::to_string(sub.left) + "," +
+                              std::to_string(sub.top) + "," + std::to_string(sub.right) + "," +
+                              std::to_string(sub.bottom) + ")";
+        Line(labelSub, subStr);
+    }
+}
+
+static void TestPatternCTime()
+{
+    std::mt19937 rng(kPatternSeed + 2);
+    std::uniform_int_distribution<int> yearDist(1970, 2099);
+    std::uniform_int_distribution<int> monthDist(1, 12);
+    std::uniform_int_distribution<int> hourDist(0, 23);
+    std::uniform_int_distribution<int> minSecDist(0, 59);
+
+    CTime prev;
+    bool havePrev = false;
+    for (int i = 0; i < 24; ++i)
+    {
+        int y = yearDist(rng);
+        int mo = monthDist(rng);
+        std::uniform_int_distribution<int> dayDist(1, DaysInMonth(y, mo));
+        int d = dayDist(rng);
+        int h = hourDist(rng);
+        int mi = minSecDist(rng);
+        int se = minSecDist(rng);
+
+        CTime t(y, mo, d, h, mi, se);
+
+        char label[64];
+        std::snprintf(label, sizeof(label), "Pattern.CTime.%02d", i);
+        std::string s = std::to_string(t.GetYear()) + "-" + std::to_string(t.GetMonth()) + "-" +
+                         std::to_string(t.GetDay()) + " " + std::to_string(t.GetHour()) + ":" +
+                         std::to_string(t.GetMinute()) + ":" + std::to_string(t.GetSecond()) +
+                         " dow=" + std::to_string(t.GetDayOfWeek());
+        Line(label, s);
+
+        if (havePrev)
+        {
+            CTimeSpan diff = t - prev;
+            char labelDiff[64];
+            std::snprintf(labelDiff, sizeof(labelDiff), "Pattern.CTimeSpan.Diff.%02d", i);
+            LineInt(labelDiff, static_cast<long long>(diff.GetTotalSeconds()));
+        }
+        prev = t;
+        havePrev = true;
+    }
+}
+
+static void TestPatternBase64()
+{
+    std::mt19937 rng(kPatternSeed + 3);
+    std::uniform_int_distribution<int> lenDist(0, 300);
+    std::uniform_int_distribution<int> byteDist(0, 255);
+
+    for (int i = 0; i < 30; ++i)
+    {
+        int n = lenDist(rng);
+        std::vector<BYTE> buf(static_cast<size_t>(n));
+        for (auto& b : buf) b = static_cast<BYTE>(byteDist(rng));
+
+        // Odd iterations exercise the CRLF-wrapping path (real MIME line
+        // breaks every 76 output chars) against real ATL -- eMule itself
+        // only ever passes NOCRLF, so this is otherwise unvalidated logic.
+        DWORD flags = (i % 2 == 0) ? ATL_BASE64_FLAG_NOCRLF : ATL_BASE64_FLAG_NONE;
+
+        int needed = Base64EncodeGetRequiredLength(n, flags);
+        std::vector<char> dst(static_cast<size_t>(needed) + 1, 0);
+        int outLen = needed;
+        BOOL ok = Base64Encode(buf.empty() ? nullptr : buf.data(), n, dst.data(), &outLen, flags);
+
+        char label[64];
+        std::snprintf(label, sizeof(label), "Pattern.Base64.%02d", i);
+        std::string s = std::string(ok ? "1:" : "0:") + std::to_string(outLen) + ":" +
+                         std::string(dst.data(), static_cast<size_t>(outLen));
+        Line(label, s);
+    }
+}
+
+static void TestPatternUnicodeToUtf8()
+{
+    std::mt19937 rng(kPatternSeed + 4);
+    std::uniform_int_distribution<int> lenDist(1, 20);
+    // Weighted ranges: plain ASCII, Latin-1 supplement, general BMP
+    // (avoiding the surrogate range D800-DFFF on its own), and a
+    // surrogate-pair marker handled specially below.
+    std::uniform_int_distribution<int> kindDist(0, 3);
+    std::uniform_int_distribution<int> asciiDist(0x20, 0x7E);
+    std::uniform_int_distribution<int> latin1Dist(0xA0, 0xFF);
+    std::uniform_int_distribution<int> bmpDist(0x0100, 0x2FFF);
+    std::uniform_int_distribution<int> highSurrDist(0xD800, 0xDBFF);
+    std::uniform_int_distribution<int> lowSurrDist(0xDC00, 0xDFFF);
+
+    for (int i = 0; i < 30; ++i)
+    {
+        int n = lenDist(rng);
+        std::wstring w;
+        w.reserve(static_cast<size_t>(n) * 2);
+        for (int c = 0; c < n; ++c)
+        {
+            switch (kindDist(rng))
+            {
+            case 0: w.push_back(static_cast<wchar_t>(asciiDist(rng))); break;
+            case 1: w.push_back(static_cast<wchar_t>(latin1Dist(rng))); break;
+            case 2: w.push_back(static_cast<wchar_t>(bmpDist(rng))); break;
+            default:
+                w.push_back(static_cast<wchar_t>(highSurrDist(rng)));
+                w.push_back(static_cast<wchar_t>(lowSurrDist(rng)));
+                break;
+            }
+        }
+        w.push_back(0); // include the terminator, matching eMule's own two-pass usage
+
+        int srcChars = static_cast<int>(w.size());
+        int needed = AtlUnicodeToUTF8(w.c_str(), srcChars, nullptr, 0);
+        std::vector<char> dst(static_cast<size_t>(needed > 0 ? needed : 1), 0);
+        int outLen = AtlUnicodeToUTF8(w.c_str(), srcChars, dst.data(), needed);
+
+        char label[64];
+        std::snprintf(label, sizeof(label), "Pattern.AtlUnicodeToUTF8.%02d", i);
+        std::string s = std::to_string(outLen) + ":" + std::string(dst.data(), static_cast<size_t>(outLen > 0 ? outLen : 0));
+        Line(label, s);
+    }
+}
+
+// ---------------------------------------------------------------------
 int main()
 {
     TestRTTI();
@@ -1427,5 +1685,11 @@ int main()
     TestEventManualReset();
     TestEventPulseAndUnlock();
     TestMutex();
+
+    TestPatternCString();
+    TestPatternCRectAndPoint();
+    TestPatternCTime();
+    TestPatternBase64();
+    TestPatternUnicodeToUtf8();
     return 0;
 }
