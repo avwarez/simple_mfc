@@ -392,23 +392,27 @@ public:
     CStringT(PCXSTR pszSrc) { if (pszSrc) m_data = pszSrc; }
     CStringT(PCXSTR pch, int nLength) { if (pch && nLength > 0) m_data.assign(pch, static_cast<size_t>(nLength)); }
     explicit CStringT(XCHAR ch, int nRepeat = 1) : m_data(static_cast<size_t>(nRepeat < 0 ? 0 : nRepeat), ch) {}
-    // Cross-character (YCHAR) sources convert; explicit, matching real ATL's
-    // CSTRING_EXPLICIT so a char/wchar_t mismatch is never silently narrowed.
-    // NOT explicit, matching real ATL: it marks these CSTRING_EXPLICIT,
-    // which expands to nothing unless _CSTRING_EXPLICIT_CONSTRUCTORS is
-    // defined -- and eMule does not define it. That implicit conversion is
-    // what makes comparing a wide CString against a narrow literal work
-    // ("strReqDir == OP_INCOMPLETE_SHARED_FILES", a char[] in Opcodes.h),
-    // along with the +=/= narrow forms.
-    CStringT(PCYSTR pszSrc) { if (pszSrc) m_data = Convert(pszSrc, std::char_traits<YCHAR>::length(pszSrc)); }
-    CStringT(PCYSTR pch, int nLength) { if (pch && nLength > 0) m_data = Convert(pch, static_cast<size_t>(nLength)); }
-    CStringT(const CStringT<YCHAR>& strSrc) { m_data = Convert(strSrc.GetString(), static_cast<size_t>(strSrc.GetLength())); }
+    // Cross-character (YCHAR) sources convert, but explicitly: making them
+    // implicit gives some call sites two equally good user-conversion
+    // paths (CStringA -> PCSTR -> this, or CStringA -> this) which the
+    // compiler rejects as ambiguous, and it also makes eMule's own
+    // OptUtf8ToStr(const CStringA&)/OptUtf8ToStr(const CStringW&) pair
+    // ambiguous. The cross-width assignment, append and comparison
+    // operators below cover what eMule actually needs, each with a single
+    // exact match and no conversion at all.
+    explicit CStringT(PCYSTR pszSrc) { if (pszSrc) m_data = Convert(pszSrc, std::char_traits<YCHAR>::length(pszSrc)); }
+    explicit CStringT(PCYSTR pch, int nLength) { if (pch && nLength > 0) m_data = Convert(pch, static_cast<size_t>(nLength)); }
+    explicit CStringT(const CStringT<YCHAR>& strSrc) { m_data = Convert(strSrc.GetString(), static_cast<size_t>(strSrc.GetLength())); }
 
     CStringT& operator=(const CStringT&) = default;
     CStringT& operator=(CStringT&&) noexcept = default;
     CStringT& operator=(PCXSTR pszSrc) { if (pszSrc) m_data = pszSrc; else m_data.clear(); return *this; }
     CStringT& operator=(XCHAR ch) { m_data.assign(1, ch); return *this; }
     CStringT& operator=(PCYSTR pszSrc) { m_data = pszSrc ? Convert(pszSrc, std::char_traits<YCHAR>::length(pszSrc)) : std::basic_string<XCHAR>(); return *this; }
+    // The other width's string class, assigned directly: without this the
+    // compiler must choose between two user-conversion paths and calls it
+    // ambiguous ("m_pProxyPeerHost = sAscii;").
+    CStringT& operator=(const CStringT<YCHAR>& s) { m_data = Convert(s.GetString(), static_cast<size_t>(s.GetLength())); return *this; }
 
     int GetLength() const noexcept { return static_cast<int>(m_data.size()); }
     bool IsEmpty() const noexcept { return m_data.empty(); }
@@ -619,6 +623,8 @@ public:
     CStringT& operator+=(const CStringT& s) { m_data += s.m_data; return *this; }
     CStringT& operator+=(PCXSTR psz) { if (psz) m_data += psz; return *this; }
     CStringT& operator+=(XCHAR ch) { m_data += ch; return *this; }
+    CStringT& operator+=(PCYSTR psz) { if (psz) m_data += Convert(psz, std::char_traits<YCHAR>::length(psz)); return *this; }
+    CStringT& operator+=(const CStringT<YCHAR>& s) { m_data += Convert(s.GetString(), static_cast<size_t>(s.GetLength())); return *this; }
 
     friend CStringT operator+(const CStringT& a, const CStringT& b) { CStringT r(a); r.m_data += b.m_data; return r; }
     friend CStringT operator+(const CStringT& a, PCXSTR b) { CStringT r(a); if (b) r.m_data += b; return r; }
@@ -632,6 +638,12 @@ public:
     friend bool operator!=(const CStringT& a, const CStringT& b) noexcept { return a.m_data != b.m_data; }
     friend bool operator!=(const CStringT& a, PCXSTR b) noexcept { return a.m_data != b; }
     friend bool operator!=(PCXSTR a, const CStringT& b) noexcept { return a != b.m_data; }
+    // Against the other width's literal, which is how eMule tests a wide
+    // CString against the narrow constants in Opcodes.h.
+    friend bool operator==(const CStringT& a, PCYSTR b) noexcept { return b != nullptr && a.m_data == Convert(b, std::char_traits<YCHAR>::length(b)); }
+    friend bool operator==(PCYSTR a, const CStringT& b) noexcept { return b == a; }
+    friend bool operator!=(const CStringT& a, PCYSTR b) noexcept { return !(a == b); }
+    friend bool operator!=(PCYSTR a, const CStringT& b) noexcept { return !(b == a); }
     friend bool operator<(const CStringT& a, const CStringT& b) noexcept { return a.m_data < b.m_data; }
     friend bool operator<(const CStringT& a, PCXSTR b) noexcept { return a.m_data < b; }
     friend bool operator<(PCXSTR a, const CStringT& b) noexcept { return a < b.m_data; }

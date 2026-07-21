@@ -20,6 +20,7 @@
 #include "afx.h"
 
 #include <list>
+#include <type_traits>
 #include <vector>
 
 using POSITION = void*; // not a real Win32/SDK type, safe to always define
@@ -135,6 +136,15 @@ private:
 template <class T>
 class ArrayImpl
 {
+    // std::vector<bool> is the packed-bit specialisation: its at()/[] hand
+    // back a proxy object, not a T&, so ElementAt/GetData/operator[] could
+    // not compile for a CArray<bool>. Storing bool as unsigned char keeps
+    // one real, addressable object per element, which is what real MFC's
+    // CArray does anyway.
+    using StoredT = std::conditional_t<std::is_same<T, bool>::value, unsigned char, T>;
+    static T& AsT(StoredT& v) noexcept { return reinterpret_cast<T&>(v); }
+    static const T& AsT(const StoredT& v) noexcept { return reinterpret_cast<const T&>(v); }
+
 public:
     INT_PTR Add(T v) { m_v.push_back(std::move(v)); return static_cast<INT_PTR>(m_v.size()) - 1; }
     INT_PTR Append(const ArrayImpl& src)
@@ -146,12 +156,12 @@ public:
         return oldSize;
     }
     void Copy(const ArrayImpl& src) { m_v = src.m_v; }
-    T& ElementAt(INT_PTR i) { return m_v.at(static_cast<size_t>(i)); }
+    T& ElementAt(INT_PTR i) { return AsT(m_v.at(static_cast<size_t>(i))); }
     void FreeExtra() { m_v.shrink_to_fit(); }
-    const T& GetAt(INT_PTR i) const { return m_v.at(static_cast<size_t>(i)); }
+    const T& GetAt(INT_PTR i) const { return AsT(m_v.at(static_cast<size_t>(i))); }
     INT_PTR GetCount() const { return static_cast<INT_PTR>(m_v.size()); }
-    T* GetData() { return m_v.data(); }
-    const T* GetData() const { return m_v.data(); }
+    T* GetData() { return reinterpret_cast<T*>(m_v.data()); }
+    const T* GetData() const { return reinterpret_cast<const T*>(m_v.data()); }
     INT_PTR GetSize() const { return static_cast<INT_PTR>(m_v.size()); }
     INT_PTR GetUpperBound() const { return static_cast<INT_PTR>(m_v.size()) - 1; }
     void InsertAt(INT_PTR i, T v, INT_PTR nCount = 1)
@@ -171,7 +181,7 @@ public:
     void SetSize(INT_PTR nNewSize, INT_PTR /*nGrowBy*/ = -1) { m_v.resize(static_cast<size_t>(nNewSize)); }
 
 private:
-    std::vector<T> m_v;
+    std::vector<StoredT> m_v;
 };
 
 } // namespace mfc_detail

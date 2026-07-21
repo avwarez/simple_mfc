@@ -62,6 +62,7 @@ public:
     CPoint(long initX, long initY);
     CPoint(POINT initPt);
     CPoint(SIZE initSize);
+    CPoint(DWORD dwPoint);
 
     void Offset(int xOffset, int yOffset) noexcept;
     void Offset(POINT point) noexcept;

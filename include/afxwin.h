@@ -88,6 +88,7 @@ using HGDIOBJ = void*;
 using HPALETTE = void*;
 using HPEN = void*;
 using HBITMAP = void*;
+using HRGN = void*;
 using HGLOBAL = void*;
 using LPVOID = void*;
 using BYTE = unsigned char;
@@ -307,6 +308,7 @@ using LOGBRUSH = tagLOGBRUSH;
 class CPen : public CGdiObject
 {
 public:
+    operator HPEN() const { return (HPEN)m_hObject; }
     CPen();
     CPen(int nPenStyle, int nWidth, COLORREF crColor);
     CPen(int nPenStyle, int nWidth, const LOGBRUSH* pLogBrush, int nStyleCount = 0, const DWORD* lpStyle = nullptr);
@@ -319,6 +321,7 @@ public:
 class CBrush : public CGdiObject
 {
 public:
+    operator HBRUSH() const { return (HBRUSH)m_hObject; }
     CBrush();
     CBrush(COLORREF crColor);
     CBrush(int nIndex, COLORREF crColor);
@@ -347,6 +350,7 @@ using LPLOGPALETTE = LOGPALETTE*;
 class CPalette : public CGdiObject
 {
 public:
+    operator HPALETTE() const { return (HPALETTE)m_hObject; }
     BOOL CreatePalette(LPLOGPALETTE lpLogPalette);
 };
 
@@ -354,6 +358,7 @@ public:
 class CBitmap : public CGdiObject
 {
 public:
+    operator HBITMAP() const { return (HBITMAP)m_hObject; }
     BOOL CreateCompatibleBitmap(CDC* pDC, int nWidth, int nHeight);
     int GetBitmap(struct tagBITMAP* pBitMap);
     DWORD GetBitmapBits(DWORD dwCount, void* lpBits) const;
@@ -369,6 +374,7 @@ public:
 class CRgn : public CGdiObject
 {
 public:
+    operator HRGN() const { return (HRGN)m_hObject; }
     BOOL CreateRectRgn(int x1, int y1, int x2, int y2);
     BOOL CreateRectRgnIndirect(const RECT* lpRect);
     int CombineRgn(CRgn* pRgn1, CRgn* pRgn2, int nCombineMode);
@@ -383,6 +389,7 @@ using LOGFONT = tagLOGFONT;
 class CFont : public CGdiObject
 {
 public:
+    operator HFONT() const { return (HFONT)m_hObject; }
     BOOL CreateFontIndirect(const LOGFONT* lpLogFont);
     int GetLogFont(LOGFONT* pLogFont);
     BOOL CreateFont(int nHeight, int nWidth, int nEscapement, int nOrientation, int nWeight,
@@ -659,6 +666,9 @@ public:
     BOOL IsWindowEnabled() const;
     CWnd* GetParent() const;
     CWnd* GetDlgItem(int nID) const;
+    CMenu* GetMenu() const;
+    BOOL SetMenu(CMenu* pMenu);
+    CMenu* GetSystemMenu(BOOL bRevert) const;
     // The dialog-item helpers. Each one that is missing does not simply
     // fail to resolve: the unqualified call falls through to the global
     // Win32 function of the same name, which then rejects the arity
