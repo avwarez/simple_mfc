@@ -93,8 +93,10 @@ public:
     // below): it is not, but this method is.
     virtual CSize CalcDynamicLayout(int nLength, DWORD dwMode);
 
-    // Docking state, all public data members in real MFC. eMule reads
-    // m_pDockContext to restore a floating bar to its last dock position.
+    // Docking state. Public in real MFC but not on its documented
+    // member list (they are implementation members of afxext.h that
+    // applications nonetheless reach); eMule reads m_pDockContext to
+    // restore a floating bar to its last dock position.
     CDockContext* m_pDockContext;
     CFrameWnd* m_pDockSite;
     CDockBar* m_pDockBar;
@@ -103,11 +105,11 @@ public:
 
     // Which sides of the frame this bar may dock to; the frame's own
     // EnableDocking (CFrameWnd, afxwin.h) has to allow them as well.
-    virtual void EnableDocking(DWORD dwDockStyle);
+    void EnableDocking(DWORD dwDockStyle);
     BOOL IsFloating() const;
     BOOL IsVisible() const;
     // The client rectangle minus this bar's borders.
-    void CalcInsideRect(CRect& rect, BOOL bHorz) const;
+    virtual void CalcInsideRect(CRect& rect, BOOL bHorz) const;
     CFrameWnd* GetDockingFrame() const;
     DWORD GetBarStyle();
     void SetBarStyle(DWORD dwStyle);

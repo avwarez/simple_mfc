@@ -454,13 +454,15 @@ public:
     // qualified super-call in a CToolBarCtrl-derived class.
     CSize GetMaxSize();
     BOOL AutoSize();
-    BOOL GetButtonInfo(int nID, TBBUTTONINFO* ptbbi) const;
+    int GetButtonInfo(int nID, TBBUTTONINFO* ptbbi) const;
     void SetRows(int nRows, BOOL bLarger, LPRECT lpRect);
     BOOL SetMaxTextRows(int iMaxRows);
     int GetMaxTextRows() const;
     CImageList* SetDisabledImageList(CImageList* pImageList);
     BOOL SetButtonSize(CSize size);
-    CSize GetButtonSize() const;
+    // Packed: LOWORD is the width, HIWORD the height.
+    DWORD GetButtonSize() const;
+    int GetRows() const;
     BOOL SetButtonWidth(int cxMin, int cxMax);
     BOOL IsButtonHidden(int nID) const;
     BOOL MapAccelerator(TCHAR chAccel, UINT* pIDBtn);
