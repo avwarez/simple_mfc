@@ -24,6 +24,7 @@
 #include "atlcomcli.h"   // CComPtr, CComQIPtr, CComBSTR, CComVariant
 #include "atlsimpcoll.h" // CSimpleArray
 #include "atlconv.h"     // AtlUnicodeToUTF8
+#include "atlalloc.h"    // CTempBuffer
 
 // Registry key wrapper. Real ATL declares CRegKey in atlbase.h itself.
 // eMule uses it for the shell/file-association settings; signatures
@@ -63,6 +64,7 @@ public:
     LONG QueryStringValue(LPCTSTR pszValueName, LPTSTR pszValue, ULONG* pnChars) noexcept;
     LONG QueryDWORDValue(LPCTSTR pszValueName, DWORD& dwValue) noexcept;
     LONG SetStringValue(LPCTSTR pszValueName, LPCTSTR pszValue, DWORD dwType = REG_SZ) noexcept;
+    LONG SetDWORDValue(LPCTSTR pszValueName, DWORD dwValue) noexcept;
     LONG DeleteValue(LPCTSTR lpszValue) noexcept;
     LONG RecurseDeleteKey(LPCTSTR lpszKey) noexcept;
 };

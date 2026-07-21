@@ -13,3 +13,8 @@
 // Returns the number of bytes required when szDest is NULL and nDest 0,
 // which is exactly how eMule sizes its buffer before the second call.
 int AtlUnicodeToUTF8(LPCWSTR wszSrc, int nSrc, LPSTR szDest, int nDest) noexcept;
+
+// The code page ATL's conversion macros use. Internal (leading
+// underscore) and undocumented, but eMule names it directly -- twice as a
+// default argument in StringConversion.h, so it must be declared here.
+UINT _AtlGetConversionACP() noexcept;

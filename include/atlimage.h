@@ -14,6 +14,11 @@
 
 #ifdef _WIN32
 #include <windows.h> // HBITMAP
+// CImage is a facade over GDI+, and real atlimage.h pulls GDI+ in with
+// it. eMule relies on that: MuleListCtrl.cpp uses Gdiplus::Bitmap and
+// GdiplusStartup, and FrameGrabThread.cpp names Gdiplus::ImageFormatBMP,
+// neither of them including <gdiplus.h> themselves.
+#include <gdiplus.h>
 #else
 using HBITMAP = void*;
 using LPCTSTR = const wchar_t*;
