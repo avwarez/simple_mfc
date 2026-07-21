@@ -171,9 +171,11 @@ public:
 class CTreeCtrl : public CWnd
 {
 public:
+    CToolTipCtrl* GetToolTips() const;
     // Checkbox state, which is really item state bits; eMule's directory
     // tree toggles them (`SetCheck(hItem, !GetCheck(hItem))`).
     HTREEITEM GetFirstVisibleItem() const;
+    BOOL SelectSetFirstVisible(HTREEITEM hItem);
     COLORREF SetBkColor(COLORREF clr);
     COLORREF GetBkColor() const;
     BOOL GetCheck(HTREEITEM hItem) const;
@@ -222,6 +224,7 @@ public:
 class CListCtrl : public CWnd
 {
 public:
+    CToolTipCtrl* GetToolTips() const;
     int InsertItem(const LVITEM* pItem);
     int InsertItem(int nItem, LPCTSTR lpszItem);
     int InsertItem(int nItem, LPCTSTR lpszItem, int nImage);
@@ -319,9 +322,12 @@ public:
 class CTabCtrl : public CWnd
 {
 public:
+    CToolTipCtrl* GetToolTips() const;
     CImageList* SetImageList(CImageList* pImageList);
     CImageList* GetImageList() const;
     void SetPadding(CSize size);
+    int SetCurFocus(int nItem);
+    void HighlightItem(int idItem, BOOL fHighlight = TRUE);
     BOOL GetItem(int nItem, TCITEM* pTabCtrlItem) const;
     BOOL SetItem(int nItem, TCITEM* pTabCtrlItem);
     // Doc: "6 overload, il più semplice: ..." — only this simplest one
@@ -381,6 +387,8 @@ public:
 class CStatusBarCtrl : public CWnd
 {
 public:
+    BOOL SetBorders(int iHorzWidth, int iVertWidth, int iSpacing);
+    void GetBorders(int* pBorders) const;
     virtual BOOL Create(DWORD dwStyle, const RECT& rect, CWnd* pParentWnd, UINT nID);
     BOOL SetText(LPCTSTR lpszText, int nPane, int nType);
     CString GetText(int nPane, int* pType = nullptr) const;

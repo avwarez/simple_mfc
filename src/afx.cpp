@@ -54,6 +54,20 @@ int CException::ReportError(UINT /*nType*/, UINT /*nMessageID*/)
 }
 
 // ---------------------------------------------------------------------
+// CNotSupportedException
+// ---------------------------------------------------------------------
+BOOL CNotSupportedException::GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pnHelpContext) const
+{
+    if (pnHelpContext) *pnHelpContext = 0;
+    if (!lpszError || nMaxError == 0) return FALSE;
+    const wchar_t* msg = L"Unsupported operation.";
+    size_t n = std::min<size_t>(nMaxError - 1, std::char_traits<wchar_t>::length(msg));
+    std::wmemcpy(lpszError, msg, n);
+    lpszError[n] = L'\0';
+    return TRUE;
+}
+
+// ---------------------------------------------------------------------
 // CMemoryException
 // ---------------------------------------------------------------------
 BOOL CMemoryException::GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pnHelpContext) const

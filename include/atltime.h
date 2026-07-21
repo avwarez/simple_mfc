@@ -83,6 +83,10 @@ public:
     CTime operator+(const CTimeSpan& s) const { return CTime(m_time + s.GetTotalSeconds()); }
     bool operator<(const CTime& o) const noexcept { return m_time < o.m_time; }
     bool operator==(const CTime& o) const noexcept { return m_time == o.m_time; }
+    bool operator!=(const CTime& o) const noexcept { return m_time != o.m_time; }
+    bool operator>(const CTime& o) const noexcept { return m_time > o.m_time; }
+    bool operator<=(const CTime& o) const noexcept { return m_time <= o.m_time; }
+    bool operator>=(const CTime& o) const noexcept { return m_time >= o.m_time; }
 
 private:
     // std::localtime (standard C++, <ctime>) uses an internal static

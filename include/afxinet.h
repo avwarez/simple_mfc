@@ -11,6 +11,19 @@
 // AfxParseURL, declared below.
 #pragma once
 
+// The service types CInternetSession/CHttpConnection accept. Real MFC
+// defines them alongside the connection classes; eMule selects HTTPS
+// explicitly when it fetches over TLS.
+#ifndef AFX_INET_SERVICE_HTTP
+#define AFX_INET_SERVICE_HTTP 3
+#endif
+#ifndef AFX_INET_SERVICE_HTTPS
+#define AFX_INET_SERVICE_HTTPS 4
+#endif
+#ifndef AFX_INET_SERVICE_FTP
+#define AFX_INET_SERVICE_FTP 1
+#endif
+
 #include "afx.h" // CString, BOOL, DWORD
 
 #ifdef _WIN32

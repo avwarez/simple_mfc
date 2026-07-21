@@ -432,6 +432,16 @@ public:
     void Append(PCXSTR pszSrc) { if (pszSrc) m_data += pszSrc; }
     void Append(PCXSTR pszSrc, int nLength) { if (pszSrc && nLength > 0) m_data.append(pszSrc, static_cast<size_t>(nLength)); }
     void AppendChar(XCHAR ch) { m_data += ch; }
+    // Replaces the whole contents, the counted form included (which is how
+    // eMule copies out of a fixed-size buffer that may not be terminated).
+    void SetString(PCXSTR pszSrc) { m_data = pszSrc ? pszSrc : std::basic_string<XCHAR>(); }
+    void SetString(PCXSTR pszSrc, int nLength)
+    {
+        if (pszSrc && nLength > 0)
+            m_data.assign(pszSrc, static_cast<size_t>(nLength));
+        else
+            m_data.clear();
+    }
 
     // Windows-only interop, declaration-only like the rest of the frontend
     // surface: both hand off to Win32 (LoadStringW / SysAllocString) and
@@ -712,6 +722,7 @@ class CNotSupportedException : public CSimpleException
     DECLARE_DYNAMIC(CNotSupportedException)
 public:
     CNotSupportedException() = default;
+    BOOL GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pnHelpContext = nullptr) const override;
 };
 
 class CMemoryException : public CSimpleException

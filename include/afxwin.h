@@ -55,6 +55,7 @@ typedef UINT(AFX_CDECL* AFX_THREADPROC)(void*);
 #include <shlwapi.h>  // PathFindExtension/PathAddBackslash & co, which
                       // eMule calls unqualified expecting MFC to have
                       // pulled them in (real MFC's headers do)
+#include <shlobj.h>   // CSIDL_* shell folder ids
 #include <shobjidl.h> // ITaskbarList3: CEMuleDlg holds one as a CComPtr
                       // member, so all 81 TUs that see EmuleDlg.h need the
                       // interface declared. Shell COM, not MFC -- eMule
@@ -94,6 +95,9 @@ using LPCREATESTRUCT = CREATESTRUCT*;
 struct HELPINFO;
 struct TOOLINFO;
 struct WINDOWPLACEMENT;
+struct SCROLLINFO;
+struct tagTEXTMETRIC;
+using TEXTMETRIC = tagTEXTMETRIC;
 #endif
 
 // ---------------------------------------------------------------------
@@ -214,6 +218,10 @@ public:
     // pass the raw handle to SendMessage(WM_SETFONT).
     HGDIOBJ m_hObject = nullptr;
 
+    // Real MFC's GDI wrappers convert implicitly to their own handle type,
+    // which is how eMule returns a CBrush where an HBRUSH is expected.
+    operator HGDIOBJ() const { return m_hObject; }
+
     BOOL DeleteObject();
     BOOL Attach(HGDIOBJ hObject);
     HGDIOBJ Detach();
@@ -283,6 +291,8 @@ class CBitmap : public CGdiObject
 public:
     BOOL CreateCompatibleBitmap(CDC* pDC, int nWidth, int nHeight);
     int GetBitmap(struct tagBITMAP* pBitMap);
+    DWORD GetBitmapBits(DWORD dwCount, void* lpBits) const;
+    DWORD SetBitmapBits(DWORD dwCount, const void* lpBits);
     BOOL LoadBitmap(LPCTSTR lpszResourceName);
     BOOL LoadBitmap(UINT nIDResource);
     CSize GetBitmapDimension() const;
@@ -422,7 +432,10 @@ public:
     BOOL Rectangle(int x1, int y1, int x2, int y2);
     BOOL Rectangle(LPCRECT lpRect);
     CPalette* SelectPalette(CPalette* pPalette, BOOL bForceBackground);
-    BOOL GetTextMetrics(struct tagTEXTMETRIC* lpMetrics);
+    // TEXTMETRIC, not `struct tagTEXTMETRIC`: under UNICODE the real name
+    // resolves to tagTEXTMETRICW, so the bare tag named a different type
+    // than the one eMule actually passes.
+    BOOL GetTextMetrics(TEXTMETRIC* lpMetrics) const;
     int GetClipBox(LPRECT lpRect);
     // Both overloads below fixed/added during the FRONTEND/GDI blind-spot
     // pass (see ../../mfc_scan_srchybrid.md addendum): real eMule usage
@@ -574,6 +587,9 @@ public:
     CWnd* GetWindow(UINT nCmd) const;
     CWnd* ChildWindowFromPoint(POINT point) const;
     DWORD GetExStyle() const;
+    BOOL SetWindowPos(const CWnd* pWndInsertAfter, int x, int y, int cx, int cy, UINT nFlags);
+    BOOL GetScrollInfo(int nBar, SCROLLINFO* lpScrollInfo, UINT nMask = 0x17 /*SIF_ALL*/);
+    BOOL SetScrollInfo(int nBar, SCROLLINFO* lpScrollInfo, BOOL bRedraw = TRUE);
     BOOL GetWindowPlacement(WINDOWPLACEMENT* lpwndpl) const;
     BOOL SetWindowPlacement(const WINDOWPLACEMENT* lpwndpl);
     BOOL EnableToolTips(BOOL bEnable = TRUE);
@@ -718,6 +734,7 @@ public:
     // CControlBar lives in afxext.h (which includes us, not vice versa), so
     // forward-declared just above for this pointer parameter.
     void ShowControlBar(CControlBar* pBar, BOOL bShow, BOOL bDelay);
+    CWnd* CreateView(CCreateContext* pContext, UINT nID = 0xE900 /*AFX_IDW_PANE_FIRST*/);
 };
 
 // ---------------------------------------------------------------------
@@ -753,6 +770,8 @@ public:
 class CStatic : public CWnd
 {
 public:
+    virtual BOOL Create(LPCTSTR lpszText, DWORD dwStyle, const RECT& rect,
+                         CWnd* pParentWnd, UINT nID = 0xffff);
     HBITMAP SetBitmap(HBITMAP hBitmap);
     HBITMAP GetBitmap() const;
     HICON SetIcon(HICON hIcon);
@@ -762,6 +781,7 @@ public:
 class CEdit : public CWnd
 {
 public:
+    virtual BOOL Create(DWORD dwStyle, const RECT& rect, CWnd* pParentWnd, UINT nID);
     void SetSel(DWORD dwSelection, BOOL bNoScroll = FALSE);
     void SetSel(int nStartChar, int nEndChar, BOOL bNoScroll = FALSE);
     void LimitText(int nChars = 0);
@@ -776,6 +796,7 @@ public:
 class CListBox : public CWnd
 {
 public:
+    virtual BOOL Create(DWORD dwStyle, const RECT& rect, CWnd* pParentWnd, UINT nID);
     // Hit-testing by point; the high word of the result says whether the
     // point actually fell inside the item.
     UINT ItemFromPoint(POINT pt, BOOL& bOutside) const;
@@ -803,6 +824,7 @@ public:
 class CComboBox : public CWnd
 {
 public:
+    virtual BOOL Create(DWORD dwStyle, const RECT& rect, CWnd* pParentWnd, UINT nID);
     int GetCount() const;
     int GetCurSel() const;
     int SetCurSel(int nSelect);
@@ -826,6 +848,8 @@ public:
 class CButton : public CWnd
 {
 public:
+    virtual BOOL Create(LPCTSTR lpszCaption, DWORD dwStyle, const RECT& rect,
+                         CWnd* pParentWnd, UINT nID);
     HICON SetIcon(HICON hIcon);
     UINT GetState() const;
     void SetState(BOOL bHighlight);

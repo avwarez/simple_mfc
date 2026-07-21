@@ -11,6 +11,12 @@
 // an allocator, this practical limitation is accepted).
 #pragma once
 
+// Real MFC's sentinel POSITION meaning "before the first element", used
+// by CListCtrl/CMap walkers to distinguish "not started" from "at end".
+#ifndef BEFORE_START_POSITION
+#define BEFORE_START_POSITION ((POSITION)-1L)
+#endif
+
 #include "afx.h"
 
 #include <list>
