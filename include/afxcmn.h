@@ -412,6 +412,22 @@ public:
     void SetLineSize(int nSize);
 };
 
+// ---------------------------------------------------------------------
+// CIPAddressCtrl (header afxcmn.h, deriva da CWnd)
+// ---------------------------------------------------------------------
+class CIPAddressCtrl : public CWnd
+{
+public:
+    int GetAddress(BYTE& nField0, BYTE& nField1, BYTE& nField2, BYTE& nField3);
+    int GetAddress(DWORD& dwAddress);
+    void SetAddress(DWORD dwAddress);
+    void SetAddress(BYTE nField0, BYTE nField1, BYTE nField2, BYTE nField3);
+    void ClearAddress();
+    BOOL IsBlank() const;
+    BOOL SetFieldRange(int nField, BYTE nLower, BYTE nUpper);
+    void SetFieldFocus(WORD nField);
+};
+
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic pop
 #endif

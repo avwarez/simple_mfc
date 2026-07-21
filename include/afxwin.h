@@ -724,7 +724,10 @@ void* AfxGetResourceHandle();
 CWnd* AfxGetMainWnd();
 LPCTSTR AfxGetAppName();
 int AfxMessageBox(LPCTSTR lpszText, UINT nType = 0, UINT nIDHelp = 0);
+// Real MFC provides BOTH char-widths (afx.h): eMule's kademlia/Tag.h passes a
+// narrow LPCSTR, other call sites the wide LPCTSTR, so declare both overloads.
 BOOL AfxIsValidString(LPCTSTR lpsz, int nLength = -1);
+BOOL AfxIsValidString(const char* lpsz, int nLength = -1);
 BOOL AfxIsValidAddress(const void* lp, UINT nBytes, BOOL bReadWrite = TRUE);
 
 // ---------------------------------------------------------------------

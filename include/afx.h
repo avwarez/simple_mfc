@@ -760,6 +760,19 @@ public:
     void SetLength(ULONGLONG dwNewLen) override { m_buffer.resize(static_cast<size_t>(dwNewLen)); }
     ULONGLONG GetPosition() const override { return m_pos; }
 
+protected:
+    // Real MFC's protected data members. eMule's CSafeMemFile reads m_lpBuffer
+    // directly (SafeFile.h:110). This std::vector-backed CMemFile keeps its
+    // real state in m_buffer/m_pos below and does NOT mirror it into these --
+    // they exist to satisfy derived-class member access (the eMule
+    // compile-check is compile-only; a runtime-faithful mirror is out of scope).
+    BYTE*     m_lpBuffer = nullptr;
+    UINT      m_nGrowBytes = 0;
+    ULONGLONG m_nPosition = 0;
+    ULONGLONG m_nBufferSize = 0;
+    ULONGLONG m_nFileSize = 0;
+    BOOL      m_bAutoDelete = TRUE;
+
 private:
     std::vector<uint8_t> m_buffer;
     size_t m_pos = 0;

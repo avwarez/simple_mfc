@@ -50,9 +50,12 @@ public:
     static int GetLastError();
 };
 
-// CAsyncSocketEx — extended variant used by some application-level socket
-// classes as a custom `: public CObject` type (not part of native MFC).
-class CAsyncSocketEx : public CObject {};
+// NOTE: CAsyncSocketEx is deliberately NOT declared here. Despite the name it
+// is NOT a real-MFC class -- it is eMule/srchybrid's OWN custom class (defined
+// in its AsyncSocketEx.h as `class CAsyncSocketEx : public CObject`). Declaring
+// an empty one here collided with eMule's real definition in the same TU
+// (C2011 "type redefinition"), so real MFC (which has no such class) is matched
+// by simply not providing it.
 
 // ---------------------------------------------------------------------
 // Global function to initialize Windows Sockets in an MFC thread
