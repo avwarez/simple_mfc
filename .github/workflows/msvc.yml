@@ -7,6 +7,12 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    # Last line of defence. Configure+build+test is a ~1 minute job; without
+    # a cap, anything that blocks instead of failing (a Windows modal dialog
+    # on a headless runner is the case this suite actually hit) holds the
+    # runner until GitHub's own 6-hour limit. The test executables and
+    # compare.cmake both have their own, tighter timeouts.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -33,6 +39,10 @@ jobs:
     # it is installed explicitly below. Real MFC is statically linked
     # (CMAKE_MFC_FLAG), so no redistributable DLLs are needed.
     runs-on: windows-latest
+    # Installing the ATL/MFC VS component dominates this job's runtime; the
+    # cap is sized for that, not for the suite itself. Same rationale as the
+    # build job above.
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4

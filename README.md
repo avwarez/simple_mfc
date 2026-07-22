@@ -142,9 +142,25 @@ g++ -std=c++17 -Wall -Wextra -Wpedantic -Iinclude -c src/atltime.cpp -o atltime.
 `tests/conformance/` runs the exact same call sequence — same class, same
 method, same input — against simple_mfc's native implementation and
 against the actual Visual Studio MFC libraries (statically linked), then
-diffs the two runs' output byte-for-byte. It's the strongest verification
-this project has: not "does it compile," but "does it behave and return
-the same thing as real MFC."
+compares the two runs case by case. It's the strongest verification this
+project has: not "does it compile," but "does it behave and return the
+same thing as real MFC."
+
+Each probe prints one record per checked value, as `<case name>\t<value>`,
+and `compare.cmake` matches those records **by name**, not by position. A
+divergence that changes how many records a section emits (a differing
+`CFileFind.MatchCount` drives a print loop, for instance) therefore
+reports as the single difference it is, plus any case only one side
+emitted, instead of shifting — and so falsely failing — every record
+after it. Case names must consequently be unique; the comparison fails
+loudly if they aren't.
+
+Nothing in the harness may wait for a human: both probes disable the
+Windows CRT assertion box, the `abort()` box and Windows Error Reporting
+(`SilenceWindowsDialogs()` in `cases.cpp`), and every layer above them —
+each probe, the compare step, the CTest case, the CI job — carries its
+own timeout. A modal dialog on a headless runner does not fail a job, it
+hangs it: that is what once held `build (Debug)` for five hours.
 
 It only runs on MSVC with the "MFC and ATL" Visual Studio component
 installed (CI installs it explicitly — see

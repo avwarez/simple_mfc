@@ -7,6 +7,19 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Every source here is UTF-8 without a BOM. MSVC does not assume that: with
+# neither a BOM nor /utf-8 it decodes the source in the machine's ANSI code
+# page, so a non-ASCII character literal silently becomes a *different*,
+# longer sequence of characters than the one written (on the CI runner's
+# CP1252, L"é" turned into two characters) -- which is how a passing local
+# GCC test became a failing Windows one. Directory-scoped on purpose, so it
+# applies to the library, the smoke test and both conformance probes alike
+# but is NOT exported to consumers: eMule's compile-check reproduces its own
+# real build flags and must keep doing exactly that.
+if (MSVC)
+    add_compile_options(/utf-8)
+endif()
+
 # --- Library --------------------------------------------------------------
 # afxtempl.h/atlalloc.h (CTempBuffer<>) are header-only (templates): no
 # source to compile for CArray<>/CList<>/CMap<>/CTempBuffer<>. The
@@ -74,6 +87,11 @@ if (SIMPLE_MFC_BUILD_SMOKE_TEST)
 
     enable_testing()
     add_test(NAME smoke_test COMMAND simple_mfc_smoke_test)
+    # The test runs in milliseconds; the timeout exists so that a test that
+    # somehow blocks (a Windows modal dialog with nobody to dismiss it was
+    # the real case) fails in a minute instead of pinning a CI runner for
+    # hours. See SilenceWindowsCrtDialogs() in tests/smoke_test.cpp.
+    set_tests_properties(smoke_test PROPERTIES TIMEOUT 60)
 endif()
 
 # --- Conformance tests vs. real MFC (optional, MSVC + ATL/MFC only) --------

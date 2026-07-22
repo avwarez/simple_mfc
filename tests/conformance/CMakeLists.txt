@@ -42,3 +42,8 @@ add_test(
             "-DREAL_EXE=$<TARGET_FILE:real_mfc_probe>"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/compare.cmake"
 )
+# Outer bound on the whole compare step. compare.cmake already gives each
+# probe its own 300s ceiling, so reaching this one means the driving script
+# itself is stuck, not a probe. Either way the job fails in minutes instead
+# of holding a CI runner for hours.
+set_tests_properties(conformance_vs_real_mfc PROPERTIES TIMEOUT 900)

@@ -7,10 +7,12 @@
 //
 // Both probes run the exact same sequence of calls (this file is shared
 // verbatim — only the #include block differs) and print one canonical
-// line per checked value to stdout. tests/conformance/compare.cmake runs
-// both executables and diffs their output byte-for-byte: any behavioral
-// or result difference between simple_mfc and real MFC shows up as a
-// failing line.
+// record per checked value to stdout, as "<case name>\t<value>" (see
+// Line() below). tests/conformance/compare.cmake runs both executables
+// and compares those records BY NAME: any behavioral or result difference
+// between simple_mfc and real MFC shows up as a named failing case, and a
+// case that only one of the two emits at all is reported as missing
+// rather than as a positional shift.
 //
 // Only ever built on MSVC with the "MFC and ATL" component installed —
 // see ../../CMakeLists.txt and ../../.github/workflows/msvc.yml.
@@ -79,11 +81,42 @@
 
 #include <atomic>
 #include <chrono>
+#include <crtdbg.h>
 #include <cstdio>
+#include <cstdlib>
 #include <random>
 #include <string>
 #include <thread>
 #include <vector>
+
+namespace
+{
+// Nothing in this harness may ever wait for a human. A probe that stops
+// on a modal dialog does not fail -- it HANGS, and compare.cmake (which
+// runs both probes with execute_process) would hang with it, taking the
+// whole CI job to the runner's multi-hour limit. Windows has three
+// separate dialogs that can appear without anyone asking for one:
+//
+//   * the debug CRT's assertion box (_CrtDbgReport's default
+//     _CRTDBG_MODE_WNDW destination for _CRT_ASSERT/_CRT_ERROR),
+//   * the abort() "This application has requested the Runtime to
+//     terminate it in an unusual way" box,
+//   * the OS's own crash / critical-error box (Windows Error Reporting).
+//
+// Real MFC's ASSERT macros feed the first of those, and this suite runs
+// real MFC code by construction, so it is not hypothetical here. Redirect
+// all three to stderr / immediate exit.
+void SilenceWindowsDialogs()
+{
+    for (int report : {_CRT_WARN, _CRT_ERROR, _CRT_ASSERT})
+    {
+        _CrtSetReportMode(report, _CRTDBG_MODE_FILE);
+        _CrtSetReportFile(report, _CRTDBG_FILE_STDERR);
+    }
+    _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
+}
+} // namespace
 
 namespace
 {
@@ -134,9 +167,22 @@ std::string Escape(const std::string& s)
     return out;
 }
 
+// One record per checked value, as exactly two tab-separated fields:
+//
+//     <case name>\t<escaped value>
+//
+// The case NAME is the key compare.cmake matches on -- deliberately not
+// the line number. The previous format led with a running counter and was
+// diffed positionally, which meant a single genuine divergence that
+// changed how many lines a section emits (CFileFind.MatchCount is the
+// obvious one: it drives a print loop) renumbered and shifted every
+// record after it, so one real difference was reported as hundreds. Keyed
+// on the name, an extra or missing case is reported as exactly that, and
+// the surrounding cases still compare normally.
 void Line(const char* name, const std::string& value)
 {
-    std::printf("%03d %s = %s\n", ++g_index, name, Escape(value).c_str());
+    ++g_index;
+    std::printf("%s\t%s\n", name, Escape(value).c_str());
     // Flush immediately: if the process later ends earlier than expected
     // (crash, or anything else), every line printed so far must already
     // be visible to whoever captured stdout, not stuck in a buffer.
@@ -1661,6 +1707,8 @@ static void TestPatternUnicodeToUtf8()
 // ---------------------------------------------------------------------
 int main()
 {
+    SilenceWindowsDialogs();
+
     TestRTTI();
     TestExceptions();
     TestCString();
@@ -1691,5 +1739,11 @@ int main()
     TestPatternCTime();
     TestPatternBase64();
     TestPatternUnicodeToUtf8();
+
+    // Explicit end-of-run marker. A probe that dies partway through still
+    // exits with a code compare.cmake checks, but a truncated run that
+    // somehow exits 0 anyway would otherwise look like "the last N cases
+    // are missing" rather than "this probe never finished".
+    Line("#END", std::to_string(g_index));
     return 0;
 }

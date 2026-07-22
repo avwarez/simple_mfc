@@ -27,26 +27,70 @@
 #include "afxdtctl.h"
 #include "afxsock.h"
 
-#include <cassert>
 #include <cstdio>
 #include <cstring>
 #include <sstream>
 
+#ifdef _MSC_VER
+#include <crtdbg.h>
+#endif
+
+// CHECK, not assert(): <cassert>'s assert is compiled out entirely by
+// NDEBUG, which CMake defines in Release/RelWithDebInfo. With assert the
+// Release run of this executable checked *nothing* and reported success
+// unconditionally, so only the Debug job was ever a real test. CHECK is
+// active in every configuration, reports every failure instead of dying
+// on the first, and makes the process exit non-zero so CTest sees it.
+static int g_failures = 0;
+#define CHECK(expr)                                                        \
+    do                                                                     \
+    {                                                                      \
+        if (!(expr))                                                       \
+        {                                                                  \
+            std::fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__,   \
+                         #expr);                                           \
+            ++g_failures;                                                  \
+        }                                                                  \
+    } while (0)
+
+// On Windows a failing assert/abort inside the debug CRT reports through
+// _CrtDbgReport, whose default destination for _CRT_ASSERT and _CRT_ERROR
+// is _CRTDBG_MODE_WNDW: a MODAL MESSAGE BOX. On a headless CI runner
+// nobody ever clicks it, so the process never exits and the job hangs
+// until the runner's own limit kills it -- which is exactly what happened
+// here (two consecutive "build (Debug)" jobs cancelled after ~5 hours,
+// while "build (Release)", where NDEBUG had removed the assertions, passed
+// in under a minute). Route every CRT report to stderr instead, so a
+// failure is a fast, readable failure rather than a hang.
+static void SilenceWindowsCrtDialogs()
+{
+#ifdef _MSC_VER
+    for (int report : {_CRT_WARN, _CRT_ERROR, _CRT_ASSERT})
+    {
+        _CrtSetReportMode(report, _CRTDBG_MODE_FILE);
+        _CrtSetReportFile(report, _CRTDBG_FILE_STDERR);
+    }
+    _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+#endif
+}
+
 int main()
 {
+    SilenceWindowsCrtDialogs();
+
     CString s = L"  simple_mfc  ";
     s.Trim();
-    assert(s == CString(L"simple_mfc"));
+    CHECK(s == CString(L"simple_mfc"));
 
     CObList list;
     CObject a, b;
     list.AddTail(&a);
     list.AddTail(&b);
-    assert(list.GetCount() == 2);
+    CHECK(list.GetCount() == 2);
 
     CArray<int> arr;
     arr.Add(42);
-    assert(arr[0] == 42);
+    CHECK(arr[0] == 42);
 
     // CMap<CString, LPCTSTR, ...> (the CMapStringToPtr/CMapStringToString
     // idiom): guards against the identity-hash-on-a-throwaway-CString bug
@@ -58,15 +102,15 @@ int main()
     smap.SetAt(L"one", 1);
     smap.SetAt(L"two", 2);
     int mapVal = 0;
-    assert(smap.Lookup(L"two", mapVal) != FALSE);
-    assert(mapVal == 2);
-    assert(smap.RemoveKey(L"one") != FALSE);
-    assert(smap.GetCount() == 1);
+    CHECK(smap.Lookup(L"two", mapVal) != FALSE);
+    CHECK(mapVal == 2);
+    CHECK(smap.RemoveKey(L"one") != FALSE);
+    CHECK(smap.GetCount() == 1);
 
     CCriticalSection cs;
     {
         CSingleLock lk(&cs, TRUE);
-        assert(lk.IsLocked());
+        CHECK(lk.IsLocked());
     }
 
     CTime t = CTime::GetCurrentTime();
@@ -78,18 +122,18 @@ int main()
     CDumpContext dcTest(oss);
     CObject dumpObj;
     dumpObj.Dump(dcTest);
-    assert(oss.str() == L"CObject");
+    CHECK(oss.str() == L"CObject");
 
     // CFileException::ThrowOsError (static factory, found the same way).
     try
     {
         CFileException::ThrowOsError(2 /*ERROR_FILE_NOT_FOUND*/, L"missing.txt");
-        assert(false && "ThrowOsError must throw");
+        CHECK(false && "ThrowOsError must throw");
     }
     catch (CFileException* e)
     {
-        assert(e->m_cause == CFileException::fileNotFound);
-        assert(e->m_strFileName == CString(L"missing.txt"));
+        CHECK(e->m_cause == CFileException::fileNotFound);
+        CHECK(e->m_strFileName == CString(L"missing.txt"));
         e->Delete();
     }
 
@@ -97,29 +141,29 @@ int main()
     // no GDI/HWND involved.
     CPoint p1(10, 20), p2(3, 4);
     CPoint pSum = p1 + p2;
-    assert(pSum.x == 13 && pSum.y == 24);
+    CHECK(pSum.x == 13 && pSum.y == 24);
     p1.Offset(1, 1);
-    assert(p1.x == 11 && p1.y == 21);
+    CHECK(p1.x == 11 && p1.y == 21);
 
     CSize sz(5, 7);
-    assert((p2 + sz).x == 8 && (p2 + sz).y == 11);
+    CHECK((p2 + sz).x == 8 && (p2 + sz).y == 11);
 
     CRect rc(0, 0, 100, 50);
-    assert(rc.Width() == 100 && rc.Height() == 50);
-    assert(rc.PtInRect(CPoint(50, 25)) != FALSE);
-    assert(rc.PtInRect(CPoint(100, 50)) == FALSE); // right/bottom exclusive
+    CHECK(rc.Width() == 100 && rc.Height() == 50);
+    CHECK(rc.PtInRect(CPoint(50, 25)) != FALSE);
+    CHECK(rc.PtInRect(CPoint(100, 50)) == FALSE); // right/bottom exclusive
     rc.OffsetRect(10, 10);
-    assert(rc.left == 10 && rc.top == 10 && rc.right == 110 && rc.bottom == 60);
+    CHECK(rc.left == 10 && rc.top == 10 && rc.right == 110 && rc.bottom == 60);
     rc.InflateRect(5, 5);
-    assert(rc.left == 5 && rc.right == 115);
-    assert(rc.TopLeft().x == rc.left && rc.TopLeft().y == rc.top);
-    assert(rc.BottomRight().x == rc.right && rc.BottomRight().y == rc.bottom);
+    CHECK(rc.left == 5 && rc.right == 115);
+    CHECK(rc.TopLeft().x == rc.left && rc.TopLeft().y == rc.top);
+    CHECK(rc.BottomRight().x == rc.right && rc.BottomRight().y == rc.bottom);
 
     CRect rcA(0, 0, 10, 10), rcB(5, 5, 15, 15);
     CRect rcI = rcA & rcB;
-    assert(rcI.left == 5 && rcI.top == 5 && rcI.right == 10 && rcI.bottom == 10);
+    CHECK(rcI.left == 5 && rcI.top == 5 && rcI.right == 10 && rcI.bottom == 10);
     CRect rcU = rcA | rcB;
-    assert(rcU.left == 0 && rcU.top == 0 && rcU.right == 15 && rcU.bottom == 15);
+    CHECK(rcU.left == 0 && rcU.top == 0 && rcU.right == 15 && rcU.bottom == 15);
 
     // CArchive (afx.h), built on the already-implemented CMemFile: a
     // store/load round trip through the primitive-type operators, which
@@ -139,7 +183,7 @@ int main()
         UINT gotRemaining = 0;
         DWORD gotFragments = 0;
         arLoad >> gotTotal >> gotRemaining >> gotFragments;
-        assert(gotTotal == 42 && gotRemaining == 7 && gotFragments == 3);
+        CHECK(gotTotal == 42 && gotRemaining == 7 && gotFragments == 3);
         arLoad.Close();
     }
 
@@ -151,21 +195,30 @@ int main()
         std::vector<char> dst(static_cast<size_t>(nNeeded) + 1, 0);
         int nOutLen = nNeeded;
         BOOL ok = Base64Encode(reinterpret_cast<const BYTE*>(src), nSrcLen, dst.data(), &nOutLen, ATL_BASE64_FLAG_NOCRLF);
-        assert(ok != FALSE);
+        CHECK(ok != FALSE);
         dst[static_cast<size_t>(nOutLen)] = 0;
-        assert(std::strcmp(dst.data(), "SGVsbG8sIE1GQyE=") == 0);
+        CHECK(std::strcmp(dst.data(), "SGVsbG8sIE1GQyE=") == 0);
     }
 
     // AtlUnicodeToUTF8 (atlconv.h): the two-pass "measure then fill" form
     // eMule's StringConversion.cpp uses.
     {
-        const wchar_t* wsrc = L"café"; // "caf\xc3\xa9" in UTF-8
+        // \u00e9, not a literal e-acute: this file is UTF-8 without a BOM, and
+        // MSVC (absent /utf-8, which CMakeLists.txt now passes) decodes
+        // such a source in the machine's ANSI code page instead. On the
+        // CI runner (CP1252) the two UTF-8 bytes C3 A9 were therefore read
+        // as the TWO characters U+00C3 U+00A9, making this literal 5 chars
+        // long rather than 4 -- so nSrcChars=5 stopped covering the
+        // terminator, the conversion produced an unterminated buffer, and
+        // the check below failed. A universal-character-name means the
+        // same thing under every source encoding.
+        const wchar_t* wsrc = L"caf\u00e9"; // "caf\xc3\xa9" in UTF-8
         int nSrcChars = 5; // 4 chars + terminator, matching the -1 convention below
         int nNeeded = AtlUnicodeToUTF8(wsrc, nSrcChars, nullptr, 0);
         std::vector<char> dst(static_cast<size_t>(nNeeded), 0);
         int nOutLen = AtlUnicodeToUTF8(wsrc, nSrcChars, dst.data(), nNeeded);
-        assert(nOutLen == nNeeded);
-        assert(std::strcmp(dst.data(), "caf\xc3\xa9") == 0);
+        CHECK(nOutLen == nNeeded);
+        CHECK(std::strcmp(dst.data(), "caf\xc3\xa9") == 0);
     }
 
     // CTempBuffer<T> (atlalloc.h): both the fixed (stack) and heap paths.
@@ -176,12 +229,12 @@ int main()
         CTempBuffer<int, 64> smallBuf; // 64 bytes fixed => fits 16 ints
         smallBuf.Allocate(4);
         for (int i = 0; i < 4; ++i) smallBuf[i] = i * i;
-        assert(smallBuf[3] == 9);
+        CHECK(smallBuf[3] == 9);
 
         CTempBuffer<int, 16> big; // 16 bytes fixed => only 4 ints; ask for more
         big.Allocate(100);
         for (int i = 0; i < 100; ++i) big[i] = i;
-        assert(big[99] == 99);
+        CHECK(big[99] == 99);
     }
 
     // AfxParseURL (afxinet.h).
@@ -190,11 +243,11 @@ int main()
         CString server, object;
         INTERNET_PORT port = 0;
         BOOL ok = AfxParseURL(L"https://example.com:8443/path/to/file", svc, server, object, port);
-        assert(ok != FALSE);
-        assert(svc == AFX_INET_SERVICE_HTTPS);
-        assert(server == CString(L"example.com"));
-        assert(object == CString(L"/path/to/file"));
-        assert(port == 8443);
+        CHECK(ok != FALSE);
+        CHECK(svc == AFX_INET_SERVICE_HTTPS);
+        CHECK(server == CString(L"example.com"));
+        CHECK(object == CString(L"/path/to/file"));
+        CHECK(port == 8443);
     }
 
     // CMemFile::Detach/Attach (afx.h).
@@ -203,22 +256,22 @@ int main()
         const char payload[] = "detach-me";
         mf.Write(payload, sizeof(payload) - 1);
         BYTE* pRaw = mf.Detach();
-        assert(mf.GetLength() == 0);
+        CHECK(mf.GetLength() == 0);
 
         CMemFile mf2;
         mf2.Attach(pRaw, sizeof(payload) - 1);
-        assert(mf2.GetLength() == sizeof(payload) - 1);
+        CHECK(mf2.GetLength() == sizeof(payload) - 1);
         mf2.SeekToBegin();
         char buf[16] = {};
         mf2.Read(buf, sizeof(payload) - 1);
-        assert(std::strcmp(buf, "detach-me") == 0);
+        CHECK(std::strcmp(buf, "detach-me") == 0);
     }
 
     // AfxGetModuleThreadState (afximpl.h): non-null, stable within a thread.
     {
         AFX_MODULE_THREAD_STATE* st1 = AfxGetModuleThreadState();
         AFX_MODULE_THREAD_STATE* st2 = AfxGetModuleThreadState();
-        assert(st1 != nullptr && st1 == st2);
+        CHECK(st1 != nullptr && st1 == st2);
     }
 
     CWnd* w = nullptr; (void)w;
@@ -236,6 +289,11 @@ int main()
     // other declaration-only GUI/GDI classes above.
     CPalette* pal = nullptr; (void)pal;
 
+    if (g_failures != 0)
+    {
+        std::printf("simple_mfc smoke test: %d FAILED check(s)\n", g_failures);
+        return 1;
+    }
     std::printf("simple_mfc smoke test: ALL OK\n");
     return 0;
 }
