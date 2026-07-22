@@ -1830,8 +1830,18 @@ static void TestCTempBuffer()
     LineInt("CTempBuffer.heap.first", heapBuf[0]);
     LineInt("CTempBuffer.heap.last", heapBuf[99]);
 
-    // Growing from the fixed buffer into the heap must preserve what was
-    // written before the move.
+    // Reallocate across the fixed->heap boundary, reading back values
+    // written BEFORE the move. atlalloc.h's own comment claims real ATL
+    // preserves the contents here; this case is what turns that claim
+    // from an assertion into something CI verifies, and it does hold.
+    //
+    // It is worth knowing that ATL documents no contract either way (there
+    // is no CTempBuffer reference page, and the memory-management overview
+    // says nothing about Reallocate and existing contents). So if this
+    // case ever starts failing, read it as "Microsoft changed an
+    // undocumented implementation detail", not as a simple_mfc regression
+    // -- and expect the real-MFC side to print garbage rather than a clean
+    // difference, since not preserving means reading uninitialized memory.
     CTempBuffer<int, 16> growBuf;
     growBuf.Allocate(4);
     for (int i = 0; i < 4; ++i)

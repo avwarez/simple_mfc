@@ -235,6 +235,17 @@ int main()
         big.Allocate(100);
         for (int i = 0; i < 100; ++i) big[i] = i;
         CHECK(big[99] == 99);
+
+        // Growing across the fixed->heap boundary keeps what was already
+        // written. Pinned down here rather than in the conformance suite
+        // on purpose: ATL documents no contract either way for
+        // Reallocate, so this is a promise simple_mfc makes about itself,
+        // not a behavior real ATL can be held to.
+        CTempBuffer<int, 16> grow; // 4 ints on the stack
+        grow.Allocate(4);
+        for (int i = 0; i < 4; ++i) grow[i] = 100 + i;
+        grow.Reallocate(64); // forces the move to the heap
+        for (int i = 0; i < 4; ++i) CHECK(grow[i] == 100 + i);
     }
 
     // AfxParseURL (afxinet.h).
