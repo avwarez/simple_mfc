@@ -121,19 +121,45 @@ private:
 // ---------------------------------------------------------------------
 // ---------------------------------------------------------------------
 // HashKey<ARG_KEY> — real MFC's primary hashing template (afxtempl.h).
-// Our CMap is backed by std::unordered_map (std::hash), so simple_mfc never
-// calls HashKey itself; but eMule/srchybrid provides full specializations
-// (`template<> UINT AFXAPI HashKey(const CCKey&)` in MapKey.h/ShaHashset.h/
-// DeadSourceList.h), which are only well-formed if this primary template is
-// visible -- otherwise MSVC reports C2912 "not a specialization of a function
-// template". The default body mirrors real MFC's identity hash and is valid
-// for pointer/integral keys; class keys are always user-specialized.
+// CMap's own hasher (MfcHashKey below) forwards to it, so this is not
+// just a compile-time placeholder: eMule/srchybrid provides full
+// specializations for its own key types (`template<> UINT AFXAPI
+// HashKey(const CCKey&)` in MapKey.h/ShaHashset.h/DeadSourceList.h),
+// which are only well-formed if this primary template is visible --
+// otherwise MSVC reports C2912 "not a specialization of a function
+// template". The default body mirrors real MFC's identity hash and is
+// valid for pointer/integral keys; class keys are always user-specialized.
 // ---------------------------------------------------------------------
 template <class ARG_KEY>
 UINT AFXAPI HashKey(ARG_KEY key)
 {
     return static_cast<UINT>(reinterpret_cast<std::uintptr_t>(
                                  (void*)(std::uintptr_t)key) >> 4);
+}
+
+// Real MFC's OWN built-in override for LPCTSTR keys: hashes the string's
+// CONTENT, not the identity of the pointer. Without this, the primary
+// template above (identity hash) applies to a CMap<CString, LPCTSTR, ...>
+// too -- every CMap operation constructs its own short-lived CString from
+// the LPCTSTR key argument (via unordered_map's operator[]/find), so the
+// pointer being hashed is a different, unrelated buffer address on every
+// single call, even for the exact same string content. GetCount() still
+// looked right (insert always succeeds, into *some* bucket), but
+// Lookup/RemoveKey on a key that was genuinely inserted moments earlier
+// would silently report "not found" -- found via the conformance suite's
+// pattern-generation work, not by inspection. Real MFC's own HashKey
+// (LPCTSTR) does this same content-based multiply-and-add walk (a
+// textbook string hash, functionally equivalent to real MFC's, though not
+// claimed bit-for-bit identical -- nothing observable depends on the
+// specific hash value, only on equal strings landing in the same bucket).
+template <>
+inline UINT AFXAPI HashKey<LPCTSTR>(LPCTSTR key)
+{
+    UINT nHash = 0;
+    if (key)
+        for (; *key; ++key)
+            nHash = (nHash << 5) + nHash + static_cast<UINT>(*key);
+    return nHash;
 }
 
 // The bridge from MFC's hashing convention to std::unordered_map's. Real

@@ -48,6 +48,21 @@ int main()
     arr.Add(42);
     assert(arr[0] == 42);
 
+    // CMap<CString, LPCTSTR, ...> (the CMapStringToPtr/CMapStringToString
+    // idiom): guards against the identity-hash-on-a-throwaway-CString bug
+    // (HashKey<LPCTSTR> content specialization in afxtempl.h) -- without
+    // it, GetCount() still looks right (every insert lands *somewhere*),
+    // but Lookup/RemoveKey on a key inserted moments earlier silently
+    // reports "not found".
+    CMap<CString, LPCTSTR, int, int> smap;
+    smap.SetAt(L"one", 1);
+    smap.SetAt(L"two", 2);
+    int mapVal = 0;
+    assert(smap.Lookup(L"two", mapVal) != FALSE);
+    assert(mapVal == 2);
+    assert(smap.RemoveKey(L"one") != FALSE);
+    assert(smap.GetCount() == 1);
+
     CCriticalSection cs;
     {
         CSingleLock lk(&cs, TRUE);
