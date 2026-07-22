@@ -2001,10 +2001,12 @@ static void TestCRBMap()
         Line("CRBMap.valuesInOrder", vals);
     }
 
-    // FindFirstKeyAfter = lower_bound: first key >= the argument. Probe an
-    // exact hit, a gap (rounds up), and past the end (no position).
+    // FindFirstKeyAfter = std::upper_bound: first key STRICTLY GREATER than
+    // the argument (the name is literal). Probe an exact hit (30 is
+    // present, so the answer is the NEXT key, 40), a gap (25 -> 30), and
+    // past the end (no position).
     POSITION exact = m.FindFirstKeyAfter(30);
-    LineInt("CRBMap.FindFirstKeyAfter.exact", static_cast<long long>(m.GetKeyAt(exact)));
+    LineInt("CRBMap.FindFirstKeyAfter.exact", static_cast<long long>(m.GetKeyAt(exact))); // -> 40
     POSITION gap = m.FindFirstKeyAfter(25); // -> 30
     LineInt("CRBMap.FindFirstKeyAfter.gap", static_cast<long long>(m.GetKeyAt(gap)));
     POSITION past = m.FindFirstKeyAfter(1000); // beyond max key -> none

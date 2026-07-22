@@ -92,10 +92,15 @@ public:
         return Box(it);
     }
 
-    // First element whose key is >= the given key (ATL: lower_bound).
+    // First element whose key is STRICTLY GREATER than the given key
+    // (std::upper_bound). The name is literal -- "after", not "at or
+    // after": real ATL returns key 40 for FindFirstKeyAfter(30) when 30 is
+    // present, NOT 30 itself (confirmed against real ATL by the conformance
+    // suite; an earlier lower_bound here was a real divergence, since
+    // CBarShader walks spans through exactly this call). NULL past the end.
     POSITION FindFirstKeyAfter(const KEY& key) const
     {
-        auto it = const_cast<MapT&>(m_map).lower_bound(key);
+        auto it = const_cast<MapT&>(m_map).upper_bound(key);
         return it == m_map.end() ? nullptr : Box(it);
     }
 
