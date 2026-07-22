@@ -27,6 +27,7 @@
     #include "atlenc.h"
     #include "atlconv.h"
     #include "atlalloc.h"
+    #include "afxinet.h"
 #elif defined(SIMPLE_MFC_USE_REAL_MFC)
     #include <afx.h>
     #include <afxcoll.h>
@@ -37,6 +38,7 @@
     #include <atlenc.h>
     #include <atlconv.h>
     #include <atlalloc.h>
+    #include <afxinet.h>
 #else
     #error "Define either SIMPLE_MFC_USE_NATIVE or SIMPLE_MFC_USE_REAL_MFC"
 #endif
@@ -1860,6 +1862,64 @@ static void TestCTempBuffer()
 }
 
 // ---------------------------------------------------------------------
+// AfxParseURL (afxinet.h). Pure string parsing -- no socket is opened and
+// no WinInet call is made -- which is what makes it comparable at all;
+// the rest of afxinet.h is a live network surface this suite has no
+// business touching.
+// ---------------------------------------------------------------------
+static void TestAfxParseURL()
+{
+    struct Case
+    {
+        const char* label;
+        LPCTSTR url;
+    };
+    const Case kCases[] = {
+        {"http.explicitPort", L"http://example.com:8080/path/to/file"},
+        {"https.defaultPort", L"https://example.com/index.html"},
+        {"http.defaultPort", L"http://example.com/"},
+        {"http.noObject", L"http://example.com"},
+        {"ftp.explicitPort", L"ftp://files.example.com:2121/pub/readme.txt"},
+        {"ftp.defaultPort", L"ftp://files.example.com/pub/"},
+        {"http.query", L"http://example.com/search?q=mfc&lang=en"},
+        {"http.deepPath", L"http://example.com/a/b/c/d.html"},
+        {"noScheme", L"example.com/path"},
+        {"empty", L""},
+        {"schemeOnly", L"http://"},
+        {"unknownScheme", L"gopher://example.com/x"},
+    };
+
+    for (const Case& c : kCases)
+    {
+        DWORD service = 0;
+        CString server, object;
+        INTERNET_PORT port = 0;
+        BOOL ok = AfxParseURL(c.url, service, server, object, port);
+
+        // One record per case rather than five: these outputs are a single
+        // parse result and are only meaningful together.
+        //
+        // On failure only the return value is compared. AfxParseURL is
+        // documented as "nonzero if successful; otherwise 0" and says
+        // nothing about the out-parameters in the failing case, so their
+        // contents there are unspecified — comparing them would be
+        // inviting a mismatch that is not a bug, the same reason this
+        // suite already skips GetErrorMessage's text and hash-table
+        // iteration order.
+        std::string label = std::string("AfxParseURL.") + c.label;
+        std::string value = "0";
+        if (ok)
+        {
+            value = std::string("1 service=") + std::to_string(service) +
+                    " server=" + Utf8((LPCTSTR)server) +
+                    " object=" + Utf8((LPCTSTR)object) +
+                    " port=" + std::to_string(port);
+        }
+        Line(label.c_str(), value);
+    }
+}
+
+// ---------------------------------------------------------------------
 // Pattern-driven cases: instead of one hand-picked value per assertion,
 // generate N inputs from a fixed-seed PRNG and run the same call on each.
 // std::mt19937's algorithm is fully specified by the standard, so a given
@@ -2138,6 +2198,7 @@ int main()
     TestCPointCSize();
     TestCRectMethods();
     TestCTempBuffer();
+    TestAfxParseURL();
     TestCriticalSection();
     TestEventAutoReset();
     TestEventManualReset();
