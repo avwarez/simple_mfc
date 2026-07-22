@@ -41,6 +41,20 @@
 #define AFX_CDECL __cdecl   // real MFC's calling-convention marker on static
                             // thread procs (`static UINT AFX_CDECL RunProc(...)`)
 
+// KNOWN DIVERGENCE, deliberate: on Windows (LLP64) `long` is 32 bits, so
+// Win32's DWORD/LONG are exactly 32 bits and are nevertheless DISTINCT
+// types from UINT/int -- which is precisely what lets MFC overload on both
+// (CArchive::operator<< has separate UINT and DWORD overloads, and eMule
+// relies on that). On a 64-bit Unix (LP64) `long` is 64 bits, so the two
+// properties become mutually exclusive: standard C++ offers no second
+// 32-bit integer type distinct from `int`. Distinctness is kept here,
+// because losing it makes those overload sets ill-formed, which means
+// sizeof(DWORD)/sizeof(LONG) is 8 rather than 4 off Windows. Anything
+// depending on the WIDTH -- serialization above all (CArchive's byte
+// stream differs accordingly) -- must use a fixed-width type explicitly
+// and never assume DWORD is 32 bits. Immaterial to today's only consumer,
+// which builds on Windows against the real <windows.h> typedefs; it is a
+// trap waiting for the eventual Linux port.
 using UINT = unsigned int;
 using WORD = unsigned short;
 using BYTE = unsigned char;

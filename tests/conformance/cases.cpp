@@ -26,6 +26,7 @@
     #include "atltypes.h"
     #include "atlenc.h"
     #include "atlconv.h"
+    #include "atlalloc.h"
 #elif defined(SIMPLE_MFC_USE_REAL_MFC)
     #include <afx.h>
     #include <afxcoll.h>
@@ -35,6 +36,7 @@
     #include <atltypes.h>
     #include <atlenc.h>
     #include <atlconv.h>
+    #include <atlalloc.h>
 #else
     #error "Define either SIMPLE_MFC_USE_NATIVE or SIMPLE_MFC_USE_REAL_MFC"
 #endif
@@ -193,6 +195,25 @@ void Line(const char* name, const CString& value) { Line(name, Utf8((LPCTSTR)val
 void LineBool(const char* name, bool value) { Line(name, std::string(value ? "TRUE" : "FALSE")); }
 void LineInt(const char* name, long long value) { Line(name, std::to_string(value)); }
 
+// Renders raw bytes as uppercase hex. Used where the BYTES themselves are
+// the contract, not just the values round-tripped through them: CArchive
+// writes a format that outlives the process that produced it, so "reads
+// back correctly" is a weaker claim than "produces the same stream real
+// MFC produces".
+std::string Hex(const void* data, size_t n)
+{
+    static const char kDigits[] = "0123456789ABCDEF";
+    const unsigned char* p = static_cast<const unsigned char*>(data);
+    std::string out;
+    out.reserve(n * 2);
+    for (size_t i = 0; i < n; ++i)
+    {
+        out.push_back(kDigits[p[i] >> 4]);
+        out.push_back(kDigits[p[i] & 0x0F]);
+    }
+    return out;
+}
+
 // Normalizes comparator return values to {-1,0,1}: the exact magnitude of
 // Compare()/CompareNoCase() is implementation-defined (different CRT
 // comparison routines legitimately return different magnitudes for the
@@ -337,6 +358,12 @@ static void TestExceptions()
 
     try
     {
+        // Both branches emit the SAME case name on purpose, and exactly
+        // one of them ever runs. compare.cmake keys on the name and would
+        // reject a genuine duplicate, so this stays legal — and it means a
+        // side that failed to throw shows up as a value difference
+        // ("NEVER (did not throw)" against "TRUE") rather than as a case
+        // one probe simply omitted.
         AfxThrowMemoryException();
         Line("AfxThrowMemoryException.caught", std::string("NEVER (did not throw)"));
     }
@@ -1455,6 +1482,374 @@ static void TestMutex()
 }
 
 // ---------------------------------------------------------------------
+// CArchive (afx.h). The one class here whose output outlives the process:
+// eMule stores part-file metadata through it, so a divergence in the byte
+// stream silently corrupts real user data rather than merely returning a
+// wrong value. The raw bytes are therefore compared, not just the values
+// read back out of them.
+//
+// CString is deliberately excluded from the byte-level comparison: afx.h
+// documents simple_mfc's CString serialization as a plain 32-bit length
+// prefix plus raw wchar_t payload, which is NOT real MFC's format (MFC
+// uses a variable-width length prefix inherited from its 16-bit past).
+// That is a known, recorded divergence, not something this suite should
+// re-discover on every run -- so only the round trip is checked for it.
+// ---------------------------------------------------------------------
+static void TestCArchive()
+{
+    CMemFile mf;
+    {
+        CArchive ar(&mf, CArchive::store);
+        LineBool("CArchive.store.IsStoring", ar.IsStoring() != FALSE);
+        LineBool("CArchive.store.IsLoading", ar.IsLoading() != FALSE);
+
+        ar << static_cast<BYTE>(0xAB);
+        ar << static_cast<WORD>(0x1234);
+        ar << static_cast<int>(-123456);
+        ar << static_cast<UINT>(3000000000u);
+        ar << static_cast<long>(-1);
+        ar << static_cast<DWORD>(0xDEADBEEF);
+        ar << 1.5f;
+        ar << -2.25;
+        ar << static_cast<ULONGLONG>(0x0102030405060708ull);
+        ar.Close();
+    }
+
+    // The stream itself, byte for byte.
+    ULONGLONG len = mf.GetLength();
+    LineInt("CArchive.store.byteCount", static_cast<long long>(len));
+    mf.SeekToBegin();
+    std::vector<unsigned char> raw(static_cast<size_t>(len));
+    if (!raw.empty())
+        mf.Read(raw.data(), static_cast<UINT>(raw.size()));
+    Line("CArchive.store.bytes", Hex(raw.data(), raw.size()));
+
+    // ...and the values it reads back.
+    mf.SeekToBegin();
+    {
+        CArchive ar(&mf, CArchive::load);
+        LineBool("CArchive.load.IsLoading", ar.IsLoading() != FALSE);
+        LineBool("CArchive.load.IsStoring", ar.IsStoring() != FALSE);
+
+        BYTE by = 0;
+        WORD w = 0;
+        int i = 0;
+        UINT u = 0;
+        long l = 0;
+        DWORD dw = 0;
+        float f = 0.0f;
+        double d = 0.0;
+        ULONGLONG q = 0;
+        ar >> by >> w >> i >> u >> l >> dw >> f >> d >> q;
+        ar.Close();
+
+        LineInt("CArchive.roundTrip.BYTE", by);
+        LineInt("CArchive.roundTrip.WORD", w);
+        LineInt("CArchive.roundTrip.int", i);
+        LineInt("CArchive.roundTrip.UINT", u);
+        LineInt("CArchive.roundTrip.long", l);
+        LineInt("CArchive.roundTrip.DWORD", static_cast<long long>(dw));
+        // Printed as bytes rather than as text: a decimal rendering would
+        // compare the CRT's float formatting, not the archived value.
+        Line("CArchive.roundTrip.float", Hex(&f, sizeof(f)));
+        Line("CArchive.roundTrip.double", Hex(&d, sizeof(d)));
+        LineInt("CArchive.roundTrip.ULONGLONG", static_cast<long long>(q));
+    }
+
+    // CString round trip only (format divergence documented above).
+    CMemFile mfs;
+    {
+        CArchive ar(&mfs, CArchive::store);
+        ar << CString(L"archived string");
+        ar.Close();
+    }
+    mfs.SeekToBegin();
+    {
+        CArchive ar(&mfs, CArchive::load);
+        CString s;
+        ar >> s;
+        ar.Close();
+        Line("CArchive.roundTrip.CString", s);
+    }
+}
+
+// ---------------------------------------------------------------------
+// CMemFile::Detach / Attach (afx.h). simple_mfc's storage is a vector, so
+// it cannot literally hand over a malloc'd block the way real MFC does --
+// it copies instead. That is an ownership difference, not a behavioral
+// one, and only the observable behavior is compared here.
+// ---------------------------------------------------------------------
+static void TestCMemFileDetachAttach()
+{
+    CMemFile mf;
+    const char payload[] = "detach-and-reattach";
+    const UINT payloadLen = static_cast<UINT>(sizeof(payload) - 1);
+    mf.Write(payload, payloadLen);
+    LineInt("CMemFile.Detach.lengthBefore", static_cast<long long>(mf.GetLength()));
+
+    BYTE* raw = mf.Detach();
+    LineBool("CMemFile.Detach.nonNull", raw != nullptr);
+    LineInt("CMemFile.Detach.lengthAfter", static_cast<long long>(mf.GetLength()));
+
+    CMemFile mf2;
+    mf2.Attach(raw, payloadLen);
+    LineInt("CMemFile.Attach.length", static_cast<long long>(mf2.GetLength()));
+    mf2.SeekToBegin();
+    char buf[64]{};
+    UINT n = mf2.Read(buf, payloadLen);
+    LineInt("CMemFile.Attach.readCount", n);
+    Line("CMemFile.Attach.content", std::string(buf, n));
+}
+
+// ---------------------------------------------------------------------
+// CPoint / CSize (atltypes.h) — pure coordinate arithmetic.
+// ---------------------------------------------------------------------
+static void TestCPointCSize()
+{
+    CPoint p(10, 20);
+    CPoint q(3, 4);
+    CSize sz(5, 7);
+
+    LineInt("CPoint.x", p.x);
+    LineInt("CPoint.y", p.y);
+
+    CPoint sum = p + q;
+    Line("CPoint.plusPoint", std::to_string(sum.x) + "," + std::to_string(sum.y));
+    CPoint sumSz = p + sz;
+    Line("CPoint.plusSize", std::to_string(sumSz.x) + "," + std::to_string(sumSz.y));
+    CSize diff = p - q; // point - point yields a CSize
+    Line("CPoint.minusPoint", std::to_string(diff.cx) + "," + std::to_string(diff.cy));
+    CPoint negated = -p;
+    Line("CPoint.unaryMinus", std::to_string(negated.x) + "," + std::to_string(negated.y));
+
+    CPoint offset = p;
+    offset.Offset(1, -2);
+    Line("CPoint.Offset", std::to_string(offset.x) + "," + std::to_string(offset.y));
+    CPoint offsetSz = p;
+    offsetSz.Offset(sz);
+    Line("CPoint.OffsetSize", std::to_string(offsetSz.x) + "," + std::to_string(offsetSz.y));
+
+    CPoint setPt;
+    setPt.SetPoint(42, -42);
+    Line("CPoint.SetPoint", std::to_string(setPt.x) + "," + std::to_string(setPt.y));
+
+    LineBool("CPoint.operatorEq.true", p == CPoint(10, 20));
+    LineBool("CPoint.operatorEq.false", p == q);
+    LineBool("CPoint.operatorNe", p != q);
+
+    CPoint plusEq = p;
+    plusEq += sz;
+    Line("CPoint.plusEqualsSize", std::to_string(plusEq.x) + "," + std::to_string(plusEq.y));
+    CPoint minusEq = p;
+    minusEq -= q;
+    Line("CPoint.minusEqualsPoint", std::to_string(minusEq.x) + "," + std::to_string(minusEq.y));
+
+    CSize szSum = sz + CSize(1, 2);
+    Line("CSize.plus", std::to_string(szSum.cx) + "," + std::to_string(szSum.cy));
+    CSize szDiff = sz - CSize(1, 2);
+    Line("CSize.minus", std::to_string(szDiff.cx) + "," + std::to_string(szDiff.cy));
+    CSize szNeg = -sz;
+    Line("CSize.unaryMinus", std::to_string(szNeg.cx) + "," + std::to_string(szNeg.cy));
+    LineBool("CSize.operatorEq.true", sz == CSize(5, 7));
+    LineBool("CSize.operatorNe", sz != CSize(5, 8));
+    CPoint szPlusPt = sz + q;
+    Line("CSize.plusPoint", std::to_string(szPlusPt.x) + "," + std::to_string(szPlusPt.y));
+}
+
+// ---------------------------------------------------------------------
+// CRect (atltypes.h). The pattern generator further down already hammers
+// the intersect/union/subtract operators with random geometry; this
+// section covers the named members it never touches — every mutator, the
+// accessors, and the rect/point/size operator overloads.
+// ---------------------------------------------------------------------
+namespace
+{
+std::string RectStr(const RECT& r)
+{
+    return "(" + std::to_string(r.left) + "," + std::to_string(r.top) + "," +
+           std::to_string(r.right) + "," + std::to_string(r.bottom) + ")";
+}
+} // namespace
+
+static void TestCRectMethods()
+{
+    CRect r(10, 20, 110, 220);
+    LineInt("CRect.Width", r.Width());
+    LineInt("CRect.Height", r.Height());
+    Line("CRect.Size", std::to_string(r.Size().cx) + "," + std::to_string(r.Size().cy));
+    Line("CRect.CenterPoint", std::to_string(r.CenterPoint().x) + "," + std::to_string(r.CenterPoint().y));
+    Line("CRect.TopLeft", std::to_string(r.TopLeft().x) + "," + std::to_string(r.TopLeft().y));
+    Line("CRect.BottomRight", std::to_string(r.BottomRight().x) + "," + std::to_string(r.BottomRight().y));
+    LineBool("CRect.IsRectEmpty.false", r.IsRectEmpty() != FALSE);
+    LineBool("CRect.PtInRect.inside", r.PtInRect(CPoint(50, 50)) != FALSE);
+    LineBool("CRect.PtInRect.onRightEdge", r.PtInRect(CPoint(110, 50)) != FALSE);
+    LineBool("CRect.PtInRect.onTopLeft", r.PtInRect(CPoint(10, 20)) != FALSE);
+
+    // Constructors other than the four-int one.
+    CRect fromPointSize(CPoint(1, 2), CSize(30, 40));
+    Line("CRect.ctor.pointSize", RectStr(fromPointSize));
+    CRect fromCorners(CPoint(1, 2), CPoint(31, 42));
+    Line("CRect.ctor.corners", RectStr(fromCorners));
+    RECT plain{5, 6, 7, 8};
+    CRect fromRect(plain);
+    Line("CRect.ctor.fromRECT", RectStr(fromRect));
+
+    CRect empty;
+    empty.SetRectEmpty();
+    Line("CRect.SetRectEmpty", RectStr(empty));
+    LineBool("CRect.IsRectEmpty.true", empty.IsRectEmpty() != FALSE);
+
+    CRect setr;
+    setr.SetRect(1, 2, 3, 4);
+    Line("CRect.SetRect", RectStr(setr));
+
+    CRect moved = r;
+    moved.MoveToXY(0, 0);
+    Line("CRect.MoveToXY", RectStr(moved));
+    CRect movedX = r;
+    movedX.MoveToX(-5);
+    Line("CRect.MoveToX", RectStr(movedX));
+    CRect movedY = r;
+    movedY.MoveToY(-5);
+    Line("CRect.MoveToY", RectStr(movedY));
+    CRect movedPt = r;
+    movedPt.MoveToXY(CPoint(7, 9));
+    Line("CRect.MoveToXY.point", RectStr(movedPt));
+
+    CRect off = r;
+    off.OffsetRect(5, -5);
+    Line("CRect.OffsetRect.xy", RectStr(off));
+    CRect offPt = r;
+    offPt.OffsetRect(CPoint(2, 3));
+    Line("CRect.OffsetRect.point", RectStr(offPt));
+    CRect offSz = r;
+    offSz.OffsetRect(CSize(2, 3));
+    Line("CRect.OffsetRect.size", RectStr(offSz));
+
+    CRect inf = r;
+    inf.InflateRect(5, 10);
+    Line("CRect.InflateRect.xy", RectStr(inf));
+    CRect inf4 = r;
+    inf4.InflateRect(1, 2, 3, 4);
+    Line("CRect.InflateRect.ltrb", RectStr(inf4));
+    CRect infSz = r;
+    infSz.InflateRect(CSize(4, 6));
+    Line("CRect.InflateRect.size", RectStr(infSz));
+    CRect infRc = r;
+    CRect infBy(1, 2, 3, 4);
+    infRc.InflateRect(&infBy);
+    Line("CRect.InflateRect.rect", RectStr(infRc));
+
+    CRect def = r;
+    def.DeflateRect(5, 10);
+    Line("CRect.DeflateRect.xy", RectStr(def));
+    CRect def4 = r;
+    def4.DeflateRect(1, 2, 3, 4);
+    Line("CRect.DeflateRect.ltrb", RectStr(def4));
+    CRect defSz = r;
+    defSz.DeflateRect(CSize(4, 6));
+    Line("CRect.DeflateRect.size", RectStr(defSz));
+    CRect defRc = r;
+    CRect defBy(1, 2, 3, 4);
+    defRc.DeflateRect(&defBy);
+    Line("CRect.DeflateRect.rect", RectStr(defRc));
+
+    // Named set operations (the operator forms are covered by the pattern
+    // generator), including the disjoint cases where the return value is
+    // the whole point.
+    CRect a(0, 0, 10, 10), b(5, 5, 15, 15), disjoint(100, 100, 110, 110);
+    CRect dst;
+    LineBool("CRect.IntersectRect.overlapping.result", dst.IntersectRect(&a, &b) != FALSE);
+    Line("CRect.IntersectRect.overlapping", RectStr(dst));
+    LineBool("CRect.IntersectRect.disjoint.result", dst.IntersectRect(&a, &disjoint) != FALSE);
+    Line("CRect.IntersectRect.disjoint", RectStr(dst));
+    LineBool("CRect.UnionRect.result", dst.UnionRect(&a, &b) != FALSE);
+    Line("CRect.UnionRect", RectStr(dst));
+    CRect emptySrc(0, 0, 0, 0);
+    LineBool("CRect.UnionRect.withEmpty.result", dst.UnionRect(&a, &emptySrc) != FALSE);
+    Line("CRect.UnionRect.withEmpty", RectStr(dst));
+
+    // Operators on whole rects.
+    LineBool("CRect.operatorEq.true", a == CRect(0, 0, 10, 10));
+    LineBool("CRect.operatorNe", a != b);
+    CRect opPlus = a + CPoint(3, 4);
+    Line("CRect.operatorPlus.point", RectStr(opPlus));
+    CRect opPlusSz = a + CSize(3, 4);
+    Line("CRect.operatorPlus.size", RectStr(opPlusSz));
+    CRect opMinus = a - CPoint(3, 4);
+    Line("CRect.operatorMinus.point", RectStr(opMinus));
+    CRect inflateBy(1, 2, 3, 4);
+    CRect opPlusRect = a + &inflateBy;
+    Line("CRect.operatorPlus.rect", RectStr(opPlusRect));
+    // Spelled as an explicit member call, not "a - &inflateBy": CRect
+    // converts implicitly to LPRECT, so the built-in pointer-minus-pointer
+    // operator becomes a candidate too and the expression is formally
+    // ambiguous (GCC warns and picks the member anyway; there is no reason
+    // to find out what every other compiler does). Real MFC's CRect has the
+    // same conversion operators, so this is not a simple_mfc quirk. The
+    // sibling operator+ has no such problem -- built-in pointer arithmetic
+    // has no pointer-plus-pointer form.
+    CRect opMinusRect = a.operator-(&inflateBy);
+    Line("CRect.operatorMinus.rect", RectStr(opMinusRect));
+
+    CRect andEq = a;
+    andEq &= b;
+    Line("CRect.operatorAndEquals", RectStr(andEq));
+    CRect orEq = a;
+    orEq |= b;
+    Line("CRect.operatorOrEquals", RectStr(orEq));
+    CRect plusEq = a;
+    plusEq += CPoint(1, 1);
+    Line("CRect.operatorPlusEquals.point", RectStr(plusEq));
+    CRect minusEq = a;
+    minusEq -= CSize(1, 1);
+    Line("CRect.operatorMinusEquals.size", RectStr(minusEq));
+}
+
+// ---------------------------------------------------------------------
+// CTempBuffer (atlalloc.h): the fixed/stack path, the heap path, and the
+// grow-and-preserve path across the boundary between them.
+// ---------------------------------------------------------------------
+static void TestCTempBuffer()
+{
+    // 64 fixed bytes == 16 ints: this stays on the stack throughout.
+    CTempBuffer<int, 64> fixedBuf;
+    fixedBuf.Allocate(8);
+    for (int i = 0; i < 8; ++i)
+        fixedBuf[i] = i * 3;
+    std::string fixedVals;
+    for (int i = 0; i < 8; ++i)
+        fixedVals += std::to_string(fixedBuf[i]) + (i == 7 ? "" : ",");
+    Line("CTempBuffer.fixed.values", fixedVals);
+
+    // 16 fixed bytes == 4 ints: asking for 100 forces the heap path.
+    CTempBuffer<int, 16> heapBuf;
+    heapBuf.Allocate(100);
+    for (int i = 0; i < 100; ++i)
+        heapBuf[i] = i;
+    LineInt("CTempBuffer.heap.first", heapBuf[0]);
+    LineInt("CTempBuffer.heap.last", heapBuf[99]);
+
+    // Growing from the fixed buffer into the heap must preserve what was
+    // written before the move.
+    CTempBuffer<int, 16> growBuf;
+    growBuf.Allocate(4);
+    for (int i = 0; i < 4; ++i)
+        growBuf[i] = 100 + i;
+    growBuf.Reallocate(64);
+    std::string preserved;
+    for (int i = 0; i < 4; ++i)
+        preserved += std::to_string(growBuf[i]) + (i == 3 ? "" : ",");
+    Line("CTempBuffer.growPreservesContent", preserved);
+
+    CTempBuffer<char, 32> byteBuf;
+    byteBuf.AllocateBytes(200);
+    byteBuf[0] = 'A';
+    byteBuf[199] = 'Z';
+    Line("CTempBuffer.AllocateBytes.ends", std::string(1, byteBuf[0]) + std::string(1, byteBuf[199]));
+}
+
+// ---------------------------------------------------------------------
 // Pattern-driven cases: instead of one hand-picked value per assertion,
 // generate N inputs from a fixed-seed PRNG and run the same call on each.
 // std::mt19937's algorithm is fully specified by the standard, so a given
@@ -1715,6 +2110,8 @@ int main()
     TestCFile();
     TestCStdioFile();
     TestCMemFile();
+    TestCMemFileDetachAttach();
+    TestCArchive();
     TestCFileFind();
     TestCObList();
     TestCPtrList();
@@ -1728,6 +2125,9 @@ int main()
     TestCListTemplate();
     TestCMapTemplate();
     TestTime();
+    TestCPointCSize();
+    TestCRectMethods();
+    TestCTempBuffer();
     TestCriticalSection();
     TestEventAutoReset();
     TestEventManualReset();
