@@ -11,17 +11,20 @@ BOOL AfxParseURL(LPCTSTR pstrURL, DWORD& dwServiceType, CString& strServer,
     if (url.IsEmpty())
         return FALSE;
 
-    // Scheme (defaults to HTTP if none is present, matching real MFC's
-    // documented fallback for a schemeless URL).
+    // A scheme ("http://") is REQUIRED: a URL without one makes real MFC
+    // return FALSE, and that failure is load-bearing. eMule's only caller
+    // (HttpDownloadDlg.cpp) relies on it precisely -- it calls AfxParseURL,
+    // and *on failure* prepends "http://" and retries. An earlier version
+    // here defaulted a schemeless URL to HTTP and returned TRUE, which
+    // silently suppressed that retry and left eMule's download URL without
+    // the prefix its own logic expects. Verified against real MFC by the
+    // conformance suite (AfxParseURL.schemeless.fails).
     int nSchemeEnd = url.Find(L"://");
-    CString scheme;
-    CString rest = url;
-    if (nSchemeEnd >= 0)
-    {
-        scheme = url.Left(nSchemeEnd);
-        scheme.MakeLower();
-        rest = url.Mid(nSchemeEnd + 3);
-    }
+    if (nSchemeEnd < 0)
+        return FALSE;
+    CString scheme = url.Left(nSchemeEnd);
+    scheme.MakeLower();
+    CString rest = url.Mid(nSchemeEnd + 3);
 
     INTERNET_PORT nDefaultPort;
     if (scheme == CString(L"https")) { dwServiceType = AFX_INET_SERVICE_HTTPS; nDefaultPort = 443; }

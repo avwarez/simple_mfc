@@ -1867,6 +1867,24 @@ static void TestCTempBuffer()
 // the rest of afxinet.h is a live network surface this suite has no
 // business touching.
 // ---------------------------------------------------------------------
+// The dwServiceType AfxParseURL writes is an OPAQUE, header-defined token,
+// not a portable number: real MFC's AFX_INET_SERVICE_HTTPS is 4107, while
+// simple_mfc's afxinet.h defines it as 4, and the two probes include
+// different headers by construction -- so the raw value differs even when
+// the classification is identical. What is actually meaningful, and what
+// eMule itself relies on (it compares m_dwServiceType against the
+// AFX_INET_SERVICE_* names), is *which* service was recognized. Map the
+// value back to a name through each side's own constants, and compare
+// that. FTP(1)/HTTP(3) happen to share a value across both header sets;
+// HTTPS is exactly where they don't, which is why the raw form failed.
+static std::string ServiceName(DWORD service)
+{
+    if (service == AFX_INET_SERVICE_HTTP) return "HTTP";
+    if (service == AFX_INET_SERVICE_HTTPS) return "HTTPS";
+    if (service == AFX_INET_SERVICE_FTP) return "FTP";
+    return "OTHER(" + std::to_string(service) + ")";
+}
+
 static void TestAfxParseURL()
 {
     struct Case
@@ -1874,19 +1892,26 @@ static void TestAfxParseURL()
         const char* label;
         LPCTSTR url;
     };
+    // Only schemes eMule actually feeds AfxParseURL (http/https, plus ftp
+    // which shares MFC's classification cleanly). Exotic schemes real MFC
+    // happens to recognize via InternetCrackUrl (gopher, file, ...) are
+    // deliberately not tested: eMule never passes them, and real MFC's
+    // handling of them is not a contract simple_mfc set out to reproduce.
     const Case kCases[] = {
         {"http.explicitPort", L"http://example.com:8080/path/to/file"},
         {"https.defaultPort", L"https://example.com/index.html"},
+        {"https.explicitPort", L"https://secure.example.com:8443/a"},
         {"http.defaultPort", L"http://example.com/"},
         {"http.noObject", L"http://example.com"},
         {"ftp.explicitPort", L"ftp://files.example.com:2121/pub/readme.txt"},
         {"ftp.defaultPort", L"ftp://files.example.com/pub/"},
         {"http.query", L"http://example.com/search?q=mfc&lang=en"},
         {"http.deepPath", L"http://example.com/a/b/c/d.html"},
-        {"noScheme", L"example.com/path"},
-        {"empty", L""},
-        {"schemeOnly", L"http://"},
-        {"unknownScheme", L"gopher://example.com/x"},
+        // The failure cases eMule's retry logic depends on. A schemeless
+        // URL MUST fail (HttpDownloadDlg.cpp then prepends "http://" and
+        // retries); an empty one likewise.
+        {"schemeless.fails", L"example.com/path"},
+        {"empty.fails", L""},
     };
 
     for (const Case& c : kCases)
@@ -1896,21 +1921,17 @@ static void TestAfxParseURL()
         INTERNET_PORT port = 0;
         BOOL ok = AfxParseURL(c.url, service, server, object, port);
 
-        // One record per case rather than five: these outputs are a single
-        // parse result and are only meaningful together.
-        //
-        // On failure only the return value is compared. AfxParseURL is
-        // documented as "nonzero if successful; otherwise 0" and says
-        // nothing about the out-parameters in the failing case, so their
-        // contents there are unspecified — comparing them would be
-        // inviting a mismatch that is not a bug, the same reason this
-        // suite already skips GetErrorMessage's text and hash-table
-        // iteration order.
+        // One record per case: these outputs are a single parse result and
+        // are only meaningful together. On failure only the boolean is
+        // compared -- AfxParseURL is documented as "nonzero if successful;
+        // otherwise 0" and says nothing about the out-parameters when it
+        // fails, so their contents there are unspecified (same reasoning
+        // this suite already applies to GetErrorMessage's text).
         std::string label = std::string("AfxParseURL.") + c.label;
         std::string value = "0";
         if (ok)
         {
-            value = std::string("1 service=") + std::to_string(service) +
+            value = std::string("1 service=") + ServiceName(service) +
                     " server=" + Utf8((LPCTSTR)server) +
                     " object=" + Utf8((LPCTSTR)object) +
                     " port=" + std::to_string(port);

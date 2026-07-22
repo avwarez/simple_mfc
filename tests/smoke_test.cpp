@@ -259,6 +259,15 @@ int main()
         CHECK(server == CString(L"example.com"));
         CHECK(object == CString(L"/path/to/file"));
         CHECK(port == 8443);
+
+        // A schemeless URL must FAIL, matching real MFC. eMule's downloader
+        // depends on this: on failure it prepends "http://" and retries.
+        // Pinned here so the fix can't regress without the real-MFC CI.
+        DWORD svc2 = 0;
+        CString server2, object2;
+        INTERNET_PORT port2 = 0;
+        BOOL ok2 = AfxParseURL(L"example.com/path", svc2, server2, object2, port2);
+        CHECK(ok2 == FALSE);
     }
 
     // CMemFile::Detach/Attach (afx.h).
