@@ -27,6 +27,8 @@
     #include "atlenc.h"
     #include "atlconv.h"
     #include "atlalloc.h"
+    #include "atlsimpcoll.h"
+    #include "atlcoll.h"
     #include "afxinet.h"
 #elif defined(SIMPLE_MFC_USE_REAL_MFC)
     #include <afx.h>
@@ -38,6 +40,8 @@
     #include <atlenc.h>
     #include <atlconv.h>
     #include <atlalloc.h>
+    #include <atlsimpcoll.h>
+    #include <atlcoll.h>
     #include <afxinet.h>
 #else
     #error "Define either SIMPLE_MFC_USE_NATIVE or SIMPLE_MFC_USE_REAL_MFC"
@@ -1862,6 +1866,162 @@ static void TestCTempBuffer()
 }
 
 // ---------------------------------------------------------------------
+// CSimpleArray (atlsimpcoll.h). ATL's lightweight vector. Only the subset
+// eMule uses is exercised (Add/GetSize/operator[]/GetData/Find/Remove/
+// RemoveAt/RemoveAll) -- the same methods simple_mfc declares. int
+// elements keep every result fully comparable.
+// ---------------------------------------------------------------------
+static void TestCSimpleArray()
+{
+    CSimpleArray<int> arr;
+    for (int v : {10, 20, 30, 40, 20})
+        arr.Add(v);
+    LineInt("CSimpleArray.GetSize", arr.GetSize());
+    LineInt("CSimpleArray.index0", arr[0]);
+    LineInt("CSimpleArray.index4", arr[4]);
+
+    // GetData() returns the raw block; read it back element by element.
+    const int* data = arr.GetData();
+    std::string contents;
+    for (int i = 0; i < arr.GetSize(); ++i)
+        contents += std::to_string(data[i]) + (i + 1 < arr.GetSize() ? "," : "");
+    Line("CSimpleArray.GetData.contents", contents);
+
+    // Find returns the index of the FIRST match, or -1.
+    LineInt("CSimpleArray.Find.present", arr.Find(30));
+    LineInt("CSimpleArray.Find.firstOfDup", arr.Find(20)); // two 20s -> first index
+    LineInt("CSimpleArray.Find.absent", arr.Find(999));
+
+    // Remove(value) drops the first match; RemoveAt(index) drops by position.
+    LineInt("CSimpleArray.Remove.present", arr.Remove(20) != FALSE ? 1 : 0);
+    LineInt("CSimpleArray.GetSize.afterRemove", arr.GetSize());
+    LineInt("CSimpleArray.Remove.absent", arr.Remove(999) != FALSE ? 1 : 0);
+    LineInt("CSimpleArray.RemoveAt.mid", arr.RemoveAt(1) != FALSE ? 1 : 0);
+
+    std::string afterRemovals;
+    for (int i = 0; i < arr.GetSize(); ++i)
+        afterRemovals += std::to_string(arr[i]) + (i + 1 < arr.GetSize() ? "," : "");
+    Line("CSimpleArray.afterRemovals", afterRemovals);
+
+    arr.RemoveAll();
+    LineInt("CSimpleArray.GetSize.afterRemoveAll", arr.GetSize());
+}
+
+// ---------------------------------------------------------------------
+// CRBMap (atlcoll.h). ATL's ordered map. eMule's only instance is
+// CBarShader::m_Spans, a CRBMap<uint64, COLORREF>; this mirrors that
+// (ULONGLONG key, DWORD value). Crucially the map is ORDERED, so unlike
+// CMap's hash iteration this traversal order IS deterministic and can be
+// compared in full. POSITION values themselves are node addresses and
+// differ between the two probes by construction, so they are never
+// printed -- only the keys/values reached through them. State (count and
+// contents) is derived purely from the eMule-used traversal API
+// (GetHeadPosition + GetNext), never from GetCount/IsEmpty, which eMule
+// does not use and simple_mfc therefore does not declare.
+// ---------------------------------------------------------------------
+namespace
+{
+// Forward traversal of the whole map as "k=v,k=v,..." in key order, plus
+// the element count, both from GetHeadPosition/GetNext alone.
+std::string RbForward(CRBMap<ULONGLONG, DWORD>& m, int& count)
+{
+    std::string out;
+    count = 0;
+    POSITION pos = m.GetHeadPosition();
+    while (pos)
+    {
+        // GetNext returns the pair at pos, then advances pos.
+        auto* pair = m.GetNext(pos);
+        if (count) out += ",";
+        out += std::to_string(pair->m_key) + "=" + std::to_string(pair->m_value);
+        ++count;
+    }
+    return out;
+}
+} // namespace
+
+static void TestCRBMap()
+{
+    CRBMap<ULONGLONG, DWORD> m;
+    // Insert out of key order; the map must present them sorted.
+    m.SetAt(50, 500);
+    m.SetAt(10, 100);
+    m.SetAt(40, 400);
+    m.SetAt(20, 200);
+    m.SetAt(30, 300);
+
+    int count = 0;
+    std::string fwd = RbForward(m, count);
+    LineInt("CRBMap.count", count);
+    Line("CRBMap.ordered", fwd);
+
+    // SetAt on an existing key overwrites in place (no duplicate, no
+    // reorder): count stays, value updates.
+    m.SetAt(30, 333);
+    int count2 = 0;
+    std::string fwd2 = RbForward(m, count2);
+    LineInt("CRBMap.count.afterOverwrite", count2);
+    Line("CRBMap.ordered.afterOverwrite", fwd2);
+
+    // Head/Tail keys, and the value at the head, via the used accessors.
+    POSITION head = m.GetHeadPosition();
+    LineInt("CRBMap.headKey", static_cast<long long>(m.GetKeyAt(head)));
+    LineInt("CRBMap.headValue", static_cast<long long>(m.GetValueAt(head)));
+    POSITION tail = m.GetTailPosition();
+    LineInt("CRBMap.tailKey", static_cast<long long>(m.GetKeyAt(tail)));
+
+    // Backward traversal from the tail via GetPrev (the exact BarShader
+    // idiom), rendered as "k=v,..." in descending key order.
+    {
+        std::string back;
+        int n = 0;
+        POSITION pos = m.GetTailPosition();
+        while (pos)
+        {
+            auto* pair = m.GetPrev(pos);
+            if (n) back += ",";
+            back += std::to_string(pair->m_key) + "=" + std::to_string(pair->m_value);
+            ++n;
+        }
+        Line("CRBMap.reversed", back);
+    }
+
+    // GetNextValue: like GetNext but yields the value and advances.
+    {
+        std::string vals;
+        int n = 0;
+        POSITION pos = m.GetHeadPosition();
+        while (pos)
+        {
+            DWORD v = m.GetNextValue(pos);
+            if (n) vals += ",";
+            vals += std::to_string(v);
+            ++n;
+        }
+        Line("CRBMap.valuesInOrder", vals);
+    }
+
+    // FindFirstKeyAfter = lower_bound: first key >= the argument. Probe an
+    // exact hit, a gap (rounds up), and past the end (no position).
+    POSITION exact = m.FindFirstKeyAfter(30);
+    LineInt("CRBMap.FindFirstKeyAfter.exact", static_cast<long long>(m.GetKeyAt(exact)));
+    POSITION gap = m.FindFirstKeyAfter(25); // -> 30
+    LineInt("CRBMap.FindFirstKeyAfter.gap", static_cast<long long>(m.GetKeyAt(gap)));
+    POSITION past = m.FindFirstKeyAfter(1000); // beyond max key -> none
+    LineBool("CRBMap.FindFirstKeyAfter.pastEnd.none", past == nullptr);
+
+    // RemoveAt(head) drops the smallest key; re-traverse.
+    m.RemoveAt(m.GetHeadPosition());
+    int count3 = 0;
+    std::string fwd3 = RbForward(m, count3);
+    LineInt("CRBMap.count.afterRemoveHead", count3);
+    Line("CRBMap.ordered.afterRemoveHead", fwd3);
+
+    m.RemoveAll();
+    LineBool("CRBMap.emptyAfterRemoveAll", m.GetHeadPosition() == nullptr);
+}
+
+// ---------------------------------------------------------------------
 // AfxParseURL (afxinet.h). Pure string parsing -- no socket is opened and
 // no WinInet call is made -- which is what makes it comparable at all;
 // the rest of afxinet.h is a live network surface this suite has no
@@ -2219,6 +2379,8 @@ int main()
     TestCPointCSize();
     TestCRectMethods();
     TestCTempBuffer();
+    TestCSimpleArray();
+    TestCRBMap();
     TestAfxParseURL();
     TestCriticalSection();
     TestEventAutoReset();

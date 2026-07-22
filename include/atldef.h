@@ -1,6 +1,11 @@
-// atldef.h — reference STUB (declarations only, no implementation).
-// ATL's diagnostic macros. Real ATL defines them here, which is why this
-// file exists separately rather than folding them into atlbase.h.
+// atldef.h — NATIVE (functional macros, no linkable body needed).
+// ATL's diagnostic macros. These are #defines, not functions, so they are
+// fully operational as-is -- there is nothing to "implement" in a .cpp and
+// nothing that fails to link. (An earlier banner called this a "reference
+// STUB", which was wrong: a stub is a declaration with no working body,
+// whereas ATLASSERT/ATLVERIFY/... below genuinely do what real ATL's do.)
+// Real ATL defines them here too, which is why this file exists separately
+// rather than folding them into atlbase.h.
 //
 // ATL is a different library from MFC and normally ships with MSVC
 // regardless. These headers exist because eMule/srchybrid reaches ATL

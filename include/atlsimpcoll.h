@@ -20,7 +20,10 @@
 // one is real as well -- the page is incomplete.
 //
 // eMule uses Add / GetSize / GetData / RemoveAll / RemoveAt / Remove /
-// Find / operator[], across 29 files.
+// Find / operator[], across 29 files -- and only those are declared here
+// (the subset discipline the rest of simple_mfc follows). Real ATL's
+// CSimpleArray also has SetAtIndex; eMule never calls it (0 sites), so it
+// is intentionally not reproduced.
 #pragma once
 
 #include "afx.h" // BOOL/TRUE/FALSE
@@ -114,14 +117,6 @@ public:
             if (m_aT[i] == t)
                 return i;
         return -1;
-    }
-
-    BOOL SetAtIndex(int nIndex, const T& t)
-    {
-        if (nIndex < 0 || nIndex >= m_nSize)
-            return FALSE;
-        m_aT[nIndex] = t;
-        return TRUE;
     }
 
 private:

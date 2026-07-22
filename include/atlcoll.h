@@ -42,6 +42,14 @@
 // node always maps to the same POSITION value — exactly real ATL's
 // node-pointer POSITION semantics. An iterator is recovered from a
 // POSITION in O(log n) via find() on the stored key.
+//
+// Only the members eMule/srchybrid actually calls are declared -- the
+// same subset discipline the rest of simple_mfc follows. eMule's one and
+// only CRBMap is CBarShader::m_Spans (BarShader.h), which uses exactly:
+// SetAt, GetHeadPosition, GetTailPosition, GetNext, GetNextValue, GetPrev,
+// GetKeyAt, GetValueAt, FindFirstKeyAfter, RemoveAt, RemoveAll. Real ATL's
+// CRBTree/CRBMap carry more (GetCount, IsEmpty, the CPair*-returning
+// Lookup overloads, ...); those are intentionally NOT reproduced here.
 // ---------------------------------------------------------------------
 template <class KEY, class VALUE, class KTraits = void, class VTraits = void>
 class CRBMap
@@ -57,9 +65,6 @@ public:
     };
 
     CRBMap() = default;
-
-    size_t GetCount() const { return m_map.size(); }
-    bool IsEmpty() const { return m_map.empty(); }
 
     POSITION SetAt(const KEY& key, const VALUE& value)
     {
@@ -92,19 +97,6 @@ public:
     {
         auto it = const_cast<MapT&>(m_map).lower_bound(key);
         return it == m_map.end() ? nullptr : Box(it);
-    }
-
-    POSITION Lookup(const KEY& key) const
-    {
-        auto it = const_cast<MapT&>(m_map).find(key);
-        return it == m_map.end() ? nullptr : Box(it);
-    }
-    bool Lookup(const KEY& key, VALUE& value) const
-    {
-        auto it = m_map.find(key);
-        if (it == m_map.end()) return false;
-        value = it->second;
-        return true;
     }
 
     const KEY& GetKeyAt(POSITION pos) const { return NodeFromPos(pos)->first; }
