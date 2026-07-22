@@ -11,6 +11,8 @@
 #include "atlenc.h"
 #include "atlconv.h"
 #include "atlalloc.h"
+#include "atlsimpcoll.h"
+#include "atlcoll.h"
 #include "afximpl.h"
 #include "afxinet.h"
 
@@ -106,6 +108,32 @@ int main()
     CHECK(mapVal == 2);
     CHECK(smap.RemoveKey(L"one") != FALSE);
     CHECK(smap.GetCount() == 1);
+
+    // CSimpleArray (atlsimpcoll.h): the eMule-used subset.
+    CSimpleArray<int> sa;
+    sa.Add(10);
+    sa.Add(20);
+    sa.Add(30);
+    CHECK(sa.GetSize() == 3);
+    CHECK(sa[1] == 20);
+    CHECK(sa.Find(30) == 2);
+    CHECK(sa.Find(999) == -1);
+    CHECK(sa.Remove(20) != FALSE);
+    CHECK(sa.GetSize() == 2);
+
+    // CRBMap (atlcoll.h): ordered map. Guards the FindFirstKeyAfter
+    // semantics specifically -- it is STRICTLY-after (upper_bound), so
+    // FindFirstKeyAfter(30) with 30 present returns the NEXT key, 40, not
+    // 30. Pinned here so the fix can't regress without the real-ATL CI.
+    CRBMap<ULONGLONG, DWORD> rb;
+    rb.SetAt(10, 100);
+    rb.SetAt(30, 300);
+    rb.SetAt(40, 400);
+    POSITION after30 = rb.FindFirstKeyAfter(30);
+    CHECK(after30 != nullptr);
+    CHECK(rb.GetKeyAt(after30) == 40);
+    POSITION head = rb.GetHeadPosition();
+    CHECK(rb.GetKeyAt(head) == 10); // smallest key first
 
     CCriticalSection cs;
     {
