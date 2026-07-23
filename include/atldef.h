@@ -3,7 +3,7 @@
 // fully operational as-is -- there is nothing to "implement" in a .cpp and
 // nothing that fails to link. (An earlier banner called this a "reference
 // STUB", which was wrong: a stub is a declaration with no working body,
-// whereas ATLASSERT/ATLVERIFY/... below genuinely do what real ATL's do.)
+// whereas ATLASSERT/ATLTRACE2 below genuinely do what real ATL's do.)
 // Real ATL defines them here too, which is why this file exists separately
 // rather than folding them into atlbase.h.
 //
@@ -22,15 +22,6 @@
 #ifndef ATLASSERT
 #define ATLASSERT(expr) ASSERT(expr)
 #endif
-#ifndef ATLVERIFY
-#define ATLVERIFY(expr) VERIFY(expr)
-#endif
-#ifndef ATLTRACE
-#define ATLTRACE (void)
-#endif
 #ifndef ATLTRACE2
 #define ATLTRACE2 (void)
-#endif
-#ifndef ATLENSURE
-#define ATLENSURE(expr) ATLASSERT(expr)
 #endif

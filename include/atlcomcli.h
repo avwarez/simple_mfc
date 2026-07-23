@@ -51,12 +51,10 @@ struct tagVARIANT
     };
 };
 using VARIANT = tagVARIANT;
-using LPVARIANT = VARIANT*;
 
 // The VARTYPE values used as default arguments below.
 #define VT_I4  3
 #define VT_UI4 19
-#define VT_R8  5
 #endif
 
 // ---------------------------------------------------------------------

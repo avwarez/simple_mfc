@@ -11,7 +11,7 @@
 #include <utility>
 
 // ---------------------------------------------------------------------
-// CArray<TYPE,ARG_TYPE> — same interface as CObArray, made generic.
+// CArray<TYPE,ARG_TYPE> — same interface as CPtrArray/CStringArray, made generic.
 // ---------------------------------------------------------------------
 template <class TYPE, class ARG_TYPE = const TYPE&>
 class CArray : public CObject
@@ -24,7 +24,7 @@ public:
     void FreeExtra() { m_impl.FreeExtra(); }
     const TYPE& GetAt(INT_PTR i) const { return m_impl.GetAt(i); }
     INT_PTR GetCount() const { return m_impl.GetCount(); }
-    // Both constnesses, as real MFC has (and as the concrete CObArray/
+    // Both constnesses, as real MFC has (and as the concrete
     // CPtrArray/CStringArray in afxcoll.h already do). Only the const one
     // was declared here, so every call on a non-const array still picked
     // it and handed back a "const TYPE*" -- which then failed at the
@@ -303,7 +303,7 @@ public:
 
 // ---------------------------------------------------------------------
 // CTypedPtrArray<BASE_CLASS, TYPE> — type-safe wrapper over a pointer array
-// (BASE_CLASS is CPtrArray or CObArray); same casting scheme as above.
+// (BASE_CLASS is CPtrArray); same casting scheme as above.
 // ---------------------------------------------------------------------
 template <class BASE_CLASS, class TYPE>
 class CTypedPtrArray : public BASE_CLASS

@@ -81,6 +81,3 @@ public:
 #define BEGIN_EVENTSINK_MAP(theClass, baseClass)
 #define END_EVENTSINK_MAP()
 #define ON_EVENT(theClass, id, dispid, pfn, vtsParams)
-#define ON_EVENT_RANGE(theClass, idFirst, idLast, dispid, pfn, vtsParams)
-#define ON_EVENT_REFLECT(theClass, dispid, pfn, vtsParams)
-#define ON_PROPNOTIFY(theClass, id, dispid, pfnRequest, pfnChanged)

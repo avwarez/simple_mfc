@@ -67,7 +67,6 @@ struct TBBUTTON;
 using LPTBBUTTON = TBBUTTON*;
 struct TBBUTTONINFO;
 struct HDITEM;
-using HD_ITEM = HDITEM; // older-SDK alias
 struct COMBOBOXEXITEM;
 #endif
 #ifndef LVCFMT_LEFT

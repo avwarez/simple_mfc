@@ -46,16 +46,9 @@ using LPDISPATCH = IDispatch*;
 // ---------------------------------------------------------------------
 #define DECLARE_DHTML_EVENT_MAP()
 #define BEGIN_DHTML_EVENT_MAP(className)
-#define BEGIN_DHTML_EVENT_MAP_INLINE(className)
 #define END_DHTML_EVENT_MAP()
 #define DHTML_EVENT_ONCLICK(elemName, memberFxn)
-#define DHTML_EVENT_ONDBLCLICK(elemName, memberFxn)
-#define DHTML_EVENT_ONMOUSEOVER(elemName, memberFxn)
-#define DHTML_EVENT_ONMOUSEOUT(elemName, memberFxn)
-#define DHTML_EVENT_ONKEYDOWN(elemName, memberFxn)
 #define DHTML_EVENT_ONKEYPRESS(elemName, memberFxn)
-#define DHTML_EVENT_ONKEYUP(elemName, memberFxn)
-#define DHTML_EVENT(dispid, elemName, memberFxn)
 
 // ---------------------------------------------------------------------
 // CDHtmlDialog (header afxdhtml.h, hierarchy

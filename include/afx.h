@@ -125,13 +125,7 @@ using LPTSTR = wchar_t*;
 #ifndef _T
 #define _T(x) L##x
 #endif
-#ifndef _TEXT
-#define _TEXT(x) L##x
-#endif
 using TCHAR = wchar_t;
-using _TCHAR = wchar_t;
-using PTSTR = wchar_t*;
-using PCTSTR = const wchar_t*;
 #endif
 
 // ---------------------------------------------------------------------
@@ -172,12 +166,6 @@ using PCTSTR = const wchar_t*;
 #ifndef ASSERT_KINDOF
 #define ASSERT_KINDOF(class_name, object) ((void)0)
 #endif
-#ifndef ENSURE
-#define ENSURE(f) ASSERT(f)
-#endif
-#ifndef ENSURE_ARG
-#define ENSURE_ARG(f) ASSERT(f)
-#endif
 #ifndef TRACE
 #ifdef _MSC_VER
 #define TRACE __noop   // valid called AND bare, as real MFC's is
@@ -185,33 +173,12 @@ using PCTSTR = const wchar_t*;
 #define TRACE(...) ((void)0)
 #endif
 #endif
-#ifndef TRACE0
-#define TRACE0(sz) ((void)0)
-#endif
-#ifndef TRACE1
-#define TRACE1(sz, p1) ((void)0)
-#endif
-#ifndef TRACE2
-#define TRACE2(sz, p1, p2) ((void)0)
-#endif
-#ifndef TRACE3
-#define TRACE3(sz, p1, p2, p3) ((void)0)
-#endif
-// ATL diagnostic macros. eMule mixes ATL headers with MFC and uses ATLASSERT/
-// ATLVERIFY/ATLTRACE (real ATL defines them in atldef.h). Mirror the same
-// _DEBUG-gated semantics as the MFC ones above; #ifndef-guarded so a genuine
-// <atldef.h> in the same TU still wins.
+// ATL diagnostic macros. eMule mixes ATL headers with MFC and uses ATLASSERT
+// (real ATL defines it in atldef.h). Mirror the same _DEBUG-gated semantics
+// as the MFC ones above; #ifndef-guarded so a genuine <atldef.h> in the same
+// TU still wins.
 #ifndef ATLASSERT
 #define ATLASSERT(expr) ASSERT(expr)
-#endif
-#ifndef ATLVERIFY
-#define ATLVERIFY(expr) VERIFY(expr)
-#endif
-#ifndef ATLASSUME
-#define ATLASSUME(expr) ASSERT(expr)
-#endif
-#ifndef ATLTRACE
-#define ATLTRACE(...) ((void)0)
 #endif
 #ifndef ATLTRACE2
 #define ATLTRACE2(...) ((void)0)
@@ -286,14 +253,11 @@ public:                                                                        \
 // sites.
 #define RUNTIME_CLASS(class_name) (const_cast<CRuntimeClass*>(&class_name::classCRuntimeClass))
 
-// Checked downcasts. DYNAMIC_DOWNCAST tests the runtime class and yields
-// NULL on a mismatch; STATIC_DOWNCAST asserts instead.
+// Checked downcast. DYNAMIC_DOWNCAST tests the runtime class and yields
+// NULL on a mismatch.
 CObject* AfxDynamicDownCast(CRuntimeClass* pClass, CObject* pObject);
-CObject* AfxStaticDownCast(CRuntimeClass* pClass, CObject* pObject);
 #define DYNAMIC_DOWNCAST(class_name, pObject)                                  \
     ((class_name*)AfxDynamicDownCast(RUNTIME_CLASS(class_name), pObject))
-#define STATIC_DOWNCAST(class_name, pObject)                                   \
-    ((class_name*)AfxStaticDownCast(RUNTIME_CLASS(class_name), pObject))
 
 // ---------------------------------------------------------------------
 // CObject — root of the hierarchy. IsSerializable/Serialize are left as
@@ -850,7 +814,6 @@ public:
 // provided.
 [[noreturn]] void AfxThrowFileException(int cause, LONG lOsError = -1, LPCTSTR lpszFileName = nullptr);
 [[noreturn]] void AfxThrowMemoryException();
-[[noreturn]] void AfxAbort();
 
 // ---------------------------------------------------------------------
 // CFile / CStdioFile / CMemFile — built on std::fstream / an in-memory

@@ -344,13 +344,10 @@ static void TestExceptions()
 
     // AfxThrowFileException / AfxThrowMemoryException: throw by pointer,
     // caught the same way real MFC code does (catch (CFileException* e),
-    // then e->Delete()). AfxAbort() is intentionally NOT exercised here:
-    // it terminates the process outright (real MFC's equivalent of
-    // std::abort()), leaving nothing to print and no "rest of the suite"
-    // to run afterward in this same-process harness. CException::ReportError()
-    // is also intentionally NOT exercised: on the real-MFC side it opens a
-    // genuine Win32 MessageBox, which would hang a non-interactive CI
-    // runner waiting for a dismissal that never comes.
+    // then e->Delete()). CException::ReportError() is intentionally NOT
+    // exercised: on the real-MFC side it opens a genuine Win32 MessageBox,
+    // which would hang a non-interactive CI runner waiting for a dismissal
+    // that never comes.
     try
     {
         AfxThrowFileException(CFileException::diskFull, ERROR_DISK_FULL, L"y.dat");
@@ -953,61 +950,8 @@ static void TestCStringList()
 }
 
 // ---------------------------------------------------------------------
-// CObArray / CPtrArray / CStringArray / CByteArray / CUIntArray
+// CPtrArray / CStringArray / CByteArray / CUIntArray
 // ---------------------------------------------------------------------
-static void TestCObArray()
-{
-    CObArray arr;
-    IntBox a(10), b(20), c(30);
-    arr.Add(&a);
-    arr.Add(&b);
-    arr.Add(&c);
-
-    LineInt("CObArray.GetCount", arr.GetCount());
-    LineInt("CObArray.GetAt1.value", static_cast<IntBox*>(arr.GetAt(1))->v);
-
-    IntBox d(99);
-    arr.SetAt(1, &d);
-    LineInt("CObArray.SetAt1.value", static_cast<IntBox*>(arr.GetAt(1))->v);
-
-    IntBox e(55);
-    arr.InsertAt(0, &e);
-    LineInt("CObArray.CountAfterInsertAt0", arr.GetCount());
-    LineInt("CObArray.GetAt0AfterInsert.value", static_cast<IntBox*>(arr.GetAt(0))->v);
-
-    arr.RemoveAt(0);
-    LineInt("CObArray.CountAfterRemoveAt0", arr.GetCount());
-    LineInt("CObArray.GetUpperBound", static_cast<long long>(arr.GetUpperBound()));
-
-    LineInt("CObArray.ElementAt0.value", static_cast<IntBox*>(arr.ElementAt(0))->v);
-    CObject** data = arr.GetData();
-    LineInt("CObArray.GetData.first.value", static_cast<IntBox*>(data[0])->v);
-    arr.FreeExtra(); // no printable effect beyond exercising the call
-    LineInt("CObArray.CountAfterFreeExtra", arr.GetCount());
-
-    IntBox f(77);
-    arr.SetAtGrow(5, &f);
-    LineInt("CObArray.CountAfterSetAtGrow5", arr.GetCount());
-    LineInt("CObArray.GetAt5.value", static_cast<IntBox*>(arr.GetAt(5))->v);
-
-    CObArray src;
-    IntBox g(88);
-    src.Add(&g);
-    INT_PTR appendedResult = arr.Append(src);
-    LineInt("CObArray.Append.result", static_cast<long long>(appendedResult));
-    LineInt("CObArray.CountAfterAppend", arr.GetCount());
-
-    CObArray copyDst;
-    copyDst.Copy(arr);
-    LineInt("CObArray.Copy.count", copyDst.GetCount());
-
-    arr.SetSize(2);
-    LineInt("CObArray.CountAfterSetSize2", arr.GetCount());
-
-    arr.RemoveAll();
-    LineBool("CObArray.IsEmptyAfterRemoveAll", arr.IsEmpty() != FALSE);
-}
-
 static void TestCPtrArray()
 {
     CPtrArray arr;
@@ -2369,7 +2313,6 @@ int main()
     TestCObList();
     TestCPtrList();
     TestCStringList();
-    TestCObArray();
     TestCPtrArray();
     TestCStringArray();
     TestCByteArray();

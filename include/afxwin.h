@@ -1405,7 +1405,6 @@ CWinApp* AfxGetApp();
 // without an explicit cast eMule does not write.
 HINSTANCE AfxGetInstanceHandle();
 HINSTANCE AfxGetResourceHandle();
-void AfxSetResourceHandle(HINSTANCE hInstResource);
 CWnd* AfxGetMainWnd();
 LPCTSTR AfxGetAppName();
 int AfxMessageBox(LPCTSTR lpszText, UINT nType = 0, UINT nIDHelp = 0);
@@ -1415,7 +1414,6 @@ int AfxMessageBox(UINT nIDPrompt, UINT nType = 0, UINT nIDHelp = (UINT)-1);
 // narrow LPCSTR, other call sites the wide LPCTSTR, so declare both overloads.
 BOOL AfxIsValidString(LPCTSTR lpsz, int nLength = -1);
 BOOL AfxIsValidString(const char* lpsz, int nLength = -1);
-BOOL AfxIsValidAddress(const void* lp, UINT nBytes, BOOL bReadWrite = TRUE);
 // Registers a window class on the fly, for windows that need a cursor or
 // background brush of their own (eMule's CColourPopup, CDownloadQueue).
 LPCTSTR AFXAPI AfxRegisterWndClass(UINT nClassStyle, HCURSOR hCursor = nullptr,
@@ -1455,9 +1453,6 @@ extern const CWnd wndNoTopMost;
 // eMule uses them for its IDataObject / IServiceProvider /
 // IInternetSecurityManager / IDocHostUIHandler implementations.
 // ---------------------------------------------------------------------
-#ifndef AFX_MANAGE_STATE
-#define AFX_MANAGE_STATE(p) ((void)0)
-#endif
 #define METHOD_PROLOGUE(theClass, localClass)                                  \
     theClass* pThis = ((theClass*)((BYTE*)this - offsetof(theClass, m_x##localClass)))
 

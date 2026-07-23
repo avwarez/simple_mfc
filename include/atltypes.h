@@ -31,7 +31,6 @@ struct tagPOINT
 };
 using POINT = tagPOINT;
 using LPPOINT = POINT*;
-using LPCPOINT = const POINT*;
 
 struct tagSIZE
 {
@@ -40,7 +39,6 @@ struct tagSIZE
 };
 using SIZE = tagSIZE;
 using LPSIZE = SIZE*;
-using LPCSIZE = const SIZE*;
 
 struct tagRECT
 {

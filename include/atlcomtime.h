@@ -27,19 +27,6 @@ using DATE = double;
 #endif
 
 // ---------------------------------------------------------------------
-// COleDateTimeSpan — a duration in days, as an automation DATE delta.
-// ---------------------------------------------------------------------
-class COleDateTimeSpan
-{
-public:
-    COleDateTimeSpan() noexcept;
-    COleDateTimeSpan(double dblSpanSrc) noexcept;
-    COleDateTimeSpan(LONG lDays, int nHours, int nMins, int nSecs) noexcept;
-
-    double m_span;
-};
-
-// ---------------------------------------------------------------------
 // COleDateTime — an automation DATE (days since 30 December 1899, the
 // fraction being the time of day). The converting constructors are the
 // point of the class here; each is non-explicit in real MFC, which is

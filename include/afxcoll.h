@@ -359,36 +359,8 @@ private:
 };
 
 // ---------------------------------------------------------------------
-// CObArray / CPtrArray / CStringArray / CByteArray / CUIntArray
+// CPtrArray / CStringArray / CByteArray / CUIntArray
 // ---------------------------------------------------------------------
-class CObArray : public CObject
-{
-    DECLARE_DYNAMIC(CObArray)
-public:
-    INT_PTR Add(CObject* e) { return m_impl.Add(e); }
-    INT_PTR Append(const CObArray& src) { return m_impl.Append(src.m_impl); }
-    void Copy(const CObArray& src) { m_impl.Copy(src.m_impl); }
-    CObject*& ElementAt(INT_PTR i) { return m_impl.ElementAt(i); }
-    void FreeExtra() { m_impl.FreeExtra(); }
-    CObject* GetAt(INT_PTR i) const { return m_impl.GetAt(i); }
-    INT_PTR GetCount() const { return m_impl.GetCount(); }
-    CObject** GetData() { return m_impl.GetData(); }
-    INT_PTR GetSize() const { return m_impl.GetSize(); }
-    INT_PTR GetUpperBound() const { return m_impl.GetUpperBound(); }
-    void InsertAt(INT_PTR i, CObject* e, INT_PTR nCount = 1) { m_impl.InsertAt(i, e, nCount); }
-    BOOL IsEmpty() const { return m_impl.IsEmpty() ? TRUE : FALSE; }
-    void RemoveAll() { m_impl.RemoveAll(); }
-    void RemoveAt(INT_PTR i, INT_PTR nCount = 1) { m_impl.RemoveAt(i, nCount); }
-    void SetAt(INT_PTR i, CObject* e) { m_impl.SetAt(i, e); }
-    void SetAtGrow(INT_PTR i, CObject* e) { m_impl.SetAtGrow(i, e); }
-    void SetSize(INT_PTR nNewSize, INT_PTR nGrowBy = -1) { m_impl.SetSize(nNewSize, nGrowBy); }
-    CObject* operator[](INT_PTR i) const { return m_impl.GetAt(i); }
-    CObject*& operator[](INT_PTR i) { return m_impl.ElementAt(i); }
-
-private:
-    mfc_detail::ArrayImpl<CObject*> m_impl;
-};
-
 class CPtrArray : public CObject
 {
     DECLARE_DYNAMIC(CPtrArray)

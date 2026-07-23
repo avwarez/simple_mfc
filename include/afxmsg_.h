@@ -28,7 +28,6 @@
 #define ON_EN_UPDATE(id, memberFxn)       ON_CONTROL(/*EN_UPDATE*/ 0, id, memberFxn)
 #define ON_CBN_SELCHANGE(id, memberFxn)   ON_CONTROL(/*CBN_SELCHANGE*/ 0, id, memberFxn)
 #define ON_CBN_SELENDOK(id, memberFxn)    ON_CONTROL(/*CBN_SELENDOK*/ 0, id, memberFxn)
-#define ON_STN_CLICKED(id, memberFxn)     ON_CONTROL(/*STN_CLICKED*/ 0, id, memberFxn)
 #define ON_STN_DBLCLK(id, memberFxn)      ON_CONTROL(/*STN_DBLCLK*/ 0, id, memberFxn)
 
 // Ranges: one handler for a contiguous block of command ids / notifications.
@@ -80,7 +79,6 @@
 #define ON_WM_SETCURSOR()              // handler: afx_msg BOOL OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message);
 #define ON_WM_LBUTTONDOWN()            // handler: afx_msg void OnLButtonDown(UINT nFlags, CPoint point);
 #define ON_WM_HSCROLL()                // handler: afx_msg void OnHScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar);
-#define ON_WM_THEMECHANGED()           // handler: afx_msg void OnThemeChanged();
 #define ON_WM_ERASEBKGND()             // handler: afx_msg BOOL OnEraseBkgnd(CDC* pDC);
 #define ON_WM_SETFOCUS()               // handler: afx_msg void OnSetFocus(CWnd* pOldWnd);
 #define ON_WM_CLOSE()                  // handler: afx_msg void OnClose();

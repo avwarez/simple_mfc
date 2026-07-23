@@ -8,46 +8,34 @@
 // Control-bar styles. Real MFC defines them in this header as macros, so
 // #ifndef (not #ifdef _WIN32) is the right guard -- see afxwin.h's RDW_*
 // for why the two are not interchangeable for a macro.
-// The alignment/border bits are combined into the CBRS_TOP/BOTTOM/LEFT/
-// RIGHT shorthands eMule actually passes to CDialogBar::Create.
+// Subset actually reached by eMule/srchybrid: CBRS_TOP and CBRS_ORIENT_HORZ
+// (each a shorthand built from the ALIGN_TOP/ALIGN_BOTTOM/BORDER_TOP/
+// BORDER_BOTTOM bits below), plus CBRS_ALIGN_ANY/FLOATING/SIZE_FIXED/
+// SIZE_DYNAMIC/GRIPPER standalone. The BOTTOM/LEFT/RIGHT/vertical-orient
+// shorthands and their unique ALIGN_LEFT/ALIGN_RIGHT/BORDER_LEFT/
+// BORDER_RIGHT/BORDER_3D/BORDER_ANY bits are not.
 // ---------------------------------------------------------------------
 #ifndef CBRS_ALIGN_ANY
-#define CBRS_ALIGN_LEFT     0x1000L
 #define CBRS_ALIGN_TOP      0x2000L
-#define CBRS_ALIGN_RIGHT    0x4000L
 #define CBRS_ALIGN_BOTTOM   0x8000L
 #define CBRS_ALIGN_ANY      0xF000L
 
-#define CBRS_BORDER_LEFT    0x0100L
 #define CBRS_BORDER_TOP     0x0200L
-#define CBRS_BORDER_RIGHT   0x0400L
 #define CBRS_BORDER_BOTTOM  0x0800L
-#define CBRS_BORDER_ANY     0x0F00L
 
 #define CBRS_FLOATING       0x0001L
 #define CBRS_SIZE_FIXED     0x0002L
 #define CBRS_SIZE_DYNAMIC   0x0004L
-#define CBRS_HIDE_INPLACE   0x0008L
-#define CBRS_TOOLTIPS       0x0010L
-#define CBRS_FLYBY          0x0020L
-#define CBRS_FLOAT_MULTI    0x0040L
-#define CBRS_BORDER_3D      0x0080L
 #define CBRS_GRIPPER        0x00400000L
 
 #define CBRS_TOP            (CBRS_ALIGN_TOP|CBRS_BORDER_TOP|CBRS_BORDER_BOTTOM)
-#define CBRS_BOTTOM         (CBRS_ALIGN_BOTTOM|CBRS_BORDER_TOP|CBRS_BORDER_BOTTOM)
-#define CBRS_LEFT           (CBRS_ALIGN_LEFT|CBRS_BORDER_LEFT|CBRS_BORDER_RIGHT)
-#define CBRS_RIGHT          (CBRS_ALIGN_RIGHT|CBRS_BORDER_LEFT|CBRS_BORDER_RIGHT)
 #define CBRS_ORIENT_HORZ    (CBRS_ALIGN_TOP|CBRS_ALIGN_BOTTOM)
-#define CBRS_ORIENT_VERT    (CBRS_ALIGN_LEFT|CBRS_ALIGN_RIGHT)
-#define CBRS_ORIENT_ANY     (CBRS_ORIENT_HORZ|CBRS_ORIENT_VERT)
 #endif
 
 // The dwMode bits CalcDynamicLayout receives (real MFC: afxpriv.h).
 // eMule's two CDialogBar subclasses both override CalcDynamicLayout and
 // test them to decide their own size.
-#ifndef LM_STRETCH
-#define LM_STRETCH   1
+#ifndef LM_HORZ
 #define LM_HORZ      2
 #define LM_MRUWIDTH  4
 #define LM_HORZDOCK  8
