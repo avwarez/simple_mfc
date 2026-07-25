@@ -1086,8 +1086,8 @@ class CArchiveException : public CException
 public:
     enum Cause
     {
-        none, generic, readOnly, endOfFile, writeOnly, badIndex,
-        badClass, badSchema
+        none, genericException, readOnly, endOfFile, writeOnly, badIndex,
+        badClass, badSchema, bufferFull
     };
 
     explicit CArchiveException(int cause = CArchiveException::none, LPCTSTR lpszArchiveName = nullptr);
