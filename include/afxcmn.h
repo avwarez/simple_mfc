@@ -73,7 +73,7 @@ struct COMBOBOXEXITEM;
 constexpr int LVCFMT_LEFT = 0;
 #endif
 
-// CHARFORMAT/CHARFORMAT2/CHARRANGE are <richedit.h> types. eMule declares
+// CHARFORMAT/CHARFORMAT2 are <richedit.h> types. eMule declares
 // them as by-value data members (e.g. CHTRichEditCtrl::m_cfDefault), which
 // needs a COMPLETE type, not a forward declaration -> on a real Windows build
 // pull in <richedit.h> (which, like <commctrl.h> above, resolves CHARFORMAT
@@ -87,10 +87,8 @@ constexpr int LVCFMT_LEFT = 0;
 #else
 struct CHARFORMAT;
 struct CHARFORMAT2;
-struct CHARRANGE;
 struct EDITSTREAM;
 struct PARAFORMAT;
-struct PARAFORMAT2;
 struct IMAGEINFO;
 struct LVBKIMAGE;
 struct TVITEM;
@@ -292,11 +290,9 @@ public:
     BOOL SetSelectionCharFormat(CHARFORMAT& cf);
     BOOL SetSelectionCharFormat(CHARFORMAT2& cf);
     void SetSel(long nStartChar, long nEndChar);
-    void SetSel(CHARRANGE& cr);
     DWORD SetEventMask(DWORD dwEventMask);
     DWORD GetEventMask() const;
     BOOL SetParaFormat(PARAFORMAT& pf);
-    BOOL SetParaFormat(PARAFORMAT2& pf);
     DWORD GetParaFormat(PARAFORMAT& pf) const;
     BOOL SetAutoURLDetect(BOOL bEnable = TRUE);
     UINT GetLimitText() const;
@@ -307,7 +303,6 @@ public:
     DWORD GetSelectionCharFormat(CHARFORMAT& cf) const;
     DWORD GetSelectionCharFormat(CHARFORMAT2& cf) const;
     void ReplaceSel(LPCTSTR lpszNewText, BOOL bCanUndo = FALSE);
-    void GetSel(CHARRANGE& cr) const;
     void GetSel(long& nStartChar, long& nEndChar) const;
     // Clipboard/undo, which CHTRichEditCtrl exposes to its own callers
     // (`void CopySelectedItems() { Copy(); }`).

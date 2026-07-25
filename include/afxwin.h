@@ -150,10 +150,6 @@ struct tagMEASUREITEMSTRUCT;
 using LPMEASUREITEMSTRUCT = tagMEASUREITEMSTRUCT*;
 struct tagDRAWITEMSTRUCT;
 using LPDRAWITEMSTRUCT = tagDRAWITEMSTRUCT*;
-struct tagCOMPAREITEMSTRUCT;
-using LPCOMPAREITEMSTRUCT = tagCOMPAREITEMSTRUCT*;
-struct tagDELETEITEMSTRUCT;
-using LPDELETEITEMSTRUCT = tagDELETEITEMSTRUCT*;
 class CScrollBar; // real header afxwin.h too; only used here as a pointer parameter
 
 // Real MFC's CWnd-derived classes intentionally hide the base Create()
@@ -1025,8 +1021,6 @@ public:
     // map, and Learn declares them exactly this way.
     afx_msg void OnMeasureItem(int nIDCtl, LPMEASUREITEMSTRUCT lpMeasureItemStruct);
     afx_msg void OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct);
-    afx_msg int OnCompareItem(int nIDCtl, LPCOMPAREITEMSTRUCT lpCompareItemStruct);
-    afx_msg void OnDeleteItem(int nIDCtl, LPDELETEITEMSTRUCT lpDeleteItemStruct);
     virtual void OnNcPaint();
     virtual BOOL OnNcActivate(BOOL bActive);
     virtual LRESULT OnNcHitTest(CPoint point);

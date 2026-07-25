@@ -13,8 +13,10 @@
 #pragma once
 
 // The service types CInternetSession/CHttpConnection accept. Real MFC
-// defines them alongside the connection classes; eMule selects HTTPS
-// explicitly when it fetches over TLS.
+// defines them alongside the connection classes; AfxParseURL's own
+// implementation (afxinet.cpp) picks between them based on URL scheme,
+// which eMule's only caller (HttpDownloadDlg.cpp) exercises for all three
+// (http/https/ftp), even though eMule never spells these constants itself.
 #ifndef AFX_INET_SERVICE_HTTP
 #define AFX_INET_SERVICE_HTTP 3
 #endif

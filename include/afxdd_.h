@@ -8,7 +8,6 @@
 #include "afx.h"
 #include "afxwin.h"
 
-class COleCurrency;
 class COleDateTime;
 
 // ---------------------------------------------------------------------
@@ -25,7 +24,6 @@ void AFXAPI DDX_Text(CDataExchange* pDX, int nIDC, DWORD& value);
 void AFXAPI DDX_Text(CDataExchange* pDX, int nIDC, CString& value);
 void AFXAPI DDX_Text(CDataExchange* pDX, int nIDC, float& value);
 void AFXAPI DDX_Text(CDataExchange* pDX, int nIDC, double& value);
-void AFXAPI DDX_Text(CDataExchange* pDX, int nIDC, COleCurrency& value);
 void AFXAPI DDX_Text(CDataExchange* pDX, int nIDC, COleDateTime& value);
 
 void AFXAPI DDX_Check(CDataExchange* pDX, int nIDC, int& value);
