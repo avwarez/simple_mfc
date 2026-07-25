@@ -89,11 +89,21 @@ def find_real_files(atlmfc_root, basename):
             hits.append(os.path.join(dirpath, basename))
     return hits
 
+def build_tree_index(atlmfc_root):
+    """All .h/.cpp files anywhere under atlmfc_root, for the NO_MATCH fallback."""
+    files = []
+    for dirpath, _, filenames in os.walk(atlmfc_root):
+        for fn in filenames:
+            if fn.endswith('.h') or fn.endswith('.cpp'):
+                files.append(os.path.join(dirpath, fn))
+    return files
+
 def main():
     simple_inc, atlmfc_root, out_path = sys.argv[1], sys.argv[2], sys.argv[3]
     results = []
     real_file_cache = {}
     real_content_cache = {}
+    tree_files = None
 
     for fname in sorted(os.listdir(simple_inc)):
         if not fname.endswith('.h'):
@@ -134,7 +144,35 @@ def main():
                     if len(matches) > 6:
                         results.append((fname, sym, cat, rp, f'... ({len(matches)} total matches, showing first 6)'))
             if not found_any:
-                results.append((fname, sym, cat, 'NO_MATCH_IN_REAL_FILE', ''))
+                # Fallback: this symbol may canonically live in a different
+                # real header than the one simple_mfc happened to put it in
+                # (e.g. a Windows-SDK type simple_mfc must forward-declare
+                # locally, or an MFC symbol whose real home is a different
+                # file). Search the whole atlmfc tree for it before giving
+                # up, and say where it actually turned up.
+                if tree_files is None:
+                    tree_files = build_tree_index(atlmfc_root)
+                elsewhere = []
+                for tf in tree_files:
+                    if tf in real_paths:
+                        continue
+                    if tf not in real_content_cache:
+                        try:
+                            real_content_cache[tf] = open(tf, encoding='latin-1').read().splitlines()
+                        except Exception:
+                            real_content_cache[tf] = []
+                    tlines = real_content_cache[tf]
+                    tmatches = [(i + 1, l.strip()) for i, l in enumerate(tlines) if pattern.search(l)]
+                    if tmatches:
+                        elsewhere.append((tf, tmatches))
+                        if len(elsewhere) >= 3:
+                            break
+                if elsewhere:
+                    for tf, tmatches in elsewhere:
+                        for ln, txt in tmatches[:3]:
+                            results.append((fname, sym, cat, f'ELSEWHERE:{tf}', f'{ln}: {txt}'))
+                else:
+                    results.append((fname, sym, cat, 'NOT_FOUND_ANYWHERE_IN_ATLMFC', ''))
 
     with open(out_path, 'w', encoding='utf-8') as out:
         for fname, sym, cat, real_ref, detail in results:
