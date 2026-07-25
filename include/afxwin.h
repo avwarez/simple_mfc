@@ -1427,13 +1427,11 @@ BOOL AFXAPI AfxHtmlHelp(HWND hWnd, LPCTSTR szHelpFilePath, UINT nCmd, DWORD_PTR 
 // compares against it to tell its own subclassed windows apart.
 LRESULT CALLBACK AfxWndProc(HWND hWnd, UINT nMsg, WPARAM wParam, LPARAM lParam);
 
-// The four special CWnd values SetWindowPos takes as pWndInsertAfter.
-// Real MFC declares them as const CWnd objects, not as HWND constants,
-// so that `&wndTop` has the parameter's type.
-extern const CWnd wndTop;
-extern const CWnd wndBottom;
+// One of the four special CWnd values SetWindowPos takes as
+// pWndInsertAfter -- the only one eMule reaches. Real MFC declares them
+// as const CWnd objects, not as HWND constants, so that `&wndTopMost`
+// has the parameter's type.
 extern const CWnd wndTopMost;
-extern const CWnd wndNoTopMost;
 
 // WM_INITIALUPDATE is MFC's own private message (not a Win32 one), sent
 // to a view once its frame is fully created.
@@ -1455,9 +1453,6 @@ extern const CWnd wndNoTopMost;
 // ---------------------------------------------------------------------
 #define METHOD_PROLOGUE(theClass, localClass)                                  \
     theClass* pThis = ((theClass*)((BYTE*)this - offsetof(theClass, m_x##localClass)))
-
-#define METHOD_PROLOGUE_(theClass, localClass)                                 \
-    theClass* pThis = ((theClass*)((BYTE*)this - offsetof(theClass, m_x##localClass)));
 
 #define BEGIN_INTERFACE_PART(localClass, baseClass)                            \
     class X##localClass : public baseClass                                     \

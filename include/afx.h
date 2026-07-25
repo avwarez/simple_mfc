@@ -64,8 +64,6 @@ using LONG = long;
 using LONGLONG = long long;
 using ULONGLONG = unsigned long long;
 using BOOL = int;
-constexpr BOOL TRUE_ = 1;
-constexpr BOOL FALSE_ = 0;
 #ifndef TRUE
 #define TRUE 1
 #endif
@@ -284,13 +282,12 @@ public:
 
 // ---------------------------------------------------------------------
 // CDumpContext — diagnostic dump support for CObject::Dump. On top of
-// std::wostream (defaults to std::wcerr: real MFC describes afxDump's
-// output as "conceptually similar to the cerr stream"). Real MFC's
-// constructor instead binds to a CFile* destination (afxDump is built for
-// you); not implemented here since nothing in the covered eMule call
-// sites ever constructs its own CDumpContext or writes to afxDump
-// directly — only the Dump(dc) super-call chain is exercised, which just
-// needs a working destination to forward to.
+// std::wostream (defaults to std::wcerr: real MFC describes its global
+// afxDump instance's output as "conceptually similar to the cerr
+// stream"). Real MFC's constructor instead binds to a CFile* destination;
+// not implemented here since nothing in the covered eMule call sites ever
+// constructs its own CDumpContext directly — only the Dump(dc) super-call
+// chain is exercised, which just needs a working destination to forward to.
 // ---------------------------------------------------------------------
 class CDumpContext
 {
@@ -314,10 +311,6 @@ private:
     std::wostream& m_os;
     int m_nDepth = 0;
 };
-
-// Real MFC's predeclared global dump context (Debug-only there; always
-// available here, consistent with Dump/AssertValid above).
-extern CDumpContext afxDump;
 
 // ---------------------------------------------------------------------
 // CStringT<Ch> — a real wrapper around std::basic_string<Ch> exposing the
@@ -849,14 +842,11 @@ public:
     {
         modeRead = 0x0000, modeWrite = 0x0001, modeReadWrite = 0x0002,
         modeCreate = 0x1000, modeNoTruncate = 0x2000,
-        shareCompat = 0x0000, shareExclusive = 0x0010,
-        shareDenyWrite = 0x0020, shareDenyRead = 0x0030, shareDenyNone = 0x0040,
-        modeNoInherit = 0x0080,
-        // Cache hints, passed by eMule when it streams a file end to end.
-        // Values are real MFC's, which is why they sit far above the mode
+        shareDenyWrite = 0x0020, shareDenyNone = 0x0040,
+        // Cache hint, passed by eMule when it streams a file end to end.
+        // Value is real MFC's, which is why it sits far above the mode
         // flags rather than continuing the sequence.
-        osNoBuffer = 0x10000, osWriteThrough = 0x20000,
-        osRandomAccess = 0x40000, osSequentialScan = 0x80000,
+        osSequentialScan = 0x80000,
         typeBinary = 0x0000, typeText = 0x4000
     };
     enum SeekPosition { begin = 0, current = 1, end = 2 };
@@ -1049,7 +1039,7 @@ private:
 class CArchive
 {
 public:
-    enum Mode { store = 0, load = 1, bNoFlushOnDelete = 2, bNoByteSwap = 4 };
+    enum Mode { store = 0, load = 1 };
 
     CArchive(CFile* pFile, UINT nMode, int nBufSize = 4096, void* lpBuf = nullptr);
     ~CArchive();

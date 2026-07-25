@@ -25,8 +25,6 @@ IMPLEMENT_DYNAMIC(CFileFind, CObject)
 // ---------------------------------------------------------------------
 // CDumpContext / CObject::Dump
 // ---------------------------------------------------------------------
-CDumpContext afxDump;
-
 CDumpContext& CDumpContext::operator<<(const char* lpsz) { if (lpsz) m_os << lpsz; return *this; }
 CDumpContext& CDumpContext::operator<<(LPCTSTR lpsz) { if (lpsz) m_os << lpsz; return *this; }
 CDumpContext& CDumpContext::operator<<(const CObject* pOb) { if (pOb) pOb->Dump(*this); else m_os << L"(null)"; return *this; }

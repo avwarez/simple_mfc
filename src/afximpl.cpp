@@ -14,11 +14,8 @@ AFX_MODULE_THREAD_STATE* AFXAPI AfxGetModuleThreadState()
 
 // TRACE expands to __noop here (see afx.h), so nothing ever reads a
 // trace category's value -- it only has to exist as a complete,
-// constructible type for the category globals below and for call sites
+// constructible type for the category global below and for call sites
 // like "TRACE(traceAppMsg, 0, ...)" to parse.
 CTraceCategory::CTraceCategory(UINT /*nCategory*/) noexcept {}
 
 CTraceCategory traceAppMsg;
-CTraceCategory traceWinMsg;
-CTraceCategory traceCmdRouting;
-CTraceCategory traceDumpContext;

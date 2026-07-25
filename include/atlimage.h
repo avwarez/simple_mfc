@@ -31,9 +31,7 @@ public:
     // DIBOR_DEFAULT explicitly.
     enum DIBOrientation
     {
-        DIBOR_DEFAULT,
-        DIBOR_TOPDOWN,
-        DIBOR_BOTTOMUP
+        DIBOR_DEFAULT
     };
 
     CImage() noexcept;

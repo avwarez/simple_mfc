@@ -69,6 +69,3 @@ struct CTraceCategory
     explicit CTraceCategory(UINT nCategory = 0) noexcept;
 };
 extern CTraceCategory traceAppMsg;
-extern CTraceCategory traceWinMsg;
-extern CTraceCategory traceCmdRouting;
-extern CTraceCategory traceDumpContext;
