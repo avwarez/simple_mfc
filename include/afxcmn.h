@@ -97,63 +97,8 @@ struct TVITEM;
 struct IRichEditOle;
 #endif
 
-// ---------------------------------------------------------------------
-// CImageList (header afxcmn.h, deriva da CObject — NOT CWnd)
-// ---------------------------------------------------------------------
-class CImageList : public CObject
-{
-public:
-    // The wrapped handle, public in real MFC; eMule tests it directly
-    // (`piml == NULL || piml->m_hImageList == NULL`).
-    HIMAGELIST m_hImageList = nullptr;
-
-    // Real MFC converts implicitly to the raw handle and wraps one back
-    // up; eMule passes a CImageList straight to APIs taking HIMAGELIST.
-    operator HIMAGELIST() const { return m_hImageList; }
-    static CImageList* FromHandle(HIMAGELIST hImageList);
-
-    BOOL DeleteImageList();
-    int Add(CBitmap* pbmImage, CBitmap* pbmMask);
-    int Add(CBitmap* pbmImage, COLORREF crMask);
-    int Add(HICON hIcon);
-    BOOL Create(int cx, int cy, UINT nFlags, int nInitial, int nGrow);
-    BOOL Create(UINT nBitmapID, int cx, int nGrow, COLORREF crMask);
-    BOOL Create(LPCTSTR lpszBitmapID, int cx, int nGrow, COLORREF crMask);
-    BOOL Create(CImageList& imagelist1, int nImage1, CImageList& imagelist2, int nImage2, int dx, int dy);
-    BOOL Create(CImageList* pImageList);
-    BOOL Replace(int nImage, CBitmap* pbmImage, CBitmap* pbmMask);
-    int Replace(int nImage, HICON hIcon);
-    BOOL Draw(CDC* pDC, int nImage, POINT pt, UINT nStyle);
-    BOOL SetOverlayImage(int nImage, int nOverlay);
-    int GetImageCount() const;
-    BOOL Remove(int nImage);
-    BOOL Read(CArchive* pArchive);
-    BOOL Write(CArchive* pArchive);
-    COLORREF SetBkColor(COLORREF cr);
-    COLORREF GetBkColor() const;
-    HICON ExtractIcon(int nImage);
-    HIMAGELIST GetSafeHandle() const;
-    BOOL Attach(HIMAGELIST hImageList);
-    HIMAGELIST Detach();
-
-    // Added during the FRONTEND/GDI blind-spot pass (see
-    // ../../mfc_scan_srchybrid.md addendum): these are all *static*
-    // methods, only ever called as "CImageList::Method(...)"
-    // (SharedDirsTreeCtrl.cpp:1083-1140) — structurally invisible to the
-    // original ".Method("/"->Method(" scan, which only sees instance
-    // calls. BeginDrag/DragEnter were originally left out on the strength
-    // of that same scan; the compile check found real call sites for both,
-    // so the drag API is complete here.
-    BOOL BeginDrag(int nImage, CPoint ptHotSpot);
-    static BOOL DragEnter(CWnd* pWndLock, CPoint point);
-    BOOL GetImageInfo(int nImage, IMAGEINFO* pImageInfo) const;
-    BOOL DrawEx(CDC* pDC, int nImage, POINT pt, SIZE sz, COLORREF clrBk,
-                COLORREF clrFg, UINT nStyle);
-    static BOOL DragShowNolock(BOOL bShow);
-    static BOOL DragMove(CPoint pt);
-    static BOOL DragLeave(CWnd* pWndLock);
-    static void EndDrag();
-};
+// CImageList (derives from CObject, NOT CWnd) lives in afxwin.h, as in
+// real MFC, and reaches here through this header's #include "afxwin.h".
 
 // Real MFC's CWnd-derived control classes below intentionally hide
 // CWnd::Create with their own Create() overload(s) — same pattern/

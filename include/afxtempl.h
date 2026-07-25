@@ -321,15 +321,8 @@ public:
 };
 
 // ---------------------------------------------------------------------
-// CMapStringToPtr / CMapStringToString — concrete string-keyed maps. Real
-// MFC declares these in afxcoll.h; here they build on the CMap template
-// above (which lives in this header), so they are defined here instead.
-// ARG_KEY is LPCTSTR: a CString key converts implicitly at every call.
-// ---------------------------------------------------------------------
-class CMapStringToPtr : public CMap<CString, LPCTSTR, void*, void*>
-{
-};
-
-class CMapStringToString : public CMap<CString, LPCTSTR, CString, LPCTSTR>
-{
-};
+// CMapStringToPtr / CMapStringToString live in afxcoll.h (their real MFC
+// home, as standalone classes), included by this header -- they used to be
+// defined here as CMap<CString,LPCTSTR,...> subclasses, but real MFC keeps
+// them self-contained in afxcoll.h, which is also the only placement that
+// avoids an afxcoll.h -> afxtempl.h include cycle. See afxcoll.h.

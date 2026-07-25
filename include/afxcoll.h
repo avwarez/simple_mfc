@@ -20,8 +20,9 @@
 #include "afx.h"
 
 #include <list>
+#include <memory>        // std::unique_ptr, the CMapStringTo* PLookup scratch
 #include <type_traits>
-#include <unordered_map> // CMapPtrToPtr
+#include <unordered_map> // CMapPtrToPtr, CMapStringTo*
 #include <vector>
 
 using POSITION = void*; // not a real Win32/SDK type, safe to always define
@@ -307,6 +308,112 @@ private:
     using Map = std::unordered_map<void*, void*>;
     using Iter = Map::const_iterator;
     Map m_map;
+};
+
+// ---------------------------------------------------------------------
+// CMapStringToPtr / CMapStringToString (header afxcoll.h, as in real MFC,
+// where these are standalone classes -- NOT the afxtempl.h CMap template).
+// They cannot derive from CMap here because afxtempl.h #includes THIS
+// header (so the reverse include would be a cycle), which is precisely why
+// real MFC keeps the string-keyed maps self-contained in afxcoll.h. The
+// shared body below is the same std::unordered_map wrapper CMap uses,
+// specialised to a CString key with real MFC's own content-based string
+// hash (equal strings share a bucket regardless of buffer identity -- see
+// the HashKey<LPCTSTR> note in afxtempl.h).
+// ---------------------------------------------------------------------
+namespace mfc_detail
+{
+struct CStringContentHash
+{
+    std::size_t operator()(const CString& s) const
+    {
+        UINT nHash = 0;
+        for (const wchar_t* p = s.GetString(); p && *p; ++p)
+            nHash = (nHash << 5) + nHash + static_cast<UINT>(*p);
+        return static_cast<std::size_t>(nHash);
+    }
+};
+
+template <class VALUE, class ARG_VALUE>
+class CStringKeyMapImpl : public CObject
+{
+    using MapT = std::unordered_map<CString, VALUE, CStringContentHash>;
+    using Iter = typename MapT::iterator;
+
+public:
+    struct CPair
+    {
+        CPair(const CString& k, const VALUE& v) : key(k), value(v) {}
+        const CString key;
+        VALUE value;
+    };
+
+    explicit CStringKeyMapImpl(INT_PTR /*nBlockSize*/ = 10) {}
+
+    BOOL Lookup(LPCTSTR key, VALUE& rValue) const
+    {
+        auto it = m_map.find(CString(key));
+        if (it == m_map.end()) return FALSE;
+        rValue = it->second;
+        return TRUE;
+    }
+    void SetAt(LPCTSTR key, ARG_VALUE newValue) { m_map[CString(key)] = newValue; }
+    VALUE& operator[](LPCTSTR key) { return m_map[CString(key)]; }
+    BOOL RemoveKey(LPCTSTR key) { return m_map.erase(CString(key)) > 0 ? TRUE : FALSE; }
+    void RemoveAll() { m_map.clear(); }
+
+    POSITION GetStartPosition() const { return m_map.empty() ? nullptr : new Iter(const_cast<MapT&>(m_map).begin()); }
+    void GetNextAssoc(POSITION& rNextPosition, CString& rKey, VALUE& rValue) const
+    {
+        auto* box = static_cast<Iter*>(rNextPosition);
+        rKey = (*box)->first;
+        rValue = (*box)->second;
+        ++(*box);
+        if (*box == const_cast<MapT&>(m_map).end()) { delete box; rNextPosition = nullptr; }
+    }
+
+    void InitHashTable(UINT nHashSize, BOOL bAllocNow = TRUE) { if (!bAllocNow) return; m_map.reserve(nHashSize); }
+    INT_PTR GetCount() const { return static_cast<INT_PTR>(m_map.size()); }
+    INT_PTR GetSize() const { return GetCount(); }
+    BOOL IsEmpty() const { return m_map.empty() ? TRUE : FALSE; }
+
+    const CPair* PLookup(LPCTSTR key) const
+    {
+        auto it = m_map.find(CString(key));
+        if (it == m_map.end()) return nullptr;
+        m_scratch.reset(new CPair(it->first, it->second));
+        return m_scratch.get();
+    }
+    const CPair* PGetFirstAssoc() const
+    {
+        if (m_map.empty()) return nullptr;
+        m_scratch.reset(new CPair(m_map.begin()->first, m_map.begin()->second));
+        return m_scratch.get();
+    }
+    const CPair* PGetNextAssoc(const CPair* pAssocRet) const
+    {
+        auto it = m_map.find(pAssocRet->key);
+        if (it == m_map.end() || ++it == m_map.end()) return nullptr;
+        m_scratch.reset(new CPair(it->first, it->second));
+        return m_scratch.get();
+    }
+    CPair* PLookup(LPCTSTR key) { return const_cast<CPair*>(AsConst().PLookup(key)); }
+    CPair* PGetFirstAssoc() { return const_cast<CPair*>(AsConst().PGetFirstAssoc()); }
+    CPair* PGetNextAssoc(const CPair* pAssocRet) { return const_cast<CPair*>(AsConst().PGetNextAssoc(pAssocRet)); }
+
+private:
+    const CStringKeyMapImpl& AsConst() const { return *this; }
+    MapT m_map;
+    mutable std::unique_ptr<CPair> m_scratch;
+};
+} // namespace mfc_detail
+
+class CMapStringToPtr : public mfc_detail::CStringKeyMapImpl<void*, void*>
+{
+};
+
+class CMapStringToString : public mfc_detail::CStringKeyMapImpl<CString, LPCTSTR>
+{
 };
 
 class CStringList : public CObject

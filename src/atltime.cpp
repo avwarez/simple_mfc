@@ -1,3 +1,5 @@
+#include "afx.h"     // CString is only forward-declared in atltime.h; the
+                     // Format() bodies below need the complete type
 #include "atltime.h"
 
 CTime::CTime(int nYear, int nMonth, int nDay, int nHour, int nMin, int nSec, int /*nDST*/)

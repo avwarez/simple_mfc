@@ -812,12 +812,12 @@ public:
 // CFile / CStdioFile / CMemFile — built on std::fstream / an in-memory
 // buffer, fully portable (no Win32 HANDLE).
 // ---------------------------------------------------------------------
-// CFileStatus carries CTime members, so its definition lives in
-// atltime.h (included at the bottom of this header) -- CFile only needs
-// to take it by reference, which a forward declaration covers. Both
-// include orders work: whichever of the two headers is entered first, the
-// other's #pragma once turns the back-reference into a no-op and the
-// definitions still end up in dependency order.
+// CFileStatus is owned by afx.h (as in real MFC), but carries CTime
+// members, so CFile can only take it by reference here -- a forward
+// declaration covers that. Its full definition is at the very bottom of
+// this header, after #include "atltime.h" has made CTime complete.
+// (atltime.h no longer includes afx.h back, so this is a one-way
+// dependency now, no cycle.)
 class CTime;
 struct CFileStatus;
 #ifndef _WIN32
@@ -1095,6 +1095,20 @@ public:
     CString m_strFileName;
 };
 
-// The time classes, and with them CFileStatus (see the forward
-// declaration above). Last, because atltime.h builds on CString.
+// The time classes. Last, because atltime.h builds on CString. It also
+// makes CTime complete and supplies _MAX_PATH, both needed by CFileStatus.
 #include "atltime.h"
+
+// CFileStatus -- defined here (its real MFC home) now that atltime.h has
+// made CTime complete; forward-declared far above, where CFile::GetStatus
+// takes it by reference.
+struct CFileStatus
+{
+    CTime m_ctime;               // creation
+    CTime m_mtime;               // last modification
+    CTime m_atime;               // last access
+    ULONGLONG m_size = 0;
+    BYTE m_attribute = 0;
+    BYTE m_padding = 0;
+    TCHAR m_szFullName[_MAX_PATH] = {};
+};

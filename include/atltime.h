@@ -3,7 +3,20 @@
 // (no SYSTEMTIME/FILETIME).
 #pragma once
 
-#include "afx.h"
+// This header does NOT include afx.h: CTime/CTimeSpan reference CString
+// only as a by-value return type in declarations (the bodies are in
+// atltime.cpp), so a forward declaration is enough -- and NOT pulling in
+// afx.h is what lets afx.h own CFileStatus (which needs a complete CTime)
+// while still #including this header at its bottom, with no cycle. This
+// also mirrors real ATL, where atltime.h does not depend on MFC's afx.h.
+// The default for CStringT's second parameter stays solely on the
+// definition in afx.h, so here the alias spells the second argument out as
+// void explicitly (CStringT<wchar_t> == CStringT<wchar_t, void>, so this
+// names the very same type and is a legal identical redefinition of the
+// alias afx.h also declares).
+template <class BaseType, class> class CStringT;
+using CStringW = CStringT<wchar_t, void>;
+using CString = CStringW;
 
 #include <chrono>
 #include <ctime>
@@ -136,21 +149,10 @@ private:
     __time64_t m_time;
 };
 
-// ---------------------------------------------------------------------
-// CFileStatus — declared in afx.h (where CFile::GetStatus takes it by
-// reference), defined here because its timestamps are CTime objects.
-// ---------------------------------------------------------------------
+// CFileStatus lives in afx.h (its real MFC home), defined at the very
+// bottom of afx.h once this header has made CTime complete. _MAX_PATH,
+// which its m_szFullName needs, is provided here so it is in scope by
+// then.
 #ifndef _MAX_PATH
 #define _MAX_PATH 260
 #endif
-
-struct CFileStatus
-{
-    CTime m_ctime;               // creation
-    CTime m_mtime;               // last modification
-    CTime m_atime;               // last access
-    ULONGLONG m_size = 0;
-    BYTE m_attribute = 0;
-    BYTE m_padding = 0;
-    TCHAR m_szFullName[_MAX_PATH] = {};
-};

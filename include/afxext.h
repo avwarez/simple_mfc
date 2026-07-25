@@ -183,7 +183,7 @@ protected:
 #endif
 
 // ---------------------------------------------------------------------
-// CScrollView / CFormView (header afxext.h, hierarchy
+// CFormView (header afxext.h, hierarchy
 // CObject -> CCmdTarget -> CWnd -> CView -> CScrollView -> CFormView).
 //
 // CFormView hosts a dialog template as a view; CTransferWnd and
@@ -191,13 +191,9 @@ protected:
 // real MFC too -- it is only ever instantiated through a derived class,
 // which is what IMPLEMENT_DYNCREATE needs.
 //
-// CScrollView is here purely to keep the inheritance chain faithful:
-// eMule calls none of its scrolling API, so none is declared.
+// Its base CScrollView lives in afxwin.h (as in real MFC) and reaches
+// here through this header's #include "afxwin.h".
 // ---------------------------------------------------------------------
-class CScrollView : public CView
-{
-};
-
 class CFormView : public CScrollView
 {
 protected:
