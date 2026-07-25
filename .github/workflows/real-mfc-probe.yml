@@ -1,0 +1,76 @@
+name: real MFC/ATL source probe (experimental, manual)
+
+# One-off diagnostic, not part of the regular CI. Dumps specific fragments
+# of the real MFC/ATL headers AND implementation source shipped with the
+# Visual Studio ATLMFC component (VC\Tools\MSVC\<ver>\atlmfc\include and
+# \atlmfc\src\mfc -- the latter is implementation source, not public API,
+# see srchybrid/CMakeLists.txt's ATLMFC_SRC_MFC in the eMule repo for how
+# eMule itself locates it). Answers questions Microsoft Learn's public
+# docs don't cover: exact enum ordinals, whether a virtual is invoked
+# unconditionally by the framework's own dispatch rather than only on
+# override. Read-only inspection -- never touches simple_mfc itself.
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Install the MFC and ATL Visual Studio component
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installerDir = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
+          $vsPath = & "$installerDir\vswhere.exe" -latest -property installationPath
+          Write-Host "Visual Studio install path: $vsPath"
+          $proc = Start-Process -FilePath "$installerDir\vs_installer.exe" -ArgumentList @(
+            'modify',
+            '--installPath', "`"$vsPath`"",
+            '--add', 'Microsoft.VisualStudio.Component.VC.ATLMFC',
+            '--quiet', '--norestart'
+          ) -Wait -PassThru
+          if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010) {
+            throw "vs_installer.exe failed with exit code $($proc.ExitCode)"
+          }
+
+      - name: Locate real MFC/ATL include and implementation-source directories
+        shell: pwsh
+        run: |
+          $installerDir = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
+          $vsPath = & "$installerDir\vswhere.exe" -latest -property installationPath
+          $msvcRoot = Get-ChildItem "$vsPath\VC\Tools\MSVC" | Sort-Object Name -Descending | Select-Object -First 1
+          $incDir = Join-Path $msvcRoot.FullName "atlmfc\include"
+          $srcDir = Join-Path $msvcRoot.FullName "atlmfc\src\mfc"
+          Write-Host "MSVC toolset root: $($msvcRoot.FullName)"
+          Write-Host "MFC/ATL include dir: $incDir"
+          Write-Host "MFC implementation source dir: $srcDir"
+          "MFC_INC=$incDir" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "MFC_SRC=$srcDir" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Dump CFileException::Cause / CArchiveException::Cause (real ordinals)
+        shell: pwsh
+        run: |
+          Write-Host "=== Searching $env:MFC_INC for CFileException / CArchiveException / enum Cause ==="
+          Get-ChildItem "$env:MFC_INC" -Recurse -Filter *.h | ForEach-Object {
+            $hits = Select-String -Path $_.FullName -Pattern "class CFileException|class CArchiveException|enum Cause" -Context 0,15
+            if ($hits) { Write-Host "--- $($_.FullName) ---"; $hits | ForEach-Object { $_.Line; $_.Context.PostContext } }
+          }
+
+      - name: Dump OnCmdMsg / OnNcCalcSize / OnCompareItem / OnDeleteItem declarations
+        shell: pwsh
+        run: |
+          Write-Host "=== Searching $env:MFC_INC for the four handler declarations ==="
+          Get-ChildItem "$env:MFC_INC" -Recurse -Filter *.h | ForEach-Object {
+            $hits = Select-String -Path $_.FullName -Pattern "OnCmdMsg|OnNcCalcSize\(|OnCompareItem\(|OnDeleteItem\("
+            if ($hits) { Write-Host "--- $($_.FullName) ---"; $hits | ForEach-Object { Write-Host $_.Line } }
+          }
+
+      - name: Search real MFC implementation source for unconditional dispatch
+        shell: pwsh
+        run: |
+          Write-Host "=== Searching $env:MFC_SRC for OnCmdMsg/OnNcCalcSize/OnCompareItem/OnDeleteItem usage ==="
+          Get-ChildItem "$env:MFC_SRC" -Filter *.cpp | ForEach-Object {
+            $hits = Select-String -Path $_.FullName -Pattern "OnCmdMsg|OnNcCalcSize|OnCompareItem|OnDeleteItem"
+            if ($hits) { Write-Host "--- $($_.Name) ---"; $hits | ForEach-Object { Write-Host "$($_.LineNumber): $($_.Line.Trim())" } }
+          }
