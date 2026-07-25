@@ -125,12 +125,16 @@ jobs:
       - name: Run the symbol diff
         shell: pwsh
         run: |
-          python .github/scripts/mfc_symbol_diff.py include "$env:ATLMFC_ROOT" mfc_symbol_diff.tsv
-          Write-Host "--- first 20 lines ---"
+          python .github/scripts/mfc_symbol_diff.py include "$env:ATLMFC_ROOT" mfc_symbol_diff.tsv mfc_header_placement.tsv
+          Write-Host "--- symbol diff, first 20 lines ---"
           Get-Content mfc_symbol_diff.tsv -TotalCount 20
+          Write-Host "--- header placement: DIFFERENT_HEADER rows ---"
+          Select-String -Path mfc_header_placement.tsv -Pattern "`tDIFFERENT_HEADER`t" | ForEach-Object { $_.Line }
 
       - name: Upload diff report
         uses: actions/upload-artifact@v4
         with:
           name: mfc-symbol-diff
-          path: mfc_symbol_diff.tsv
+          path: |
+            mfc_symbol_diff.tsv
+            mfc_header_placement.tsv
