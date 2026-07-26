@@ -75,6 +75,69 @@ jobs:
             if ($hits) { Write-Host "--- $($_.Name) ---"; $hits | ForEach-Object { Write-Host "$($_.LineNumber): $($_.Line.Trim())" } }
           }
 
+  dump-msgmap:
+    # Milestone 1 (functional message maps): dump the AUTHORITATIVE real MFC
+    # message-map machinery so simple_mfc can mirror it faithfully (the
+    # ON_* macro bodies in afxmsg_.h and the AfxSig enum / MessageMapFunctions
+    # union / AFX_MSGMAP* structures in afxwin.h). Read-only; uploads the
+    # relevant real headers as an artifact for reference. Never touches
+    # simple_mfc.
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Install the MFC and ATL Visual Studio component
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installerDir = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
+          $vsPath = & "$installerDir\vswhere.exe" -latest -property installationPath
+          Write-Host "Visual Studio install path: $vsPath"
+          $proc = Start-Process -FilePath "$installerDir\vs_installer.exe" -ArgumentList @(
+            'modify',
+            '--installPath', "`"$vsPath`"",
+            '--add', 'Microsoft.VisualStudio.Component.VC.ATLMFC',
+            '--quiet', '--norestart'
+          ) -Wait -PassThru
+          if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010) {
+            throw "vs_installer.exe failed with exit code $($proc.ExitCode)"
+          }
+
+      - name: Locate real MFC/ATL include directory
+        shell: pwsh
+        run: |
+          $installerDir = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
+          $vsPath = & "$installerDir\vswhere.exe" -latest -property installationPath
+          $msvcRoot = Get-ChildItem "$vsPath\VC\Tools\MSVC" | Sort-Object Name -Descending | Select-Object -First 1
+          $incDir = Join-Path $msvcRoot.FullName "atlmfc\include"
+          Write-Host "MFC/ATL include dir: $incDir"
+          "MFC_INC=$incDir" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Collect the message-map machinery
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dump | Out-Null
+          # afxmsg_.h is the file to mirror (the ON_* entry macros); copy in full.
+          Copy-Item "$env:MFC_INC\afxmsg_.h" dump\afxmsg_.h
+          # From afxwin.h extract only the message-map machinery regions.
+          "=== enum AfxSig ===" | Out-File dump\afxwin_msgmap.txt
+          Select-String -Path "$env:MFC_INC\afxwin.h" -Pattern "enum AfxSig" -Context 0,200 |
+            ForEach-Object { $_.Line; $_.Context.PostContext } | Out-File dump\afxwin_msgmap.txt -Append
+          "`n=== union MessageMapFunctions ===" | Out-File dump\afxwin_msgmap.txt -Append
+          Select-String -Path "$env:MFC_INC\afxwin.h" -Pattern "union MessageMapFunctions" -Context 0,120 |
+            ForEach-Object { $_.Line; $_.Context.PostContext } | Out-File dump\afxwin_msgmap.txt -Append
+          "`n=== AFX_MSGMAP / AFX_MSGMAP_ENTRY / AFX_PMSG / DECLARE_MESSAGE_MAP / BEGIN_MESSAGE_MAP ===" | Out-File dump\afxwin_msgmap.txt -Append
+          Select-String -Path "$env:MFC_INC\afxwin.h" -Pattern "struct AFX_MSGMAP|AFX_MSGMAP_ENTRY|typedef.*AFX_PMSG|define DECLARE_MESSAGE_MAP|define BEGIN_MESSAGE_MAP|define END_MESSAGE_MAP|define ON_WM_" -Context 0,4 |
+            ForEach-Object { "--- line $($_.LineNumber) ---"; $_.Line; $_.Context.PostContext } | Out-File dump\afxwin_msgmap.txt -Append
+          Write-Host "=== afxmsg_.h size ==="; (Get-Item dump\afxmsg_.h).Length
+          Write-Host "=== afxwin_msgmap.txt (first 250 lines) ==="
+          Get-Content dump\afxwin_msgmap.txt -TotalCount 250
+
+      - name: Upload the real message-map headers
+        uses: actions/upload-artifact@v4
+        with:
+          name: mfc-msgmap
+          path: dump
+
   symbol-diff:
     # Full symbol-level diff: every symbol simple_mfc/include declares,
     # matched against the same-named real header/source file anywhere
