@@ -202,6 +202,16 @@ class CScrollBar; // real header afxwin.h too; only used here as a pointer param
 // entry macros (static_cast<LRESULT (AFX_MSG_CALL CWnd::*)(void)>).
 #define AFX_MSG_CALL
 
+// MFC's consolidated CTLCOLOR pseudo-message. Win16's single WM_CTLCOLOR
+// was split by Win32 into WM_CTLCOLORBTN/EDIT/... so it is NOT in winuser.h
+// anymore; real MFC keeps the old id (0x0019) alive in afxwin.h and its
+// ON_WM_CTLCOLOR()/ON_WM_CTLCOLOR_REFLECT() entries route through it. Define
+// it here for the same reason, on every target (guarded in case an SDK
+// still provides it).
+#ifndef WM_CTLCOLOR
+#define WM_CTLCOLOR 0x0019
+#endif
+
 struct AFX_MSGMAP_ENTRY;
 
 struct AFX_MSGMAP

@@ -14,6 +14,10 @@
 // category. All three are declared below.
 #pragma once
 #include "afxwin.h"
+#include "afxpriv.h" // the framework-private window messages (WM_KICKIDLE,
+                     // WM_IDLEUPDATECMDUI, ...): real MFC's afximpl.h pulls
+                     // in afxpriv.h the same way, which is how eMule sees
+                     // them without including afxpriv.h itself.
 #include "afxcoll.h" // CMapPtrToPtr / CPtrList, the module thread state's members
 
 // MFC's per-thread, per-module state (real MFC: afxstat_.h, which this

@@ -128,6 +128,11 @@ jobs:
           "`n=== AFX_MSGMAP / AFX_MSGMAP_ENTRY / AFX_PMSG / DECLARE_MESSAGE_MAP / BEGIN_MESSAGE_MAP ===" | Out-File dump\afxwin_msgmap.txt -Append
           Select-String -Path "$env:MFC_INC\afxwin.h" -Pattern "struct AFX_MSGMAP|AFX_MSGMAP_ENTRY|typedef.*AFX_PMSG|define DECLARE_MESSAGE_MAP|define BEGIN_MESSAGE_MAP|define END_MESSAGE_MAP|define ON_WM_" -Context 0,4 |
             ForEach-Object { "--- line $($_.LineNumber) ---"; $_.Line; $_.Context.PostContext } | Out-File dump\afxwin_msgmap.txt -Append
+          # afxpriv.h (framework-private window messages: WM_KICKIDLE, ...)
+          if (Test-Path "$env:MFC_INC\afxpriv.h") { Copy-Item "$env:MFC_INC\afxpriv.h" dump\afxpriv.h }
+          "`n=== real WM_CTLCOLOR / WM_KICKIDLE / WM_IDLEUPDATECMDUI values ===" | Out-File dump\afxwin_msgmap.txt -Append
+          Select-String -Path "$env:MFC_INC\afxwin.h","$env:MFC_INC\afxpriv.h" -Pattern "define WM_CTLCOLOR\b|define WM_KICKIDLE|define WM_IDLEUPDATECMDUI" |
+            ForEach-Object { "$($_.Filename): $($_.Line.Trim())" } | Out-File dump\afxwin_msgmap.txt -Append
           Write-Host "=== afxmsg_.h size ==="; (Get-Item dump\afxmsg_.h).Length
           Write-Host "=== afxwin_msgmap.txt (first 250 lines) ==="
           Get-Content dump\afxwin_msgmap.txt -TotalCount 250
