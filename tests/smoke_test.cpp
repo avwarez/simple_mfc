@@ -16,6 +16,10 @@
 #include "afximpl.h"
 #include "afxinet.h"
 
+// afxsock.h (CAsyncSocket) is a real, linked implementation and gets a
+// functional loopback test below, not just an includability check.
+#include "afxsock.h"
+
 // "Declaration-only" headers (no .cpp): here we only check that they are
 // includable and that the types/hierarchies compile, without actually
 // using them.
@@ -27,11 +31,13 @@
 #include "afxole.h"
 #include "afxdhtml.h"
 #include "afxdtctl.h"
-#include "afxsock.h"
 
+#include <atomic>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <sstream>
+#include <thread>
 
 #ifdef _MSC_VER
 #include <crtdbg.h>
@@ -74,6 +80,117 @@ static void SilenceWindowsCrtDialogs()
     }
     _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
 #endif
+}
+
+// ---------------------------------------------------------------------
+// CAsyncSocket functional tests. All over 127.0.0.1 loopback, which does
+// not drop or reorder, so the blocking receives below cannot hang the way
+// a real network could. Each returns true on success.
+// ---------------------------------------------------------------------
+static bool TestSyncTcp()
+{
+    CAsyncSocket listener;
+    if (!listener.Create(0, SOCK_STREAM, 0, L"127.0.0.1"))
+        return false;
+    if (!listener.Listen(1))
+        return false;
+    CString addr;
+    UINT port = 0;
+    if (!listener.GetSockName(addr, port) || port == 0)
+        return false;
+
+    CAsyncSocket client;
+    if (!client.Create(0, SOCK_STREAM, 0, L"127.0.0.1"))
+        return false;
+    if (!client.Connect(L"127.0.0.1", port)) // blocking connect over loopback
+        return false;
+
+    CAsyncSocket accepted;
+    if (!listener.Accept(accepted))
+        return false;
+
+    const char msg[] = "ping";
+    if (client.Send(msg, 4) != 4)
+        return false;
+    char buf[8] = {0};
+    if (accepted.Receive(buf, 4) != 4)
+        return false;
+    return std::memcmp(buf, "ping", 4) == 0;
+}
+
+static bool TestSyncUdp()
+{
+    CAsyncSocket receiver;
+    if (!receiver.Create(0, SOCK_DGRAM, 0, L"127.0.0.1"))
+        return false;
+    CString addr;
+    UINT port = 0;
+    if (!receiver.GetSockName(addr, port) || port == 0)
+        return false;
+
+    CAsyncSocket sender;
+    if (!sender.Create(0, SOCK_DGRAM, 0, L"127.0.0.1"))
+        return false;
+    const char msg[] = "hello";
+    if (sender.SendTo(msg, 5, port, L"127.0.0.1") != 5)
+        return false;
+
+    char buf[16] = {0};
+    CString from;
+    UINT fromPort = 0;
+    const int n = receiver.ReceiveFrom(buf, sizeof(buf), from, fromPort);
+    return n == 5 && std::memcmp(buf, "hello", 5) == 0;
+}
+
+// Exercises the async reactor: the derived socket's OnReceive must fire on
+// the reactor thread after a datagram arrives, without any message pump.
+namespace {
+struct AsyncReceiver : public CAsyncSocket
+{
+    std::atomic<bool> got{false};
+    char buf[16] = {0};
+    int n = 0;
+    void OnReceive(int /*nErrorCode*/) override
+    {
+        n = Receive(buf, sizeof(buf));
+        if (n > 0)
+            got = true;
+    }
+};
+} // namespace
+
+static bool TestAsyncUdp()
+{
+    AsyncReceiver receiver;
+    if (!receiver.Create(0, SOCK_DGRAM, FD_READ)) // async (non-blocking) socket
+        return false;
+    CString addr;
+    UINT port = 0;
+    if (!receiver.GetSockName(addr, port) || port == 0)
+    {
+        receiver.Close();
+        return false;
+    }
+
+    CAsyncSocket sender;
+    if (!sender.Create(0, SOCK_DGRAM, 0, L"127.0.0.1"))
+    {
+        receiver.Close();
+        return false;
+    }
+    sender.SendTo("async", 5, port, L"127.0.0.1");
+
+    // Wait up to ~3s for the reactor (100 ms poll) to deliver OnReceive.
+    for (int i = 0; i < 60 && !receiver.got; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    const bool ok = receiver.got && receiver.n == 5 &&
+                    std::memcmp(receiver.buf, "async", 5) == 0;
+    // Close() before the object is destroyed: it removes the socket from
+    // the reactor under the reactor lock, so it blocks out any in-flight
+    // OnReceive and no callback can touch a half-destroyed object.
+    receiver.Close();
+    return ok;
 }
 
 int main()
@@ -330,7 +447,15 @@ int main()
     COleDropTarget* dropTarget = nullptr; (void)dropTarget;
     CDHtmlDialog* dhtml = nullptr; (void)dhtml;
     CDateTimeCtrl* dtp = nullptr; (void)dtp;
-    CAsyncSocket* sock = nullptr; (void)sock;
+    // CAsyncSocket: a real, working implementation -- exercise it over
+    // loopback (sync TCP, sync UDP, and the async reactor's OnReceive).
+    {
+        CHECK(AfxSocketInit() != FALSE);
+        CHECK(TestSyncTcp());
+        CHECK(TestSyncUdp());
+        CHECK(TestAsyncUdp());
+        AfxSocketTerm();
+    }
     // CPalette went from an incomplete forward declaration to a real
     // class definition during the FRONTEND/GDI blind-spot pass (see
     // ../../mfc_scan_srchybrid.md addendum) — checked here like the

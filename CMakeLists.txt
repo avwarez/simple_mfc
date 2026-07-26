@@ -23,16 +23,19 @@ endif()
 # --- Library --------------------------------------------------------------
 # afxtempl.h/atlalloc.h (CTempBuffer<>) are header-only (templates): no
 # source to compile for CArray<>/CList<>/CMap<>/CTempBuffer<>. The
-# remaining "declaration-only" headers (afxwin.h, afxsock.h..., see
-# README.md) still have no .cpp: they are still exposed via include/ but
-# not linked here, because they are inherently Windows/GUI/COM surfaces,
-# not implemented in portable C++.
+# remaining "declaration-only" headers (afxwin.h..., see README.md) still
+# have no .cpp: they are still exposed via include/ but not linked here,
+# because they are inherently Windows/GUI/COM surfaces, not implemented in
+# portable C++. afxsock.cpp (CAsyncSocket) is the exception: sockets map
+# cleanly onto the portable Berkeley-sockets API (WinSock2 / POSIX), so it
+# is a real, linked implementation.
 add_library(simple_mfc STATIC
     src/afx.cpp
     src/afxcoll.cpp
     src/afximpl.cpp
     src/afxinet.cpp
     src/afxmt.cpp
+    src/afxsock.cpp
     src/atlconv.cpp
     src/atlenc.cpp
     src/atltime.cpp
@@ -51,6 +54,14 @@ target_include_directories(simple_mfc PUBLIC
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 target_link_libraries(simple_mfc PUBLIC Threads::Threads)
+
+# afxsock.cpp (CAsyncSocket) uses the platform sockets API. On Windows that
+# is WinSock2 (ws2_32) plus the IP helper API (iphlpapi, pulled in by
+# afxsock.h for eMule's Pinger.cpp); on POSIX the sockets API is in libc,
+# nothing extra to link.
+if (WIN32)
+    target_link_libraries(simple_mfc PUBLIC ws2_32 iphlpapi)
+endif()
 
 # afx.cpp uses <filesystem> (CFileFind): on GCC < 9 and on some Clang/
 # libstdc++ builds it still lives in a separate library that must be
