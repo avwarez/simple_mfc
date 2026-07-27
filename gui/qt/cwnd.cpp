@@ -23,7 +23,10 @@
 #include <QGroupBox>
 #include <QLabel>
 #include <QLineEdit>
+#include <QImage>
 #include <QListWidget>
+#include <QPainter>
+#include <QPaintEvent>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QRadioButton>
@@ -211,6 +214,16 @@ LRESULT CWnd::WindowProc(UINT message, WPARAM wParam, LPARAM lParam)
     {
         if (OnCommand(wParam, lParam))
             return 0;
+    }
+    if (message == WM_PAINT)
+    {
+        // ON_WM_PAINT's route: WM_PAINT -> OnPaint (virtual here, so a derived
+        // class's OnPaint override is reached). The host widget's paintEvent
+        // sends this, then blits the CDC surface OnPaint drew onto (see
+        // SmfcPaintDialog). The base OnPaint is a no-op -> no surface -> the
+        // widget keeps its default Qt appearance.
+        OnPaint();
+        return 0;
     }
     LRESULT result = 0;
     if (OnWndMsg(message, wParam, lParam, &result))
@@ -432,13 +445,35 @@ void   CWnd::OnActivate(UINT, CWnd*, BOOL) {}
 // driver "consuming the IR": the same IR a future wx driver would consume.
 // ---------------------------------------------------------------------------
 namespace {
+// A dialog QWidget that routes Qt paint events into the MFC WM_PAINT path.
+// paintEvent is the toolkit's "the OS wants this window redrawn" — the analog
+// of WM_PAINT — so it dispatches WM_PAINT to the owning CWnd (reaching a derived
+// OnPaint via the virtual), then blits whatever that OnPaint drew onto the
+// window's offscreen CDC surface up to the real widget. This is what makes a
+// CDialog/CWnd subclass that paints in OnPaint (via CPaintDC) actually show.
+class SmfcPaintDialog : public QDialog {
+public:
+    using QDialog::QDialog;
+protected:
+    void paintEvent(QPaintEvent* e) override {
+        QDialog::paintEvent(e);   // default background / frame first
+        CWnd* w = CWnd::FromHandle(reinterpret_cast<HWND>(this));
+        if (!w) return;
+        w->SendMessage(WM_PAINT, 0, 0);   // -> OnPaint draws onto the CDC surface
+        if (QImage* img = smfc_qt::WndSurfaceImage(w)) {
+            QPainter p(this);
+            p.drawImage(0, 0, *img);
+        }
+    }
+};
+
 QDialog* buildDialogFromTemplate(CWnd* self, int idd)
 {
     const smfc::DialogDesc* d = smfc::FindDialog(idd);
     if (!d)
         return nullptr;   // no .rc supplied this dialog
 
-    auto* qd = new QDialog();
+    auto* qd = new SmfcPaintDialog();
     qd->setWindowTitle(ToQString(d->caption));
     const BaseUnits b = dialogBaseUnits(*d);
     if (d->cx > 0 && d->cy > 0)

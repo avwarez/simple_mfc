@@ -300,6 +300,16 @@ if (SIMPLE_MFC_GUI STREQUAL "qt")
     set_tests_properties(qt_gdi_test PROPERTIES
         TIMEOUT 60
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    add_executable(qt_paint_test tests/qt_paint_test.cpp ${SMFC_GEN_TEST_DIALOGS})
+    target_link_libraries(qt_paint_test PRIVATE simple_mfc::gui_qt)
+    if (NOT MSVC)
+        target_compile_options(qt_paint_test PRIVATE -fms-extensions)
+    endif()
+    add_test(NAME qt_paint_test COMMAND qt_paint_test)
+    set_tests_properties(qt_paint_test PROPERTIES
+        TIMEOUT 60
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()
 
 # --- Conformance tests vs. real MFC (optional, MSVC + ATL/MFC only) --------
