@@ -348,6 +348,109 @@ struct StrTraits<char>
     static int FormatV(char* buf, size_t n, const char* fmt, va_list a) { return std::vsnprintf(buf, n, fmt, a); }
 };
 
+// ---------------------------------------------------------------------
+// Format-string dialect translation (POSIX only).
+//
+// MSVC's CRT and the C standard disagree about what %s means inside a
+// WIDE format string, and the disagreement is silent:
+//
+//     swprintf(buf, n, L"Hello, %s!", L"world")
+//         MSVC   -> "Hello, world!"   (%s is wchar_t* in a wide format)
+//         glibc  -> "Hello, w!"       (%s is char*; the wide string's
+//                                      first byte pair reads as "w\0")
+//
+// Application code is written against the MSVC dialect - eMule alone has
+// ~2800 %s in Format calls - so every one of them would silently produce
+// the first letter only. The format string is therefore rewritten into
+// the C-standard dialect before it reaches vswprintf/vsnprintf:
+//
+//     wide format:    %s -> %ls    %S -> %s     %c -> %lc    %C -> %c
+//     narrow format:  %s -> %s     %S -> %ls    %c -> %c     %C -> %lc
+//     both:           %I64 -> %ll  %I32 -> %l   %w{s,c} -> wide
+//
+// An explicit h/l/w length modifier already says which width is meant, so
+// it wins over the conversion letter's default. On MSVC nothing is
+// rewritten: there the application's dialect is already the CRT's.
+// ---------------------------------------------------------------------
+template <class Ch>
+std::basic_string<Ch> TranslateFormat(const Ch* fmt)
+{
+    std::basic_string<Ch> out;
+    if (!fmt) return out;
+    constexpr bool wideFormat = std::is_same_v<Ch, wchar_t>;
+    auto C = [](char c) { return static_cast<Ch>(c); };
+
+    for (const Ch* p = fmt; *p; ++p)
+    {
+        if (*p != C('%')) { out += *p; continue; }
+        out += *p;
+        ++p;
+        if (*p == C('%')) { out += *p; continue; }   // literal %%
+
+        // Flags, width and precision pass through untouched.
+        while (*p && (*p == C('-') || *p == C('+') || *p == C(' ')
+                      || *p == C('#') || *p == C('0')))
+            out += *p++;
+        while (*p && ((*p >= C('0') && *p <= C('9')) || *p == C('*')))
+            out += *p++;
+        if (*p == C('.')) {
+            out += *p++;
+            while (*p && ((*p >= C('0') && *p <= C('9')) || *p == C('*')))
+                out += *p++;
+        }
+
+        // Length modifiers. Collected rather than emitted, because for the
+        // string/char conversions the modifier and the conversion letter
+        // together decide the argument width.
+        enum class Width { Default, Narrow, Wide } w = Width::Default;
+        std::basic_string<Ch> lengthMods;
+        for (;;) {
+            if (*p == C('h')) {
+                w = Width::Narrow; ++p;
+                if (*p == C('h')) { lengthMods += C('h'); lengthMods += C('h'); ++p; }
+                else lengthMods += C('h');
+            } else if (*p == C('l')) {
+                w = Width::Wide; ++p;
+                if (*p == C('l')) { lengthMods += C('l'); lengthMods += C('l'); ++p; }
+                else lengthMods += C('l');
+            } else if (*p == C('w')) {          // MSVC: wide
+                w = Width::Wide; lengthMods += C('l'); ++p;
+            } else if (*p == C('L') || *p == C('j') || *p == C('z') || *p == C('t')) {
+                lengthMods += *p++;
+            } else if (*p == C('I')) {          // MSVC: I64 / I32 / I
+                ++p;
+                if (*p == C('6') && *(p + 1) == C('4')) { lengthMods += C('l'); lengthMods += C('l'); p += 2; }
+                else if (*p == C('3') && *(p + 1) == C('2')) { p += 2; }
+                else { lengthMods += C('z'); }   // plain %I is size_t-sized
+            } else {
+                break;
+            }
+        }
+        if (!*p) { out += lengthMods; break; }   // malformed: leave as written
+
+        const Ch conv = *p;
+        if (conv == C('s') || conv == C('S') || conv == C('c') || conv == C('C'))
+        {
+            const bool upper = (conv == C('S') || conv == C('C'));
+            // Default width: %s/%c match the format's own character type,
+            // %S/%C mean the other one. An explicit h/l/w overrides both.
+            bool wide = upper ? !wideFormat : wideFormat;
+            if (w == Width::Narrow) wide = false;
+            else if (w == Width::Wide) wide = true;
+
+            if (wide) out += C('l');
+            out += (conv == C('c') || conv == C('C')) ? C('c') : C('s');
+        }
+        else
+        {
+            out += lengthMods;
+            out += conv;
+        }
+    }
+    return out;
+}
+
+
 // Narrow<->wide conversion for CStringT's cross-character (YCHAR)
 // constructors/assignment. ASCII maps 1:1; bytes >= 0x80 widen as Latin-1
 // and non-ASCII wide chars narrow to '?' -- a portable, compile-check-grade
@@ -677,13 +780,23 @@ private:
 
     static std::basic_string<XCHAR> VFormat(PCXSTR fmt, va_list args)
     {
+#ifdef _MSC_VER
+        // The application's dialect IS the CRT's here: nothing to rewrite.
+        PCXSTR fmtUsed = fmt;
+#else
+        // Elsewhere the CRT follows the C standard, in which %s inside a wide
+        // format means char* -- so a wide argument would silently format as
+        // its first character. See TranslateFormat above.
+        const std::basic_string<XCHAR> fmtHeld = mfc_detail::TranslateFormat(fmt);
+        PCXSTR fmtUsed = fmtHeld.c_str();
+#endif
         size_t size = 256;
         std::vector<XCHAR> buf(size);
         for (;;)
         {
             va_list ap;
             va_copy(ap, args);
-            int n = mfc_detail::StrTraits<XCHAR>::FormatV(buf.data(), size, fmt, ap);
+            int n = mfc_detail::StrTraits<XCHAR>::FormatV(buf.data(), size, fmtUsed, ap);
             va_end(ap);
             if (n >= 0 && static_cast<size_t>(n) < size)
                 return std::basic_string<XCHAR>(buf.data(), static_cast<size_t>(n));

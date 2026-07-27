@@ -201,6 +201,109 @@ int main()
     s.Trim();
     CHECK(s == CString(L"simple_mfc"));
 
+    // ---------------------------------------------------------------------
+    // CString::Format / AppendFormat. eMule calls these ~1500 times and
+    // writes %s ~2800 times, so this is the single most-used method in the
+    // library -- and it had no coverage at all until a wrong %s surfaced by
+    // hand in a running application.
+    //
+    // The trap is that MSVC's CRT and the C standard disagree, silently,
+    // about what %s means in a WIDE format string: MSVC reads a wchar_t*,
+    // glibc reads a char*. Fed a wide string, glibc stops at its first
+    // embedded NUL, so L"world" formats as "w" -- right length, right type,
+    // no warning, no crash, just the first letter.
+    //
+    // These assertions encode the MFC dialect the application is written
+    // against. They therefore run identically on MSVC (where the CRT already
+    // behaves this way) and on GCC/Clang (where the format string has to be
+    // translated first), and the Windows build is what proves the
+    // expectations themselves are right rather than merely self-consistent.
+    // ---------------------------------------------------------------------
+    {
+        CString f;
+
+        // %s: a wide string, in every form the application writes it.
+        f.Format(_T("Hello, %s!"), _T("world"));
+        CHECK(f == CString(_T("Hello, world!")));
+
+        const CString name(_T("world"));
+        f.Format(_T("Hello, %s!"), (LPCTSTR)name);
+        CHECK(f == CString(_T("Hello, world!")));
+
+        // Two of them, so a truncation at the first would still show up.
+        f.Format(_T("%s-%s"), _T("ab"), _T("cd"));
+        CHECK(f == CString(_T("ab-cd")));
+
+        // %S is the OTHER character type: a narrow string in a wide format.
+        f.Format(_T("[%S]"), "narrow");
+        CHECK(f == CString(_T("[narrow]")));
+
+        // Characters, same rule: %c matches the format, %C is the other one.
+        f.Format(_T("%c%c"), _T('o'), _T('k'));
+        CHECK(f == CString(_T("ok")));
+        f.Format(_T("%C"), 'x');
+        CHECK(f == CString(_T("x")));
+
+        // An explicit length modifier overrides the conversion's default.
+        f.Format(_T("[%hs]"), "narrow");
+        CHECK(f == CString(_T("[narrow]")));
+        f.Format(_T("[%ls]"), L"wide");
+        CHECK(f == CString(_T("[wide]")));
+
+        // Integers, floats, and the flags/width/precision that ride along.
+        f.Format(_T("%d %u %04d %+d"), -7, 7u, 42, 5);
+        CHECK(f == CString(_T("-7 7 0042 +5")));
+        f.Format(_T("%x %X %o"), 255, 255, 8);
+        CHECK(f == CString(_T("ff FF 10")));
+        f.Format(_T("%.2f"), 3.14159);
+        CHECK(f == CString(_T("3.14")));
+        f.Format(_T("%8.3s|"), _T("abcdef"));    // width AND precision on %s
+        CHECK(f == CString(_T("     abc|")));
+        f.Format(_T("%-6s|"), _T("ab"));         // left-justified
+        CHECK(f == CString(_T("ab    |")));
+        f.Format(_T("%*d"), 5, 42);              // width from an argument
+        CHECK(f == CString(_T("   42")));
+
+        // %I64: MSVC's 64-bit length modifier, which eMule uses for file
+        // sizes and transfer counters (~70 times).
+        // (long long, not __int64: that spelling is an MSVC keyword and this
+        // test compiles on GCC too. The point here is the %I64 specifier.)
+        f.Format(_T("%I64d"), -1234567890123LL);
+        CHECK(f == CString(_T("-1234567890123")));
+        f.Format(_T("%I64u"), 12345678901234ULL);
+        CHECK(f == CString(_T("12345678901234")));
+
+        // A literal percent must survive, and must not eat the conversion
+        // that follows it.
+        f.Format(_T("%d%% of %s"), 50, _T("it"));
+        CHECK(f == CString(_T("50% of it")));
+
+        // Long output: the buffer starts at 256 and doubles, so this checks
+        // the growth path rather than the first attempt.
+        f.Format(_T("%500s|"), _T("x"));
+        CHECK(f.GetLength() == 501);
+        CHECK(f.Right(2) == CString(_T("x|")));
+
+        // AppendFormat appends rather than replacing.
+        f = _T("head ");
+        f.AppendFormat(_T("%s %d"), _T("tail"), 9);
+        CHECK(f == CString(_T("head tail 9")));
+
+        // Formatting nothing at all is still valid.
+        f.Format(_T("plain"));
+        CHECK(f == CString(_T("plain")));
+
+        // The narrow instantiation obeys the mirrored rule: there %s is the
+        // narrow string and %S the wide one.
+        CStringA fa;
+        fa.Format("Hello, %s!", "world");
+        CHECK(fa == CStringA("Hello, world!"));
+        fa.Format("[%S]", L"wide");
+        CHECK(fa == CStringA("[wide]"));
+        fa.Format("%d%%", 50);
+        CHECK(fa == CStringA("50%"));
+    }
+
     CObList list;
     CObject a, b;
     list.AddTail(&a);
