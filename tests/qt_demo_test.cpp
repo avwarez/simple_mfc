@@ -12,6 +12,8 @@
 
 #include <QColor>
 #include <QImage>
+#include <QProgressBar>
+#include <QSlider>
 #include <QWidget>
 #include <cstdio>
 
@@ -84,6 +86,30 @@ int main(int argc, char** argv)
     CHECK(pMain->GetDlgItem(IDC_TASK_LIST) != nullptr);
     CHECK(pMain->GetDlgItem(IDC_LEVEL_SLIDER) != nullptr);
     CHECK(pMain->GetDlgItem(IDC_PROGRESS) != nullptr);
+
+    // 5) The template's control styles reached the widgets. A trackbar is
+    //    horizontal unless TBS_VERT says otherwise (TBS_HORZ is zero, so it
+    //    cannot be read as a set bit) - and Qt's QSlider defaults to vertical,
+    //    which is exactly the trap this guards.
+    auto* slider = qobject_cast<QSlider*>(
+        smfc_qt::WidgetOf(pMain->GetDlgItem(IDC_LEVEL_SLIDER)));
+    CHECK(slider != nullptr);
+    if (slider) {
+        CHECK(slider->orientation() == Qt::Horizontal);
+        CHECK(slider->value() == 65);          // CSliderCtrl::SetPos
+        CHECK(slider->minimum() == 0 && slider->maximum() == 100);
+    }
+
+    // A Win32 progress bar never shows text; Qt's shows a percentage unless
+    // told not to.
+    auto* bar = qobject_cast<QProgressBar*>(
+        smfc_qt::WidgetOf(pMain->GetDlgItem(IDC_PROGRESS)));
+    CHECK(bar != nullptr);
+    if (bar) {
+        CHECK(bar->orientation() == Qt::Horizontal);
+        CHECK(bar->isTextVisible() == false);
+        CHECK(bar->value() == 65);             // CProgressCtrl::SetPos
+    }
 
     CHECK(pApp->ExitInstance() == 0);
 

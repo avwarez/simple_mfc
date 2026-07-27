@@ -67,9 +67,11 @@ class CDemoDlg : public CDialog
 public:
     CDemoDlg() : CDialog(IDD_DEMO_DIALOG) {}
 
-    CString   m_strName;
-    BOOL      m_bEnabled = TRUE;
-    CTaskList m_wndTasks;
+    CString       m_strName;
+    BOOL          m_bEnabled = TRUE;
+    CTaskList     m_wndTasks;
+    CSliderCtrl   m_wndLevel;
+    CProgressCtrl m_wndProgress;
 
 protected:
     void DoDataExchange(CDataExchange* pDX) override
@@ -78,6 +80,8 @@ protected:
         DDX_Text(pDX, IDC_NAME_EDIT, m_strName);
         DDX_Check(pDX, IDC_ENABLE_CHECK, m_bEnabled);
         DDX_Control(pDX, IDC_TASK_LIST, m_wndTasks);
+        DDX_Control(pDX, IDC_LEVEL_SLIDER, m_wndLevel);
+        DDX_Control(pDX, IDC_PROGRESS, m_wndProgress);
     }
 
     BOOL OnInitDialog() override
@@ -95,6 +99,14 @@ protected:
             m_wndTasks.InsertItem(i, s);
             m_wndTasks.SetItemData(i, static_cast<DWORD_PTR>(kPercent[i]));
         }
+
+        m_wndLevel.SetRange(0, 100);
+        m_wndLevel.SetTicFreq(10);
+        m_wndLevel.SetPos(65);
+
+        m_wndProgress.SetRange(0, 100);
+        m_wndProgress.SetStep(10);
+        m_wndProgress.SetPos(m_wndLevel.GetPos());
         return TRUE;
     }
 
@@ -115,6 +127,7 @@ protected:
         CString strMsg;
         strMsg.Format(_T("Hello, %s!"), (LPCTSTR)m_strName);
         AfxMessageBox(strMsg, MB_OK | MB_ICONINFORMATION);
+        m_wndProgress.StepIt();     // every greeting advances the bar
     }
 
     DECLARE_MESSAGE_MAP()

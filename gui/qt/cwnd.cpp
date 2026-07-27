@@ -212,8 +212,41 @@ QWidget* makeControlWidget(const smfc::ControlDesc& c, QWidget* parent,
                 return tree;
             }
             if (k == "SysTreeView32")   return new QTreeWidget(parent);
-            if (k == "msctls_progress32") return new QProgressBar(parent);
-            if (k == "msctls_trackbar32") return new QSlider(parent);
+            if (k == "msctls_progress32") {
+                // PBS_VERTICAL (0x04) fills bottom-to-top instead of
+                // left-to-right. A Win32 progress bar shows no text, ever;
+                // Qt's shows a percentage unless told otherwise.
+                constexpr uint32_t kPbsVertical = 0x0004u;
+                auto* bar = new QProgressBar(parent);
+                bar->setOrientation((c.style & kPbsVertical) ? Qt::Vertical
+                                                             : Qt::Horizontal);
+                bar->setTextVisible(false);
+                bar->setRange(0, 100);   // the Win32 default range
+                bar->setValue(0);
+                return bar;
+            }
+            if (k == "msctls_trackbar32") {
+                // A trackbar is horizontal unless TBS_VERT (0x02) says
+                // otherwise - TBS_HORZ is zero, so orientation cannot be read
+                // as a set bit. Qt's QSlider defaults to VERTICAL, which is
+                // why an untouched horizontal trackbar came out squashed into
+                // its own width.
+                constexpr uint32_t kTbsVert = 0x0002u;
+                constexpr uint32_t kTbsAutoTicks = 0x0001u;
+                constexpr uint32_t kTbsBoth = 0x0008u;
+                constexpr uint32_t kTbsNoTicks = 0x0010u;
+                const bool vertical = (c.style & kTbsVert) != 0;
+                auto* sl = new QSlider(vertical ? Qt::Vertical : Qt::Horizontal,
+                                       parent);
+                if (c.style & kTbsNoTicks)
+                    sl->setTickPosition(QSlider::NoTicks);
+                else if (c.style & kTbsBoth)
+                    sl->setTickPosition(QSlider::TicksBothSides);
+                else if (c.style & kTbsAutoTicks)
+                    sl->setTickPosition(vertical ? QSlider::TicksRight
+                                                 : QSlider::TicksBelow);
+                return sl;
+            }
             if (k == "msctls_updown32")   return new QSpinBox(parent);
             return new QWidget(parent);
         }
