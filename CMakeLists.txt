@@ -141,6 +141,36 @@ if (SIMPLE_MFC_BUILD_GUI_CORE_TEST)
     set_tests_properties(gui_core_test PROPERTIES TIMEOUT 60)
 endif()
 
+# --- Qt driver (SIMPLE_MFC_GUI=qt) -----------------------------------------
+# The Qt backing of simple_mfc's CWnd/CDialog (Layer 3). Links on top of the
+# toolkit-agnostic gui/core (built above whenever SIMPLE_MFC_GUI != none).
+if (SIMPLE_MFC_GUI STREQUAL "qt")
+    find_package(Qt5 COMPONENTS Widgets REQUIRED)
+
+    add_library(simple_mfc_gui_qt STATIC
+        gui/qt/cwnd.cpp
+        gui/qt/smfc_qt.cpp
+    )
+    add_library(simple_mfc::gui_qt ALIAS simple_mfc_gui_qt)
+    target_link_libraries(simple_mfc_gui_qt PUBLIC simple_mfc::gui_core Qt5::Widgets)
+    target_include_directories(simple_mfc_gui_qt PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/gui/qt)
+
+    # Vertical slice: a live Qt button click routed through a real eMule-style
+    # message map to its handler. Headless via QT_QPA_PLATFORM=offscreen.
+    enable_testing()
+    add_executable(qt_slice_test tests/qt_slice_test.cpp)
+    target_link_libraries(qt_slice_test PRIVATE simple_mfc::gui_qt)
+    if (NOT MSVC)
+        # eMule's bare-name pointer-to-member map form (ON_BN_CLICKED(id, OnGo))
+        # compiles on GCC/Clang with the same MSVC extension real MFC relies on.
+        target_compile_options(qt_slice_test PRIVATE -fms-extensions)
+    endif()
+    add_test(NAME qt_slice_test COMMAND qt_slice_test)
+    set_tests_properties(qt_slice_test PROPERTIES
+        TIMEOUT 60
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endif()
+
 # --- Conformance tests vs. real MFC (optional, MSVC + ATL/MFC only) --------
 # Compares simple_mfc's behavior/results against the actual Visual Studio
 # MFC libraries, method by method, with identical inputs. Off by default:
