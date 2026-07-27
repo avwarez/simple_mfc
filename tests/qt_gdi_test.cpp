@@ -104,11 +104,55 @@ int main(int argc, char** argv)
     CHECK(topEdge.red() == 255 && topEdge.blue() == 0);    // TL red
     CHECK(botEdge.blue() == 255 && botEdge.red() == 0);    // BR blue
 
+    // --- CPen: SelectObject gives a coloured, wider line ------------------
+    CPen penRed;
+    CHECK(penRed.CreatePen(0 /*PS_SOLID*/, 3, red) == TRUE);
+    CHECK(penRed.m_hObject != nullptr);
+    CPen* pOldPen = dc.SelectObject(&penRed);   // previous == stock (null)
+    dc.MoveTo(10, 140);
+    dc.LineTo(60, 140);
+    QColor penLine = img->pixelColor(30, 140);
+    CHECK(penLine.red() > 150 && penLine.green() < 80 && penLine.blue() < 80);
+    dc.SelectObject(pOldPen);                   // restore stock pen
+
+    // --- CBrush fill + PS_NULL pen (fill only, no outline) ----------------
+    CPen penNull;
+    penNull.CreatePen(5 /*PS_NULL*/, 1, RGBv(0, 0, 0));
+    CBrush brGreen;
+    CHECK(brGreen.CreateSolidBrush(RGBv(0, 180, 0)) == TRUE);
+    dc.SelectObject(&penNull);
+    dc.SelectObject(&brGreen);
+    dc.Rectangle(80, 130, 140, 170);
+    QColor fillc = img->pixelColor(110, 150);
+    CHECK(fillc.green() > 120 && fillc.red() < 100 && fillc.blue() < 100);
+
+    // --- CFont: selecting a bigger font grows the measured text -----------
+    CSize small = dc.GetTextExtent(_T("Wg"));
+    CFont big;
+    CHECK(big.CreatePointFont(240, _T("Sans"), &dc) == TRUE);   // 24pt
+    dc.SelectObject(&big);
+    CSize large = dc.GetTextExtent(_T("Wg"));
+    CHECK(large.cx > small.cx && large.cy > small.cy);
+
+    // --- FillRect with an explicit brush ----------------------------------
+    RECT fr = {150, 130, 190, 170};
+    CBrush brBlue(RGBv(0, 0, 200));
+    dc.FillRect(&fr, &brBlue);
+    QColor frc = img->pixelColor(170, 150);
+    CHECK(frc.blue() > 150 && frc.red() < 80 && frc.green() < 80);
+
+    penRed.DeleteObject();
+    penNull.DeleteObject();
+    brGreen.DeleteObject();
+    big.DeleteObject();
+    brBlue.DeleteObject();
+
     // --- surface released with the window ---------------------------------
     dlg.DestroyWindow();
     CHECK(smfc_qt::WndSurfaceImage(&dlg) == nullptr);
 
     if (g_failures == 0)
-        std::printf("qt_gdi_test: CDC/CPaintDC fill/pixel/line/text/3drect OK\n");
+        std::printf("qt_gdi_test: CDC/CPaintDC fill/pixel/line/text/3drect + "
+                    "CPen/CBrush/CFont SelectObject OK\n");
     return g_failures == 0 ? 0 : 1;
 }

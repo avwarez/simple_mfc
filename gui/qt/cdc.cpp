@@ -8,20 +8,28 @@
 // instead (DestroyWindow -> ReleaseWndSurface). Each drawing call opens a
 // short-lived QPainter on that QImage, which retains the pixels between calls.
 //
-// Deferred to later GDI slices (not needed for this one, and drawn here with
-// the DC's default black pen / colour): GDI objects (CPen/CBrush/CFont/CBitmap
-// with SelectObject), FillRect/FrameRect (brush-based), BitBlt/CreateCompatibleDC
-// (memory DCs), mapping modes and clipping (defined as faithful minimal stubs so
-// the vtable is complete). The on-screen paintEvent->OnPaint route is a separate
-// slice; this one renders to the inspectable offscreen buffer.
+// Slice 2 adds the GDI objects: CPen/CBrush/CFont (over QPen/QBrush/QFont) with
+// SelectObject, so lines/rects/text pick up the selected colour/style/font, plus
+// the brush-based FillRect/FrameRect. Each object's driver-side data hangs off
+// its m_hObject via the GdiObjs() map.
+//
+// Deferred to later GDI slices: CBitmap + pattern brushes, BitBlt/
+// CreateCompatibleDC (memory DCs), CImageList/DrawIcon, mapping modes and
+// clipping (defined as faithful minimal stubs so the vtable is complete).
+// CreateFontIndirect/CreateBrushIndirect/GetObject are stubs because LOGFONT/
+// LOGBRUSH are opaque (forward-declared) on this non-Windows platform. The
+// on-screen paintEvent->OnPaint route is a separate slice; this one renders to
+// the inspectable offscreen buffer.
 #include "afxwin.h"
 #include "driver_internal.h"
 
+#include <QBrush>
 #include <QColor>
 #include <QFont>
 #include <QFontMetrics>
 #include <QImage>
 #include <QPainter>
+#include <QPen>
 #include <QRect>
 #include <QString>
 #include <QWidget>
@@ -44,6 +52,66 @@ constexpr UINT kDtWordBreak = 0x0010;
 constexpr UINT kDtSingle    = 0x0020;
 constexpr UINT kDtCalcRect  = 0x0400;
 constexpr UINT kDtNoPrefix  = 0x0800;
+// Pen styles (PS_*), hatch styles (HS_*), and the bold weight threshold (FW_BOLD).
+constexpr int kPsNull  = 5;
+constexpr int kFwBold  = 700;
+
+Qt::PenStyle toPenStyle(int ps)
+{
+    switch (ps) {
+        case 1:  return Qt::DashLine;        // PS_DASH
+        case 2:  return Qt::DotLine;         // PS_DOT
+        case 3:  return Qt::DashDotLine;     // PS_DASHDOT
+        case 4:  return Qt::DashDotDotLine;  // PS_DASHDOTDOT
+        case 5:  return Qt::NoPen;           // PS_NULL
+        default: return Qt::SolidLine;       // PS_SOLID / PS_INSIDEFRAME
+    }
+}
+Qt::BrushStyle toHatchStyle(int hs)
+{
+    switch (hs) {
+        case 0:  return Qt::HorPattern;       // HS_HORIZONTAL
+        case 1:  return Qt::VerPattern;       // HS_VERTICAL
+        case 2:  return Qt::FDiagPattern;     // HS_FDIAGONAL
+        case 3:  return Qt::BDiagPattern;     // HS_BDIAGONAL
+        case 4:  return Qt::CrossPattern;     // HS_CROSS
+        default: return Qt::DiagCrossPattern; // HS_DIAGCROSS
+    }
+}
+
+// A driver-side GDI object (what a CPen/CBrush/CFont's m_hObject refers to).
+struct GdiObj {
+    enum Kind { Pen = 1, Brush, Font } kind = Pen;
+    QPen   pen{Qt::black};
+    QBrush brush{Qt::white, Qt::SolidPattern};
+    QFont  font;
+    bool   nullPen = false;    // PS_NULL
+    bool   nullBrush = false;  // NULL_BRUSH / hollow
+};
+
+// GDI objects are keyed by the owning CGdiObject* (its m_hObject also holds
+// that address as the "created" token). Keying by the object pointer bounds the
+// leak the frozen interface's missing ~CGdiObject would otherwise cause: a
+// stack CPen reused in a loop reuses the same key instead of growing the map.
+std::unordered_map<const CGdiObject*, GdiObj>& GdiObjs()
+{
+    static std::unordered_map<const CGdiObject*, GdiObj> m;
+    return m;
+}
+GdiObj* objOf(const CGdiObject* g)
+{
+    if (!g || !g->m_hObject) return nullptr;
+    auto it = GdiObjs().find(g);
+    return it == GdiObjs().end() ? nullptr : &it->second;
+}
+GdiObj& makeObj(CGdiObject* g, GdiObj::Kind k)
+{
+    g->m_hObject = reinterpret_cast<HGDIOBJ>(g);   // non-null "created" token
+    GdiObj& o = GdiObjs()[g];
+    o = GdiObj{};
+    o.kind = k;
+    return o;
+}
 
 // The per-window paint surface + current DC state.
 struct GdiSurface {
@@ -53,6 +121,18 @@ struct GdiSurface {
     int      bkMode    = kOpaque;
     UINT     textAlign = 0;            // TA_LEFT | TA_TOP
     QPoint   cur{0, 0};
+    // Currently selected objects: the resolved Qt values used when drawing, and
+    // the app CGdiObject*s so SelectObject can return the previously selected
+    // one (the `CPen* pOld = dc.SelectObject(&pen); ...; dc.SelectObject(pOld);`
+    // restore idiom). Defaults are the DC's stock BLACK_PEN / WHITE_BRUSH / font.
+    QPen   curPen{Qt::black};
+    QBrush curBrush{Qt::white, Qt::SolidPattern};
+    QFont  curFont;
+    bool   curNullPen = false;
+    bool   curNullBrush = false;
+    CPen*  selPen = nullptr;
+    CBrush* selBrush = nullptr;
+    CFont* selFont = nullptr;
 };
 
 std::unordered_map<const void*, GdiSurface>& Surfaces()
@@ -94,12 +174,18 @@ void initWndDC(CDC* dc, CWnd* pWnd)
         s.image = QImage(cw, ch, QImage::Format_ARGB32_Premultiplied);
     s.image.fill(Qt::white);   // a fresh paint surface (approximates the bg)
 
-    // Reset to DC defaults, as a real freshly-created DC would be.
+    // Reset to DC defaults, as a real freshly-created DC would be (stock
+    // BLACK_PEN / WHITE_BRUSH / system font, no object selected).
     s.textColor = 0x00000000;
     s.bkColor   = 0x00FFFFFF;
     s.bkMode    = kOpaque;
     s.textAlign = 0;
     s.cur       = QPoint(0, 0);
+    s.curPen    = QPen(Qt::black);
+    s.curBrush  = QBrush(Qt::white, Qt::SolidPattern);
+    s.curFont   = QFont();
+    s.curNullPen = s.curNullBrush = false;
+    s.selPen = nullptr; s.selBrush = nullptr; s.selFont = nullptr;
 }
 
 QRect toQRect(LPCRECT r)
@@ -192,10 +278,8 @@ BOOL CDC::Rectangle(int x1, int y1, int x2, int y2)
     GdiSurface* s = surfOf(this);
     if (!s) return FALSE;
     QPainter p(&s->image);
-    // Default DC pen/brush: BLACK_PEN outline, WHITE_BRUSH fill (real GDI's
-    // startup objects). Coloured pens/brushes arrive with the CPen/CBrush slice.
-    p.setPen(Qt::black);
-    p.setBrush(Qt::white);
+    p.setPen(s->curNullPen ? QPen(Qt::NoPen) : s->curPen);
+    p.setBrush(s->curNullBrush ? QBrush(Qt::NoBrush) : s->curBrush);
     p.drawRect(QRect(x1, y1, x2 - x1 - 1, y2 - y1 - 1));
     return TRUE;
 }
@@ -249,10 +333,12 @@ BOOL CDC::LineTo(int x, int y)
 {
     GdiSurface* s = surfOf(this);
     if (!s) return FALSE;
-    QPainter p(&s->image);
-    p.setPen(Qt::black);   // current pen defaults to BLACK_PEN (CPen slice adds colour)
-    p.drawLine(s->cur, QPoint(x, y));
-    s->cur = QPoint(x, y);
+    if (!s->curNullPen) {
+        QPainter p(&s->image);
+        p.setPen(s->curPen);
+        p.drawLine(s->cur, QPoint(x, y));
+    }
+    s->cur = QPoint(x, y);   // MoveTo semantics still advance under a NULL pen
     return TRUE;
 }
 BOOL CDC::LineTo(POINT point) { return LineTo(point.x, point.y); }
@@ -267,7 +353,8 @@ BOOL CDC::TextOut(int x, int y, LPCTSTR lpszString, int nCount)
     const QString text = QString::fromWCharArray(lpszString,
                                                  nCount < 0 ? -1 : nCount);
     QPainter p(&s->image);
-    const QFontMetrics fm(p.font());
+    p.setFont(s->curFont);
+    const QFontMetrics fm(s->curFont);
     if (s->bkMode == kOpaque)
         p.fillRect(x, y, fm.horizontalAdvance(text), fm.height(), toQColor(s->bkColor));
     p.setPen(toQColor(s->textColor));
@@ -297,6 +384,7 @@ int CDC::DrawText(LPCTSTR lpszString, int nCount, LPRECT lpRect, UINT nFormat)
     flags |= (nFormat & kDtNoPrefix) ? Qt::TextHideMnemonic : Qt::TextShowMnemonic;
 
     QPainter p(&s->image);
+    p.setFont(s->curFont);
     const QRect r = toQRect(lpRect);
     if (nFormat & kDtCalcRect) {
         const QRect bb = p.boundingRect(r, flags, text);
@@ -321,9 +409,7 @@ CSize CDC::GetTextExtent(LPCTSTR lpszString, int nCount)
     const QString text = QString::fromWCharArray(lpszString,
                                                  nCount < 0 ? -1 : nCount);
     GdiSurface* s = surfOf(this);
-    QFont f;   // default DC font until the CFont slice; per-DC font is honoured then
-    const QFontMetrics fm(f);
-    (void)s;
+    const QFontMetrics fm(s ? s->curFont : QFont());
     return CSize(fm.horizontalAdvance(text), fm.height());
 }
 CSize CDC::GetTextExtent(const CString& str)
@@ -357,7 +443,74 @@ COLORREF CDC::GetPixel(POINT point) { return GetPixel(point.x, point.y); }
 // is the key function; the mapping-mode/clip ones are faithful minimal stubs
 // until their own slices land.
 // ---------------------------------------------------------------------------
-CFont* CDC::SelectObject(CFont* /*pFont*/) { return nullptr; }  // CFont slice binds the QFont
+CFont* CDC::SelectObject(CFont* pFont)
+{
+    GdiSurface* s = surfOf(this);
+    if (!s) return nullptr;
+    CFont* prev = s->selFont;
+    s->selFont = pFont;
+    const GdiObj* o = objOf(pFont);
+    s->curFont = o ? o->font : QFont();   // null selects the stock font
+    return prev;
+}
+CPen* CDC::SelectObject(CPen* pPen)
+{
+    GdiSurface* s = surfOf(this);
+    if (!s) return nullptr;
+    CPen* prev = s->selPen;
+    s->selPen = pPen;
+    if (const GdiObj* o = objOf(pPen)) { s->curPen = o->pen; s->curNullPen = o->nullPen; }
+    else { s->curPen = QPen(Qt::black); s->curNullPen = false; }
+    return prev;
+}
+CBrush* CDC::SelectObject(CBrush* pBrush)
+{
+    GdiSurface* s = surfOf(this);
+    if (!s) return nullptr;
+    CBrush* prev = s->selBrush;
+    s->selBrush = pBrush;
+    if (const GdiObj* o = objOf(pBrush)) { s->curBrush = o->brush; s->curNullBrush = o->nullBrush; }
+    else { s->curBrush = QBrush(Qt::white, Qt::SolidPattern); s->curNullBrush = false; }
+    return prev;
+}
+CGdiObject* CDC::SelectObject(CGdiObject* pObject)
+{
+    // Dispatch on the object's kind to the typed overload, returning the
+    // previously selected object of that kind.
+    const GdiObj* o = objOf(pObject);
+    if (!o) return nullptr;
+    switch (o->kind) {
+        case GdiObj::Pen:   return SelectObject(static_cast<CPen*>(pObject));
+        case GdiObj::Brush: return SelectObject(static_cast<CBrush*>(pObject));
+        case GdiObj::Font:  return SelectObject(static_cast<CFont*>(pObject));
+    }
+    return nullptr;
+}
+
+// --- brush-based fills (now that CBrush resolves) --------------------------
+void CDC::FillRect(LPCRECT lpRect, CBrush* pBrush)
+{
+    GdiSurface* s = surfOf(this);
+    if (!s || !lpRect) return;
+    const GdiObj* o = objOf(pBrush);
+    QPainter p(&s->image);
+    p.fillRect(toQRect(lpRect), o ? o->brush : s->curBrush);
+}
+void CDC::FrameRect(LPCRECT lpRect, CBrush* pBrush)
+{
+    GdiSurface* s = surfOf(this);
+    if (!s || !lpRect) return;
+    const GdiObj* o = objOf(pBrush);
+    const QColor col = (o ? o->brush.color() : s->curBrush.color());
+    const QRect r = toQRect(lpRect);
+    QPainter p(&s->image);
+    // A 1px border in the brush colour (real FrameRect strokes with the brush).
+    p.fillRect(QRect(r.left(), r.top(), r.width(), 1), col);
+    p.fillRect(QRect(r.left(), r.bottom(), r.width(), 1), col);
+    p.fillRect(QRect(r.left(), r.top(), 1, r.height()), col);
+    p.fillRect(QRect(r.right(), r.top(), 1, r.height()), col);
+}
+
 CSize  CDC::SetWindowExt(int, int)   { return CSize(0, 0); }
 CSize  CDC::SetViewportExt(int, int) { return CSize(0, 0); }
 CPoint CDC::SetWindowOrg(int, int)   { return CPoint(0, 0); }
@@ -372,3 +525,109 @@ int    CDC::SelectClipRgn(CRgn*)     { return 1; /* SIMPLEREGION */ }
 CPaintDC::CPaintDC(CWnd* pWnd)  : CDC() { initWndDC(this, pWnd); }
 CClientDC::CClientDC(CWnd* pWnd) : CDC() { initWndDC(this, pWnd); }
 CWindowDC::CWindowDC(CWnd* pWnd) : CDC() { initWndDC(this, pWnd); }
+
+// ---------------------------------------------------------------------------
+// CGdiObject — the driver-side object referenced by m_hObject lives in the
+// GdiObjs() map; DeleteObject frees it. (No ~CGdiObject in the frozen interface
+// to auto-free, so an object not explicitly deleted persists until its address
+// is reused — see the map-keying note above.)
+// ---------------------------------------------------------------------------
+BOOL CGdiObject::DeleteObject()
+{
+    GdiObjs().erase(this);
+    m_hObject = nullptr;
+    return TRUE;
+}
+BOOL    CGdiObject::Attach(HGDIOBJ hObject) { m_hObject = hObject; return TRUE; }
+HGDIOBJ CGdiObject::Detach() { HGDIOBJ h = m_hObject; m_hObject = nullptr; return h; }
+HGDIOBJ CGdiObject::GetSafeHandle() const { return m_hObject; }
+int     CGdiObject::GetObject(int, LPVOID) const { return 0; }  // needs LOGPEN/LOGBRUSH/LOGFONT
+
+// --- CPen ------------------------------------------------------------------
+CPen::CPen() {}
+CPen::CPen(int nPenStyle, int nWidth, COLORREF crColor) { CreatePen(nPenStyle, nWidth, crColor); }
+CPen::CPen(int nPenStyle, int nWidth, const LOGBRUSH*, int, const DWORD*)
+{
+    CreatePen(nPenStyle, nWidth, static_cast<const LOGBRUSH*>(nullptr));
+}
+BOOL CPen::CreatePen(int nPenStyle, int nWidth, COLORREF crColor)
+{
+    GdiObj& o = makeObj(this, GdiObj::Pen);
+    QPen pen(toQColor(crColor));
+    pen.setStyle(toPenStyle(nPenStyle));
+    pen.setWidth(nWidth <= 0 ? 1 : nWidth);
+    o.pen = pen;
+    o.nullPen = (nPenStyle == kPsNull);
+    return TRUE;
+}
+BOOL CPen::CreatePen(int nPenStyle, int nWidth, const LOGBRUSH*, int, const DWORD*)
+{
+    // LOGBRUSH is opaque on POSIX (forward-declared), so the colour is unknown;
+    // create the styled/width pen in black. Real colour arrives with a LOGBRUSH
+    // that this platform can read (a later concern).
+    GdiObj& o = makeObj(this, GdiObj::Pen);
+    QPen pen(Qt::black);
+    pen.setStyle(toPenStyle(nPenStyle));
+    pen.setWidth(nWidth <= 0 ? 1 : nWidth);
+    o.pen = pen;
+    o.nullPen = (nPenStyle == kPsNull);
+    return TRUE;
+}
+
+// --- CBrush ----------------------------------------------------------------
+CBrush::CBrush() {}
+CBrush::CBrush(COLORREF crColor) { CreateSolidBrush(crColor); }
+CBrush::CBrush(int nIndex, COLORREF crColor) { CreateHatchBrush(nIndex, crColor); }
+CBrush::CBrush(CBitmap*) { makeObj(this, GdiObj::Brush); }  // pattern brush: bitmap slice
+BOOL CBrush::CreateSolidBrush(COLORREF crColor)
+{
+    GdiObj& o = makeObj(this, GdiObj::Brush);
+    o.brush = QBrush(toQColor(crColor), Qt::SolidPattern);
+    return TRUE;
+}
+BOOL CBrush::CreateHatchBrush(int nIndex, COLORREF crColor)
+{
+    GdiObj& o = makeObj(this, GdiObj::Brush);
+    o.brush = QBrush(toQColor(crColor), toHatchStyle(nIndex));
+    return TRUE;
+}
+BOOL CBrush::CreatePatternBrush(CBitmap*) { return FALSE; }            // bitmap slice
+BOOL CBrush::CreateDIBPatternBrush(HGLOBAL, UINT) { return FALSE; }    // bitmap slice
+BOOL CBrush::CreateDIBPatternBrush(const void*, UINT) { return FALSE; }
+BOOL CBrush::CreateBrushIndirect(const LOGBRUSH*) { return FALSE; }    // LOGBRUSH opaque on POSIX
+
+// --- CFont -----------------------------------------------------------------
+BOOL CFont::CreateFontIndirect(const LOGFONT*)
+{
+    // LOGFONT is opaque on POSIX (forward-declared), so its fields can't be
+    // read; register a default font so selection has something valid.
+    makeObj(this, GdiObj::Font);
+    return TRUE;
+}
+int CFont::GetLogFont(LOGFONT*) { return 0; }   // LOGFONT opaque on POSIX
+BOOL CFont::CreateFont(int nHeight, int /*nWidth*/, int /*nEscapement*/, int /*nOrientation*/,
+                       int nWeight, BYTE bItalic, BYTE bUnderline, BYTE cStrikeOut,
+                       BYTE /*nCharSet*/, BYTE /*nOutPrecision*/, BYTE /*nClipPrecision*/,
+                       BYTE /*nQuality*/, BYTE /*nPitchAndFamily*/, LPCTSTR lpszFacename)
+{
+    GdiObj& o = makeObj(this, GdiObj::Font);
+    QFont f;
+    if (lpszFacename) f.setFamily(QString::fromWCharArray(lpszFacename));
+    const int h = nHeight < 0 ? -nHeight : nHeight;   // <0 = char height, >0 = cell height
+    if (h > 0) f.setPixelSize(h);
+    f.setBold(nWeight >= kFwBold);
+    f.setItalic(bItalic != 0);
+    f.setUnderline(bUnderline != 0);
+    f.setStrikeOut(cStrikeOut != 0);
+    o.font = f;
+    return TRUE;
+}
+BOOL CFont::CreatePointFont(int nPointSize, LPCTSTR lpszFaceName, CDC*)
+{
+    GdiObj& o = makeObj(this, GdiObj::Font);
+    QFont f;
+    if (lpszFaceName) f.setFamily(QString::fromWCharArray(lpszFaceName));
+    f.setPointSizeF(nPointSize / 10.0);   // MFC point size is in tenths of a point
+    o.font = f;
+    return TRUE;
+}
