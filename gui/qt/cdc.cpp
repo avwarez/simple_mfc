@@ -13,9 +13,16 @@
 // the brush-based FillRect/FrameRect. Each object's driver-side data hangs off
 // its m_hObject via the GdiObjs() map.
 //
-// Deferred to later GDI slices: CBitmap + pattern brushes, BitBlt/
-// CreateCompatibleDC (memory DCs), CImageList/DrawIcon, mapping modes and
-// clipping (defined as faithful minimal stubs so the vtable is complete).
+// Slice 3 adds CBitmap (over QImage) + CreateCompatibleDC + BitBlt: eMule's
+// CMemDC offscreen double-buffer pattern (create a memory DC, select a
+// compatible bitmap into it, draw, then BitBlt back onto the window DC). A
+// memory DC has no window, so it keys its surface by the CDC* itself and draws
+// onto the currently selected bitmap's pixels; SelectObject(CBitmap*) swaps
+// those pixels in/out so the bitmap holds the result once deselected.
+//
+// Deferred to later GDI slices: pattern brushes from bitmaps, CImageList/
+// DrawIcon, mapping modes and clipping (defined as faithful minimal stubs so
+// the vtable is complete).
 // CreateFontIndirect/CreateBrushIndirect/GetObject are stubs because LOGFONT/
 // LOGBRUSH are opaque (forward-declared) on this non-Windows platform. The
 // on-screen paintEvent->OnPaint route is a separate slice; this one renders to
@@ -55,6 +62,11 @@ constexpr UINT kDtNoPrefix  = 0x0800;
 // Pen styles (PS_*), hatch styles (HS_*), and the bold weight threshold (FW_BOLD).
 constexpr int kPsNull  = 5;
 constexpr int kFwBold  = 700;
+// Raster-op codes for BitBlt (real values from wingdi.h). SRCCOPY is the one
+// eMule's CMemDC/skin blits use; the others map to the closest Qt composition.
+constexpr DWORD kSrcCopy  = 0x00CC0020;   // dest = src
+constexpr DWORD kSrcPaint = 0x00EE0086;   // dest = src OR dest
+constexpr DWORD kSrcAnd   = 0x008800C6;   // dest = src AND dest
 
 Qt::PenStyle toPenStyle(int ps)
 {
@@ -79,12 +91,14 @@ Qt::BrushStyle toHatchStyle(int hs)
     }
 }
 
-// A driver-side GDI object (what a CPen/CBrush/CFont's m_hObject refers to).
+// A driver-side GDI object (what a CPen/CBrush/CFont/CBitmap's m_hObject
+// refers to).
 struct GdiObj {
-    enum Kind { Pen = 1, Brush, Font } kind = Pen;
+    enum Kind { Pen = 1, Brush, Font, Bitmap } kind = Pen;
     QPen   pen{Qt::black};
     QBrush brush{Qt::white, Qt::SolidPattern};
     QFont  font;
+    QImage image;              // Bitmap: the pixel buffer a memory DC draws into
     bool   nullPen = false;    // PS_NULL
     bool   nullBrush = false;  // NULL_BRUSH / hollow
 };
@@ -133,6 +147,11 @@ struct GdiSurface {
     CPen*  selPen = nullptr;
     CBrush* selBrush = nullptr;
     CFont* selFont = nullptr;
+    // Memory-DC state (CreateCompatibleDC). A memory DC is NOT keyed by a
+    // window: it keys its surface by the CDC* itself (see CreateCompatibleDC),
+    // and its drawable pixels are those of the currently selected CBitmap.
+    bool     isMemDC = false;
+    CBitmap* selBitmap = nullptr;
 };
 
 std::unordered_map<const void*, GdiSurface>& Surfaces()
@@ -214,8 +233,55 @@ void ReleaseWndSurface(const CWnd* owner)
 HDC  CDC::GetSafeHdc()          { return m_hDC; }
 BOOL CDC::Attach(HDC hDC)       { m_hDC = hDC; return TRUE; }
 HDC  CDC::Detach()              { HDC h = m_hDC; m_hDC = nullptr; return h; }
-BOOL CDC::DeleteDC()            { m_hDC = nullptr; return TRUE; }
+BOOL CDC::DeleteDC()
+{
+    // A memory DC owns its offscreen surface (keyed by `this`); free it here.
+    // A window DC's surface belongs to the window (freed on DestroyWindow), so
+    // DeleteDC only detaches from it.
+    if (m_hDC == reinterpret_cast<HDC>(this))
+        Surfaces().erase(m_hDC);
+    m_hDC = nullptr;
+    return TRUE;
+}
 CDC* CDC::FromHandle(HDC)       { return nullptr; }   // reverse map: later slice
+
+// A memory DC (CreateCompatibleDC) keys its surface by the CDC* itself rather
+// than a window: `this` is a stable, unique handle, and a stack CMemDC reused
+// per paint reuses the same key (bounding the leak the frozen interface's
+// missing ~CDC would otherwise cause, same rationale as the GdiObjs() keying).
+// It starts as a 1x1 stock surface; SelectObject(CBitmap*) gives it real size.
+BOOL CDC::CreateCompatibleDC(CDC* /*pDC*/)
+{
+    m_hDC = reinterpret_cast<HDC>(this);
+    m_hAttribDC = m_hDC;
+    GdiSurface& s = Surfaces()[m_hDC];
+    s = GdiSurface{};
+    s.isMemDC = true;
+    s.image = QImage(1, 1, QImage::Format_ARGB32_Premultiplied);
+    s.image.fill(Qt::black);
+    return TRUE;
+}
+
+// Copy a wxh block from pSrcDC's surface at (xSrc,ySrc) to this surface at
+// (x,y). SRCCOPY overwrites; SRCPAINT/SRCAND approximate to the nearest Qt
+// composition mode (the exact ternary raster ops are not modelled).
+BOOL CDC::BitBlt(int x, int y, int nWidth, int nHeight,
+                 CDC* pSrcDC, int xSrc, int ySrc, DWORD dwRop)
+{
+    GdiSurface* d = surfOf(this);
+    GdiSurface* srcS = surfOf(pSrcDC);
+    if (!d || !srcS) return FALSE;
+    QPainter p(&d->image);
+    switch (dwRop) {
+        case kSrcPaint: p.setCompositionMode(QPainter::CompositionMode_Plus); break;
+        case kSrcAnd:   p.setCompositionMode(QPainter::CompositionMode_Multiply); break;
+        case kSrcCopy:
+        default:        p.setCompositionMode(QPainter::CompositionMode_Source); break;
+    }
+    p.drawImage(QRect(x, y, nWidth, nHeight), srcS->image,
+                QRect(xSrc, ySrc, nWidth, nHeight));
+    return TRUE;
+}
 
 COLORREF CDC::SetTextColor(COLORREF cr)
 {
@@ -480,11 +546,29 @@ CGdiObject* CDC::SelectObject(CGdiObject* pObject)
     const GdiObj* o = objOf(pObject);
     if (!o) return nullptr;
     switch (o->kind) {
-        case GdiObj::Pen:   return SelectObject(static_cast<CPen*>(pObject));
-        case GdiObj::Brush: return SelectObject(static_cast<CBrush*>(pObject));
-        case GdiObj::Font:  return SelectObject(static_cast<CFont*>(pObject));
+        case GdiObj::Pen:    return SelectObject(static_cast<CPen*>(pObject));
+        case GdiObj::Brush:  return SelectObject(static_cast<CBrush*>(pObject));
+        case GdiObj::Font:   return SelectObject(static_cast<CFont*>(pObject));
+        case GdiObj::Bitmap: return SelectObject(static_cast<CBitmap*>(pObject));
     }
     return nullptr;
+}
+
+// Selecting a bitmap into a memory DC makes that bitmap's pixels the DC's
+// drawable surface. The pixels are swapped in on select and swapped back out to
+// the previously selected bitmap, so after `pOld = dc.SelectObject(&bmp); ...;
+// dc.SelectObject(pOld);` the drawing lives in bmp (the CMemDC round-trip).
+CBitmap* CDC::SelectObject(CBitmap* pBitmap)
+{
+    GdiSurface* s = surfOf(this);
+    if (!s) return nullptr;
+    CBitmap* prev = s->selBitmap;
+    if (prev)
+        if (GdiObj* po = objOf(prev)) po->image = s->image;   // flush pixels out
+    s->selBitmap = pBitmap;
+    if (GdiObj* o = objOf(pBitmap))
+        s->image = o->image;   // adopt the bitmap's size + pixels as the canvas
+    return prev;
 }
 
 // --- brush-based fills (now that CBrush resolves) --------------------------
@@ -630,4 +714,61 @@ BOOL CFont::CreatePointFont(int nPointSize, LPCTSTR lpszFaceName, CDC*)
     f.setPointSizeF(nPointSize / 10.0);   // MFC point size is in tenths of a point
     o.font = f;
     return TRUE;
+}
+
+// --- CBitmap ---------------------------------------------------------------
+// A bitmap is an offscreen pixel buffer (QImage). CreateCompatibleBitmap makes
+// the drawable a memory DC selects; CreateBitmap builds one from raw bits.
+BOOL CBitmap::CreateCompatibleBitmap(CDC* /*pDC*/, int nWidth, int nHeight)
+{
+    GdiObj& o = makeObj(this, GdiObj::Bitmap);
+    o.image = QImage(std::max(1, nWidth), std::max(1, nHeight),
+                     QImage::Format_ARGB32_Premultiplied);
+    o.image.fill(Qt::black);   // a fresh DDB is uninitialised; callers repaint it
+    return TRUE;
+}
+BOOL CBitmap::CreateBitmap(int nWidth, int nHeight, UINT /*nPlanes*/,
+                           UINT nBitcount, const void* lpBits)
+{
+    GdiObj& o = makeObj(this, GdiObj::Bitmap);
+    const int w = std::max(1, nWidth), h = std::max(1, nHeight);
+    o.image = QImage(w, h, QImage::Format_ARGB32_Premultiplied);
+    o.image.fill(Qt::black);
+    // eMule's only from-scratch use is a 1bpp 8x8 pattern (Emule.cpp). Decode a
+    // monochrome buffer (rows padded to a WORD, MSB first, set bit = white) so
+    // the bitmap is meaningful; its pattern-brush consumer is a later slice.
+    if (lpBits && nBitcount == 1) {
+        const auto* bytes = static_cast<const unsigned char*>(lpBits);
+        const int rowBytes = ((w + 15) / 16) * 2;
+        for (int yy = 0; yy < h; ++yy)
+            for (int xx = 0; xx < w; ++xx) {
+                const unsigned char byte = bytes[yy * rowBytes + (xx >> 3)];
+                const bool set = (byte >> (7 - (xx & 7))) & 1;
+                o.image.setPixelColor(xx, yy, set ? Qt::white : Qt::black);
+            }
+    }
+    return TRUE;
+}
+BOOL CBitmap::LoadBitmap(UINT /*nIDResource*/)
+{
+    // The portable resource compiler does not carry bitmap image bytes yet, so
+    // there is nothing to load. Returns FALSE (object stays uncreated) rather
+    // than fabricating pixels; real resource-bitmap loading is a later concern.
+    return FALSE;
+}
+BOOL CBitmap::LoadBitmap(LPCTSTR /*lpszResourceName*/) { return FALSE; }
+
+// GetBitmap needs tagBITMAP, which is opaque (forward-declared) on this
+// non-Windows platform, so its fields cannot be filled.
+int   CBitmap::GetBitmap(struct tagBITMAP*) { return 0; }
+// Raw-bits transfer assumes a Windows DDB packing our ARGB32 QImage does not
+// match; deferred with the pattern-brush slice that would need it.
+DWORD CBitmap::GetBitmapBits(DWORD, void*) const { return 0; }
+DWORD CBitmap::SetBitmapBits(DWORD, const void*) { return 0; }
+// No SetBitmapDimension in the contract, so return the pixel size (the only
+// dimension we hold) rather than MFC's separately-set 0.1mm dimension.
+CSize CBitmap::GetBitmapDimension() const
+{
+    const GdiObj* o = objOf(this);
+    return o ? CSize(o->image.width(), o->image.height()) : CSize(0, 0);
 }

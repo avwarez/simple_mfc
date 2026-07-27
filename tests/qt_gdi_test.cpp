@@ -141,6 +141,30 @@ int main(int argc, char** argv)
     QColor frc = img->pixelColor(170, 150);
     CHECK(frc.blue() > 150 && frc.red() < 80 && frc.green() < 80);
 
+    // --- Slice 3: CMemDC round-trip (memory DC + bitmap + BitBlt) ---------
+    // Draw a magenta fill into an offscreen bitmap through a memory DC, then
+    // BitBlt it onto the window surface — eMule's double-buffer pattern.
+    {
+        const COLORREF magenta = RGBv(200, 0, 200);
+        CDC memDC;
+        CHECK(memDC.CreateCompatibleDC(&dc) == TRUE);
+        CBitmap bmp;
+        CHECK(bmp.CreateCompatibleBitmap(&dc, 40, 40) == TRUE);
+        CHECK(bmp.m_hObject != nullptr);
+        CHECK(bmp.GetBitmapDimension() == CSize(40, 40));
+
+        CBitmap* pOldBmp = memDC.SelectObject(&bmp);   // memDC now draws into bmp
+        memDC.FillSolidRect(0, 0, 40, 40, magenta);
+        // BitBlt the bitmap block onto the window at (200, 20).
+        CHECK(dc.BitBlt(200, 20, 40, 40, &memDC, 0, 0, 0x00CC0020 /*SRCCOPY*/) == TRUE);
+        QColor blt = img->pixelColor(220, 40);
+        CHECK(blt.red() > 150 && blt.blue() > 150 && blt.green() < 80);   // magenta landed
+
+        memDC.SelectObject(pOldBmp);   // flush pixels back into bmp
+        memDC.DeleteDC();
+        bmp.DeleteObject();
+    }
+
     penRed.DeleteObject();
     penNull.DeleteObject();
     brGreen.DeleteObject();
@@ -153,6 +177,7 @@ int main(int argc, char** argv)
 
     if (g_failures == 0)
         std::printf("qt_gdi_test: CDC/CPaintDC fill/pixel/line/text/3drect + "
-                    "CPen/CBrush/CFont SelectObject OK\n");
+                    "CPen/CBrush/CFont SelectObject + CBitmap/CreateCompatibleDC/"
+                    "BitBlt CMemDC round-trip OK\n");
     return g_failures == 0 ? 0 : 1;
 }
