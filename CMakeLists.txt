@@ -137,10 +137,15 @@ if (NOT SIMPLE_MFC_GUI STREQUAL "none" OR SIMPLE_MFC_BUILD_GUI_CORE_TEST)
     add_library(simple_mfc_gui_core STATIC
         gui/core/cmdtarget_map.cpp
         gui/core/winthread.cpp
+        gui/core/winapp.cpp
     )
     add_library(simple_mfc::gui_core ALIAS simple_mfc_gui_core)
     target_link_libraries(simple_mfc_gui_core
         PUBLIC simple_mfc::simple_mfc simple_mfc::dialog_ir)
+    # winapp_internal.h: the AfxWinMain -> CWinApp seam, needed by the driver's
+    # entry point and by anything that drives the framework without our main().
+    target_include_directories(simple_mfc_gui_core
+        PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/gui/core)
 endif()
 
 if (SIMPLE_MFC_BUILD_GUI_CORE_TEST)
@@ -228,6 +233,9 @@ if (SIMPLE_MFC_GUI STREQUAL "qt")
         gui/qt/cdc.cpp
         gui/qt/imagelist.cpp
         gui/qt/listctrl.cpp
+        gui/qt/winapp.cpp
+        gui/qt/afxwinmain.cpp
+        gui/qt/main.cpp
     )
     add_library(simple_mfc::gui_qt ALIAS simple_mfc_gui_qt)
     target_link_libraries(simple_mfc_gui_qt PUBLIC simple_mfc::gui_core Qt5::Widgets)
@@ -319,6 +327,16 @@ if (SIMPLE_MFC_GUI STREQUAL "qt")
     endif()
     add_test(NAME qt_ownerdraw_test COMMAND qt_ownerdraw_test)
     set_tests_properties(qt_ownerdraw_test PROPERTIES
+        TIMEOUT 60
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    add_executable(qt_app_test tests/qt_app_test.cpp ${SMFC_GEN_TEST_DIALOGS})
+    target_link_libraries(qt_app_test PRIVATE simple_mfc::gui_qt)
+    if (NOT MSVC)
+        target_compile_options(qt_app_test PRIVATE -fms-extensions)
+    endif()
+    add_test(NAME qt_app_test COMMAND qt_app_test)
+    set_tests_properties(qt_app_test PROPERTIES
         TIMEOUT 60
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()

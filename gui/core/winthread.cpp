@@ -31,8 +31,6 @@ struct CWinThread::Impl
 
 namespace {
 std::atomic<unsigned long> g_threadIdCounter{ 1 };
-CWinApp* g_pApp = nullptr;          // real MFC sets this in CWinApp's ctor;
-                                    // left null until CWinApp is implemented.
 } // namespace
 
 CWinThread::CWinThread()
@@ -189,6 +187,6 @@ CWinThread* AfxBeginThread(CRuntimeClass* pThreadClass, int nPriority,
     return pThread;
 }
 
-CWinApp* AfxGetApp() { return g_pApp; }
-CWnd* AfxGetMainWnd() { return (g_pApp != nullptr) ? g_pApp->m_pMainWnd : nullptr; }
-LPCTSTR AfxGetAppName() { return (g_pApp != nullptr) ? g_pApp->m_pszAppName : nullptr; }
+// AfxGetApp/AfxGetMainWnd/AfxGetAppName used to live here as null-returning
+// placeholders, "left null until CWinApp is implemented". It is: they are real
+// now, and live with the application state they read, in winapp.cpp.

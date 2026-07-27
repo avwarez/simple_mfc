@@ -140,7 +140,18 @@ struct IMAGEINFO;
 // is legal C++, not a redefinition), so no #ifdef _WIN32 needed here.
 // ---------------------------------------------------------------------
 #ifndef _WIN32
-struct tagMSG;
+// Completed with winuser.h's real field layout, for the same reason as
+// tagDRAWITEMSTRUCT below: the message pump has to build one to hand to
+// CWinThread::IsIdleMessage, and an application that overrides that reads
+// the fields by name. Part of the Win32 PLATFORM shim, not the MFC interface.
+struct tagMSG {
+    HWND   hwnd;
+    UINT   message;
+    WPARAM wParam;
+    LPARAM lParam;
+    DWORD  time;
+    POINT  pt;
+};
 using MSG = tagMSG;
 using LPMSG = MSG*;
 
@@ -756,6 +767,13 @@ public:
     // : CWinApp(lpszAppName)"), and the default makes the no-argument
     // form real MFC also offers work.
     explicit CWinApp(LPCTSTR lpszAppName = nullptr);
+    // Real MFC declares both virtual on CWinApp. The scan missed them for the
+    // usual reason -- eMule overrides neither and never names a destructor at
+    // a call site -- but the framework itself calls both: Run IS the message
+    // pump AfxWinMain hands control to, and ~CWinApp is where the process-wide
+    // "current application" pointer has to be released.
+    virtual int Run();
+    virtual ~CWinApp();
 
     UINT GetProfileInt(LPCTSTR lpszSection, LPCTSTR lpszEntry, int nDefault);
     BOOL WriteProfileInt(LPCTSTR lpszSection, LPCTSTR lpszEntry, int nValue);
@@ -1834,6 +1852,16 @@ CWinThread* AfxBeginThread(CRuntimeClass* pThreadClass,
                             int nPriority = 0, UINT nStackSize = 0,
                             DWORD dwCreateFlags = 0,
                             SECURITY_ATTRIBUTES* lpSecurityAttrs = nullptr);
+
+// The framework's entry point: real MFC's WinMain (supplied by the library,
+// not by the application) does nothing but call this. The application object
+// already exists by then -- it is a file-scope global, so it was constructed
+// before main ran -- and this runs its InitInstance, hands control to its Run,
+// and returns the process exit code. Declared in afxwin.h by real MFC too;
+// eMule never calls it by name because the library's own WinMain does, which
+// is why the header scan did not surface it.
+int AFXAPI AfxWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
+                      LPTSTR lpCmdLine, int nCmdShow);
 
 CWinApp* AfxGetApp();
 // Returns HINSTANCE in real MFC. As void* the result could not be passed

@@ -379,6 +379,12 @@ BOOL CWnd::DestroyWindow()
         smfc_qt::ReleaseWndSurface(this);   // free the CDC paint buffer, if any
         HandleMap().erase(m_hWnd);
         m_hWnd = nullptr;
+        // close() before deleting: destroying a window has to be visible to the
+        // message pump, because destroying the LAST one is how an MFC program
+        // ends (the main window's destruction posts WM_QUIT). Deleting the
+        // widget outright would take it away without that ever being announced,
+        // and Run would sit waiting for an application that no longer has a UI.
+        w->close();
         w->deleteLater();       // Qt deletes the child widgets with the parent
         return TRUE;
     }

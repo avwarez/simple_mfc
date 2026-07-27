@@ -9,6 +9,7 @@
 
 class QWidget;
 class QImage;
+class QApplication;
 class CListCtrl;   // afxcmn.h; only used by pointer in EnableOwnerDraw below
 
 namespace smfc_qt {
@@ -62,6 +63,17 @@ std::vector<int> RadioGroup(CWnd* dlg, int nIDC);
 // that id, attaches rControl to the same QWidget, and makes
 // dlg->GetDlgItem(nIDC) return rControl afterwards. No-op if the id is unknown.
 void BindDlgControl(CWnd* dlg, int nIDC, CWnd& rControl);
+
+// --- the toolkit application object (winapp.cpp) ---------------------------
+// Record the process argv, so a QApplication created later gets the real one.
+// Called by main() before anything else; harmless to skip (a synthetic argv is
+// used instead), which is what a test embedding the framework does.
+void SetProcessArgs(int argc, char** argv);
+
+// The one QApplication, created on first use. Returns the existing instance if
+// the program already made one - a test that owns its own QApplication keeps
+// it. Never null unless construction itself failed.
+QApplication* EnsureQApplication();
 
 // Where a window's Win32 style bits live in this driver: Qt properties on the
 // host widget, seeded from the .rc template when the dialog is built. This is
