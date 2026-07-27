@@ -95,6 +95,7 @@ using BYTE = unsigned char;
 using COLORREF = unsigned long;
 using UINT_PTR = std::uintptr_t;
 using DWORD_PTR = std::uintptr_t;
+using ULONG_PTR = std::uintptr_t;   // itemData in the owner-draw structs below
 using INT_PTR = long long; // matches afxcoll.h's INT_PTR (identical redefinition is legal if both headers are included together)
 using LONG_PTR = std::intptr_t;
 using WPARAM = UINT_PTR;
@@ -276,6 +277,32 @@ struct tagMEASUREITEMSTRUCT;
 using LPMEASUREITEMSTRUCT = tagMEASUREITEMSTRUCT*;
 struct tagDRAWITEMSTRUCT;
 using LPDRAWITEMSTRUCT = tagDRAWITEMSTRUCT*;
+#ifndef _WIN32
+// POSIX half of the Win32 PLATFORM shim (same category as HWND/MSG/WM_* above,
+// NOT the MFC interface): on a real Windows target these come complete from
+// <winuser.h>, and the bare-tag forward declarations right above merge with
+// them. Off Windows they must be completed here so owner-draw handlers can read
+// their fields. The layout is the actual Win32 one (winuser.h field order).
+struct tagMEASUREITEMSTRUCT {
+    UINT      CtlType;
+    UINT      CtlID;
+    UINT      itemID;
+    UINT      itemWidth;
+    UINT      itemHeight;
+    ULONG_PTR itemData;
+};
+struct tagDRAWITEMSTRUCT {
+    UINT      CtlType;
+    UINT      CtlID;
+    UINT      itemID;
+    UINT      itemAction;
+    UINT      itemState;
+    HWND      hwndItem;
+    HDC       hDC;
+    RECT      rcItem;
+    ULONG_PTR itemData;
+};
+#endif
 class CScrollBar; // real header afxwin.h too; only used here as a pointer parameter
 
 // Real MFC's CWnd-derived classes intentionally hide the base Create()

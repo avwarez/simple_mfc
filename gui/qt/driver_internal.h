@@ -9,6 +9,7 @@
 
 class QWidget;
 class QImage;
+class CListCtrl;   // afxcmn.h; only used by pointer in EnableOwnerDraw below
 
 namespace smfc_qt {
 
@@ -33,6 +34,20 @@ const QImage* BitmapImageFromHandle(HBITMAP h);
 // scaled to dw x dh; dw<=0 means "native size"). False if dc has no surface.
 // Implemented in cdc.cpp (owns surfOf); called by CImageList::Draw/DrawEx.
 bool BlitImageToDC(CDC* dc, int x, int y, const QImage& img, int dw = 0, int dh = 0);
+
+// Owner-draw item surface (cdc.cpp): a single reusable HDC-backed QImage the
+// list item delegate paints one item into. BeginItemSurface(w,h) resets+sizes
+// it and returns the HDC to put in the DRAWITEMSTRUCT; ItemSurfaceImage() gets
+// the pixels back to blit onto the viewport. CDC::FromHandle wraps the HDC.
+HDC     BeginItemSurface(int w, int h);
+QImage* ItemSurfaceImage();
+
+// Install the owner-draw delegate on `list`'s bound view (imagelist? no —
+// listctrl.cpp): each visible row is painted by calling list->DrawItem(&dis)
+// with a DRAWITEMSTRUCT (itemID=row, rcItem=item-local, hDC=an item surface).
+// Models the WM_DRAWITEM reflection that reaches an LVS_OWNERDRAWFIXED list's
+// DrawItem override. No-op if the list is not bound to a QTreeWidget.
+void EnableOwnerDraw(CListCtrl* list);
 
 // --- icon registry (imagelist.cpp) -----------------------------------------
 // Icons have no Win32 producer in the portable build (no LoadIcon/CWinApp yet),

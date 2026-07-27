@@ -244,6 +244,31 @@ bool BlitImageToDC(CDC* dc, int x, int y, const QImage& img, int dw, int dh)
         p.drawImage(QPoint(x, y), img);
     return true;
 }
+
+// A single reusable surface an owner-draw item is painted into. The list's
+// item delegate calls BeginItemSurface(w,h) per item, hands the returned HDC to
+// the control's DrawItem (via the DRAWITEMSTRUCT), then blits ItemSurfaceImage()
+// onto the viewport. Reused across items (sequential on the GUI thread), so
+// CDC::FromHandle keeps just one temporary CDC for it — no per-item allocation.
+static HDC ItemSurfaceHandle()
+{
+    static char sentinel;            // a unique, stable, non-window HDC token
+    return reinterpret_cast<HDC>(&sentinel);
+}
+HDC BeginItemSurface(int w, int h)
+{
+    HDC key = ItemSurfaceHandle();
+    GdiSurface& s = Surfaces()[key];
+    s = GdiSurface{};
+    s.image = QImage(std::max(1, w), std::max(1, h), QImage::Format_ARGB32_Premultiplied);
+    s.image.fill(Qt::transparent);   // unpainted areas stay clear over the row
+    return key;
+}
+QImage* ItemSurfaceImage()
+{
+    auto it = Surfaces().find(ItemSurfaceHandle());
+    return it == Surfaces().end() ? nullptr : &it->second.image;
+}
 } // namespace smfc_qt
 
 // ---------------------------------------------------------------------------
@@ -262,7 +287,18 @@ BOOL CDC::DeleteDC()
     m_hDC = nullptr;
     return TRUE;
 }
-CDC* CDC::FromHandle(HDC)       { return nullptr; }   // reverse map: later slice
+CDC* CDC::FromHandle(HDC h)
+{
+    // Wrap an existing HDC in a CDC, as owner-draw code does with the
+    // DRAWITEMSTRUCT's hDC (`CDC::FromHandle(lpDrawItemStruct->hDC)`). Real MFC
+    // returns a temporary from a handle map; ours keeps one CDC per distinct
+    // handle (bounded — the owner-draw path reuses a single item-surface handle).
+    if (!h) return nullptr;
+    static std::unordered_map<HDC, CDC*> temps;
+    CDC*& p = temps[h];
+    if (!p) { p = new CDC(); p->m_hDC = h; p->m_hAttribDC = h; }
+    return p;
+}
 
 // A memory DC (CreateCompatibleDC) keys its surface by the CDC* itself rather
 // than a window: `this` is a stable, unique handle, and a stack CMemDC reused

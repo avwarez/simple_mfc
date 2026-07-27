@@ -198,6 +198,13 @@ public:
 class CListCtrl : public CWnd
 {
 public:
+    // Real MFC declares this virtual on CListCtrl (and the other owner-draw
+    // control classes); the original ".Method("/"->Method(" scan missed it
+    // because eMule's LVS_OWNERDRAWFIXED lists (CMuleListCtrl & co) only ever
+    // *override* it, never call it by name. It is the framework's owner-draw
+    // entry point: a derived DrawItem paints each item into the DRAWITEMSTRUCT's
+    // DC. Restoring it here makes those overrides real overrides.
+    virtual void DrawItem(LPDRAWITEMSTRUCT lpDrawItemStruct);
     CToolTipCtrl* GetToolTips() const;
     int InsertItem(const LVITEM* pItem);
     int InsertItem(int nItem, LPCTSTR lpszItem);
