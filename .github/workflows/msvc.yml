@@ -23,7 +23,11 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Configure (CMake auto-detects the Visual Studio generator on windows-latest)
-        run: cmake -S . -B build
+        # SIMPLE_MFC_BUILD_GUI_CORE_TEST=ON also builds gui/core (message-map
+        # dispatch + CWinThread/AfxBeginThread) and its runtime test, so the
+        # threading/dispatch layer is validated on MSVC (the primary target),
+        # including eMule's bare-name pointer-to-member map form.
+        run: cmake -S . -B build -DSIMPLE_MFC_BUILD_GUI_CORE_TEST=ON
 
       - name: Build
         run: cmake --build build --config ${{ matrix.build_type }}
