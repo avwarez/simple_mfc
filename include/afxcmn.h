@@ -198,6 +198,8 @@ public:
 class CListCtrl : public CWnd
 {
 public:
+    // Real MFC declares this virtual on CListCtrl.
+    virtual ~CListCtrl();
     // Real MFC declares this virtual on CListCtrl (and the other owner-draw
     // control classes); the original ".Method("/"->Method(" scan missed it
     // because eMule's LVS_OWNERDRAWFIXED lists (CMuleListCtrl & co) only ever

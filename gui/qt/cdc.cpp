@@ -274,6 +274,18 @@ QImage* ItemSurfaceImage()
 // ---------------------------------------------------------------------------
 // CDC — state
 // ---------------------------------------------------------------------------
+CDC::~CDC()
+{
+    // Real MFC's ~CDC releases what the DC still holds; here that is the
+    // offscreen surface a memory DC owns (keyed by `this`). A window DC's
+    // surface belongs to its window, so it is left alone - DeleteDC draws the
+    // same distinction.
+    if (m_hDC != nullptr && m_hDC == reinterpret_cast<HDC>(this))
+        Surfaces().erase(m_hDC);
+    m_hDC = nullptr;
+    m_hAttribDC = nullptr;
+}
+
 HDC  CDC::GetSafeHdc()          { return m_hDC; }
 BOOL CDC::Attach(HDC hDC)       { m_hDC = hDC; return TRUE; }
 HDC  CDC::Detach()              { HDC h = m_hDC; m_hDC = nullptr; return h; }
@@ -702,6 +714,13 @@ BOOL CGdiObject::DeleteObject()
     m_hObject = nullptr;
     return TRUE;
 }
+CGdiObject::~CGdiObject()
+{
+    // Real MFC's ~CGdiObject deletes the underlying GDI object; DeleteObject is
+    // exactly that here, and it is safe on an object that was never created.
+    DeleteObject();
+}
+
 BOOL    CGdiObject::Attach(HGDIOBJ hObject) { m_hObject = hObject; return TRUE; }
 HGDIOBJ CGdiObject::Detach() { HGDIOBJ h = m_hObject; m_hObject = nullptr; return h; }
 HGDIOBJ CGdiObject::GetSafeHandle() const { return m_hObject; }

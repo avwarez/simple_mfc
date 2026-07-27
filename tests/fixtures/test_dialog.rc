@@ -20,7 +20,8 @@ BEGIN
     CONTROL         "Option B",IDC_OPTION_B,"Button",
                     BS_AUTORADIOBUTTON,14,70,90,10
     CONTROL         "",IDC_FILE_LIST,"SysListView32",
-                    LVS_REPORT | WS_BORDER | WS_TABSTOP,7,92,206,20
+                    LVS_REPORT | LVS_OWNERDRAWFIXED | WS_BORDER | WS_TABSTOP,
+                    7,92,206,20
     COMBOBOX        IDC_MODE_COMBO,110,92,103,60,
                     CBS_DROPDOWNLIST | WS_TABSTOP
     CONTROL         "",IDC_PROGRESS_BAR,"msctls_progress32",

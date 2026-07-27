@@ -74,7 +74,11 @@ int main(int argc, char** argv)
     CHECK(dlg.m_list.SetItemData(1, 0xABCD) == TRUE);
     CHECK(dlg.m_list.GetItemData(1) == DWORD_PTR(0xABCD));
 
-    smfc_qt::EnableOwnerDraw(&dlg.m_list);
+    // NOTHING here asks for owner-draw: the template declares the list
+    // LVS_OWNERDRAWFIXED, and binding it with DDX_Control is what turns the
+    // behaviour on - the same causal chain as on Windows.
+    CHECK((dlg.m_list.GetStyle() & 0x0400u) != 0);   // LVS_OWNERDRAWFIXED
+    CHECK((dlg.m_list.GetStyle() & 0x0001u) != 0);   // LVS_REPORT, still there
 
     QWidget* lw = smfc_qt::WidgetOf(&dlg.m_list);
     CHECK(lw != nullptr);
@@ -101,7 +105,28 @@ int main(int argc, char** argv)
     CHECK(reds > 0);    // rows 0, 2
     CHECK(blues > 0);   // row 1
 
+    // 3) Clearing the style turns the behaviour back off: ModifyStyle is real,
+    //    not a stub, so the delegate is removed and DrawItem stops being called.
+    CHECK(dlg.m_list.ModifyStyle(0x0400u, 0) == TRUE);   // remove OWNERDRAWFIXED
+    CHECK((dlg.m_list.GetStyle() & 0x0400u) == 0);
+    const int before = dlg.m_list.drawn;
+    lw->render(&shot);
+    CHECK(dlg.m_list.drawn == before);
+
     dlg.DestroyWindow();
+
+    // 4) Lifetime: the row model is destroyed with the control, so a fresh
+    //    CListCtrl does not inherit a dead one's rows. Without ~CListCtrl the
+    //    map entry would survive and a reused address would come up populated.
+    {
+        auto* victim = new MyList();
+        victim->InsertItem(0, _T("ghost"));
+        victim->InsertItem(1, _T("ghost"));
+        CHECK(victim->GetItemCount() == 2);
+        delete victim;
+        MyList fresh;
+        CHECK(fresh.GetItemCount() == 0);
+    }
 
     if (g_failures == 0)
         std::printf("qt_ownerdraw_test: CListCtrl::DrawItem override reached via "

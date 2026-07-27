@@ -811,6 +811,9 @@ BOOL AFXAPI AfxInitRichEdit5();
 class CGdiObject : public CObject
 {
 public:
+    // Real MFC declares this virtual and has it free the underlying GDI object
+    // (its body calls DeleteObject). Same here.
+    virtual ~CGdiObject();
     // Public in real MFC too, and eMule reads it directly as the "is this
     // object created?" test (`if (theApp.m_fontSymbol.m_hObject)`) and to
     // pass the raw handle to SendMessage(WM_SETFONT).
@@ -962,6 +965,9 @@ public:
 class CDC : public CObject
 {
 public:
+    // Real MFC declares this virtual; it releases/deletes whatever the CDC
+    // still owns (its body is DeleteDC/ReleaseDC via the attached handles).
+    virtual ~CDC();
     // The wrapped device contexts, public in real MFC. CMemDC copies them
     // straight across (`m_hDC = pDC->m_hDC;`) and clears them on release,
     // so both have to be assignable members rather than accessors.
@@ -1151,6 +1157,10 @@ constexpr UINT RDW_UPDATENOW = 0x0100;
 class CWnd : public CCmdTarget
 {
 public:
+    // Real MFC declares this virtual; it is where a CWnd releases what it still
+    // holds (real MFC destroys the window if it is still there and detaches it
+    // from the handle maps).
+    virtual ~CWnd();
     BOOL EnableWindow(BOOL bEnable = TRUE);
     BOOL ShowWindow(int nCmdShow);
     void GetWindowRect(LPRECT lpRect) const;
@@ -1757,6 +1767,8 @@ public:
 class CImageList : public CObject
 {
 public:
+    // Real MFC declares this virtual; it destroys the underlying image list.
+    virtual ~CImageList();
     // The wrapped handle, public in real MFC; eMule tests it directly
     // (`piml == NULL || piml->m_hImageList == NULL`).
     HIMAGELIST m_hImageList = nullptr;

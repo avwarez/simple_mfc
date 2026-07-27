@@ -103,14 +103,40 @@ private:
 } // namespace
 
 namespace smfc_qt {
-void EnableOwnerDraw(CListCtrl* list)
+
+void EnableOwnerDraw(CListCtrl* list, bool enable)
 {
     QTreeWidget* tree = treeOf(list);
     if (!tree) return;
-    // Parented to the tree so Qt owns the delegate's lifetime.
-    tree->setItemDelegate(new SmfcOwnerDrawDelegate(list, tree));
-    tree->setUniformRowHeights(true);
+    // dynamic_cast, not qobject_cast: the delegate has no Q_OBJECT macro (it
+    // declares no signals/slots and so needs no moc pass).
+    const bool installed =
+        dynamic_cast<SmfcOwnerDrawDelegate*>(tree->itemDelegate()) != nullptr;
+    if (enable == installed) return;    // idempotent
+
+    if (enable) {
+        // Parented to the tree so Qt owns the delegate's lifetime.
+        tree->setItemDelegate(new SmfcOwnerDrawDelegate(list, tree));
+        tree->setUniformRowHeights(true);
+    } else {
+        QAbstractItemDelegate* old = tree->itemDelegate();
+        tree->setItemDelegate(new QStyledItemDelegate(tree));
+        delete old;
+    }
+    tree->viewport()->update();
 }
+
+void ApplyStyleBehaviour(CWnd& wnd)
+{
+    // LVS_OWNERDRAWFIXED (0x0400): the style that makes Windows send WM_DRAWITEM
+    // for every row instead of drawing it itself. A list carrying it owner-draws
+    // from the moment it is bound - the app never asks for it, exactly as on
+    // Windows, where the .rc style alone is what turns the behaviour on.
+    constexpr DWORD kLvsOwnerDrawFixed = 0x0400u;
+    if (auto* list = dynamic_cast<CListCtrl*>(&wnd))
+        EnableOwnerDraw(list, (list->GetStyle() & kLvsOwnerDrawFixed) != 0);
+}
+
 } // namespace smfc_qt
 
 // ---------------------------------------------------------------------------
@@ -119,6 +145,13 @@ void EnableOwnerDraw(CListCtrl* list)
 // vtable in this translation unit.
 // ---------------------------------------------------------------------------
 void CListCtrl::DrawItem(LPDRAWITEMSTRUCT) {}
+
+CListCtrl::~CListCtrl()
+{
+    // The row model is keyed on this object's address, so it has to go with it:
+    // otherwise a later CListCtrl allocated here would come up pre-populated.
+    Models().erase(this);
+}
 
 int CListCtrl::InsertItem(int nItem, LPCTSTR lpszItem)
 {

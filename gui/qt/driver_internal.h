@@ -42,13 +42,6 @@ bool BlitImageToDC(CDC* dc, int x, int y, const QImage& img, int dw = 0, int dh 
 HDC     BeginItemSurface(int w, int h);
 QImage* ItemSurfaceImage();
 
-// Install the owner-draw delegate on `list`'s bound view (imagelist? no —
-// listctrl.cpp): each visible row is painted by calling list->DrawItem(&dis)
-// with a DRAWITEMSTRUCT (itemID=row, rcItem=item-local, hDC=an item surface).
-// Models the WM_DRAWITEM reflection that reaches an LVS_OWNERDRAWFIXED list's
-// DrawItem override. No-op if the list is not bound to a QTreeWidget.
-void EnableOwnerDraw(CListCtrl* list);
-
 // --- icon registry (imagelist.cpp) -----------------------------------------
 // Icons have no Win32 producer in the portable build (no LoadIcon/CWinApp yet),
 // so a drawable HICON is minted here from pixels (e.g. CImageList::ExtractIcon).
@@ -69,5 +62,27 @@ std::vector<int> RadioGroup(CWnd* dlg, int nIDC);
 // that id, attaches rControl to the same QWidget, and makes
 // dlg->GetDlgItem(nIDC) return rControl afterwards. No-op if the id is unknown.
 void BindDlgControl(CWnd* dlg, int nIDC, CWnd& rControl);
+
+// Where a window's Win32 style bits live in this driver: Qt properties on the
+// host widget, seeded from the .rc template when the dialog is built. This is
+// the backing store CWnd::GetStyle/GetExStyle/ModifyStyle(Ex) read and write.
+inline constexpr const char* kStyleProp   = "smfc_style";
+inline constexpr const char* kExStyleProp = "smfc_exstyle";
+
+// Apply everything a window's CURRENT style bits imply, for the concrete type
+// it actually is. Called when a typed control is bound (DDX_Control) and after
+// any ModifyStyle/ModifyStyleEx, so a style change takes effect immediately.
+// Today it drives owner-draw: a CListCtrl carrying LVS_OWNERDRAWFIXED gets the
+// item delegate that routes each row through DrawItem, and loses it if the bit
+// is cleared. Idempotent, and a no-op for types with no style-driven behaviour.
+void ApplyStyleBehaviour(CWnd& wnd);
+
+// Install / remove the owner-draw item delegate on `list`'s bound view: with it
+// installed, each visible row is painted by calling list->DrawItem(&dis) with a
+// DRAWITEMSTRUCT (itemID=row, rcItem=item-local, hDC=an item surface), which is
+// the WM_DRAWITEM reflection an LVS_OWNERDRAWFIXED list gets on Windows.
+// Normally reached through ApplyStyleBehaviour rather than called directly.
+// No-op if the list is not bound to a QTreeWidget.
+void EnableOwnerDraw(CListCtrl* list, bool enable = true);
 
 } // namespace smfc_qt

@@ -98,6 +98,12 @@ void BindDlgControl(CWnd* dlg, int nIDC, CWnd& rControl)
     it->second->Detach();          // release the placeholder wrapper's binding
     rControl.Attach(h);            // the typed control now owns the HWND
     ex->idToWnd[nIDC] = &rControl; // GetDlgItem(nIDC) returns it from now on
+
+    // The typed object is only now able to act on its own style bits (the
+    // placeholder CWnd could not): give the style-driven behaviours their
+    // chance, which is how an LVS_OWNERDRAWFIXED list starts owner-drawing
+    // without the app asking for it.
+    ApplyStyleBehaviour(rControl);
 }
 
 std::vector<int> RadioGroup(CWnd* dlg, int nIDC)
@@ -259,6 +265,53 @@ LRESULT CWnd::SendMessage(UINT message, WPARAM wParam, LPARAM lParam)
 
 HWND CWnd::GetSafeHwnd() const { return (this != nullptr) ? m_hWnd : nullptr; }
 
+// ---------------------------------------------------------------------------
+// Window styles. On Windows these live in the HWND (GWL_STYLE); here they live
+// on the QWidget, seeded from the .rc template at build time. Real behaviour,
+// not a stub: ModifyStyle actually changes what the control does, because the
+// style-driven behaviours are re-applied after every change.
+// ---------------------------------------------------------------------------
+DWORD CWnd::GetStyle() const
+{
+    QWidget* w = smfc_qt::WidgetOf(this);
+    return w ? DWORD(w->property(smfc_qt::kStyleProp).toUInt()) : 0;
+}
+
+DWORD CWnd::GetExStyle() const
+{
+    QWidget* w = smfc_qt::WidgetOf(this);
+    return w ? DWORD(w->property(smfc_qt::kExStyleProp).toUInt()) : 0;
+}
+
+namespace {
+BOOL modifyStyleProp(CWnd* self, const char* prop, DWORD dwRemove, DWORD dwAdd)
+{
+    QWidget* w = smfc_qt::WidgetOf(self);
+    if (!w) return FALSE;
+    const DWORD before = DWORD(w->property(prop).toUInt());
+    const DWORD after  = (before & ~dwRemove) | dwAdd;
+    if (after == before) return TRUE;   // real MFC still reports success
+    w->setProperty(prop, quint32(after));
+    return TRUE;
+}
+} // namespace
+
+BOOL CWnd::ModifyStyle(DWORD dwRemove, DWORD dwAdd, UINT /*nFlags*/)
+{
+    // nFlags carries SetWindowPos flags for the frame-change repaint; there is
+    // no separate non-client frame to invalidate here, so it is not needed.
+    const BOOL ok = modifyStyleProp(this, smfc_qt::kStyleProp, dwRemove, dwAdd);
+    if (ok) smfc_qt::ApplyStyleBehaviour(*this);   // e.g. owner-draw on/off
+    return ok;
+}
+
+BOOL CWnd::ModifyStyleEx(DWORD dwRemove, DWORD dwAdd, UINT /*nFlags*/)
+{
+    const BOOL ok = modifyStyleProp(this, smfc_qt::kExStyleProp, dwRemove, dwAdd);
+    if (ok) smfc_qt::ApplyStyleBehaviour(*this);
+    return ok;
+}
+
 BOOL CWnd::Attach(HWND hWndNew)
 {
     m_hWnd = hWndNew;
@@ -285,6 +338,31 @@ BOOL CWnd::ShowWindow(int nCmdShow)
 {
     if (QWidget* w = AsQWidget(m_hWnd)) { w->setVisible(nCmdShow != 0 /*SW_HIDE*/); return TRUE; }
     return FALSE;
+}
+
+CWnd::~CWnd()
+{
+    // Drop every driver-side entry keyed on this object or its handle. Without
+    // this the maps outlive the object, and a later CWnd allocated at the same
+    // address would inherit the dead one's child list and paint surface.
+    //
+    // The QWidget itself is deliberately NOT deleted here: Qt's parent-child
+    // ownership already destroys child widgets with their dialog, and a bound
+    // control (DDX_Control) does not own the widget it was attached to. A
+    // window this object created is torn down by DestroyWindow, as in MFC.
+    if (WndExtra* ex = ExtraIfAny(this)) {
+        for (auto& child : ex->childWnds)
+            if (child) child->Detach();
+        ExtraMap().erase(this);
+    }
+    smfc_qt::ReleaseWndSurface(this);
+    if (m_hWnd != nullptr) {
+        // Only if the handle still maps back to us: a handle can have been
+        // re-bound to another object (Detach/Attach), and that binding is live.
+        auto it = HandleMap().find(m_hWnd);
+        if (it != HandleMap().end() && it->second == this) HandleMap().erase(it);
+        m_hWnd = nullptr;
+    }
 }
 
 BOOL CWnd::DestroyWindow()
@@ -484,10 +562,21 @@ QDialog* buildDialogFromTemplate(CWnd* self, int idd)
     ex.idToWnd.clear();
     ex.childWnds.clear();
 
+    qd->setProperty(smfc_qt::kStyleProp, quint32(d->style));
+    qd->setProperty(smfc_qt::kExStyleProp, quint32(d->exStyle));
+
     for (const auto& c : d->controls) {
         bool isButton = false;
         QWidget* cw = makeControlWidget(c, qd, isButton);
         cw->setGeometry(duToPx(c, b));
+
+        // Carry the template's style bits onto the widget: this is where
+        // GetStyle()/ModifyStyle() read and write, and it is what lets a
+        // style-driven behaviour (LVS_OWNERDRAWFIXED, ...) switch itself on
+        // when a typed control object is bound - exactly as on Windows, where
+        // the style lives in the HWND and the control consults it.
+        cw->setProperty(smfc_qt::kStyleProp, quint32(c.style));
+        cw->setProperty(smfc_qt::kExStyleProp, quint32(c.exStyle));
 
         // Wrap each control in a CWnd so GetDlgItem/DDX_Control get a CWnd*.
         auto wnd = std::make_unique<CWnd>();

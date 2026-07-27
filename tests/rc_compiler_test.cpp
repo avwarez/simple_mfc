@@ -116,6 +116,11 @@ int main()
     if (lst) {
         CHECK(lst->windowClass == "SysListView32");
         CHECK((lst->style & 0x0001u) != 0);   // LVS_REPORT
+        // LVS_OWNERDRAWFIXED: load-bearing, not decoration. qt_ownerdraw_test
+        // relies on this bit reaching the IR to prove the driver turns
+        // owner-draw on from the template alone; dropping it here would make
+        // that test pass for the wrong reason.
+        CHECK((lst->style & 0x0400u) != 0);
     }
 
     // COMBOBOX (no text), CBS_DROPDOWNLIST resolved

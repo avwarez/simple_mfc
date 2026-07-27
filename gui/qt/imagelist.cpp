@@ -231,6 +231,13 @@ HICON CImageList::ExtractIcon(int nImage)
     return smfc_qt::RegisterIcon(il->images[nImage]);
 }
 
+CImageList::~CImageList()
+{
+    // Real MFC's ~CImageList destroys the underlying image list; the images are
+    // held in a map keyed on this object's address, so they have to go with it.
+    DeleteImageList();
+}
+
 BOOL CImageList::DeleteImageList()
 {
     ImageLists().erase(this);
