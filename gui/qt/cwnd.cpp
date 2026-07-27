@@ -29,6 +29,7 @@
 #include <QRadioButton>
 #include <QScrollBar>
 #include <QSlider>
+#include <QSpinBox>
 #include <QString>
 #include <QTreeWidget>
 #include <QVariant>
@@ -94,6 +95,32 @@ void BindDlgControl(CWnd* dlg, int nIDC, CWnd& rControl)
     it->second->Detach();          // release the placeholder wrapper's binding
     rControl.Attach(h);            // the typed control now owns the HWND
     ex->idToWnd[nIDC] = &rControl; // GetDlgItem(nIDC) returns it from now on
+}
+
+std::vector<int> RadioGroup(CWnd* dlg, int nIDC)
+{
+    // WS_GROUP (0x00020000): the style bit that marks the first control of a
+    // group. Real MFC's DDX_Radio starts at nIDC and stops at the next control
+    // that carries it; we mirror that over the .rc template's control order.
+    constexpr uint32_t kWsGroup = 0x00020000u;
+    std::vector<int> ids;
+    WndExtra* ex = ExtraIfAny(dlg);
+    if (!ex) return ids;
+    const smfc::DialogDesc* d = smfc::FindDialog(ex->templateId);
+    if (!d) return ids;
+
+    size_t start = d->controls.size();
+    for (size_t i = 0; i < d->controls.size(); ++i)
+        if (d->controls[i].id == nIDC) { start = i; break; }
+    if (start == d->controls.size()) return ids;
+
+    for (size_t i = start; i < d->controls.size(); ++i) {
+        const smfc::ControlDesc& c = d->controls[i];
+        if (i > start && (c.style & kWsGroup)) break;   // next group begins
+        if (c.kind == smfc::ControlKind::RadioButton)
+            ids.push_back(c.id);
+    }
+    return ids;
 }
 } // namespace smfc_qt
 
@@ -168,6 +195,7 @@ QWidget* makeControlWidget(const smfc::ControlDesc& c, QWidget* parent,
             if (k == "SysTreeView32")   return new QTreeWidget(parent);
             if (k == "msctls_progress32") return new QProgressBar(parent);
             if (k == "msctls_trackbar32") return new QSlider(parent);
+            if (k == "msctls_updown32")   return new QSpinBox(parent);
             return new QWidget(parent);
         }
     }

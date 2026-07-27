@@ -5,12 +5,21 @@
 #pragma once
 #include "afxwin.h"
 
+#include <vector>
+
 class QWidget;
 
 namespace smfc_qt {
 
 // The QWidget currently bound to a CWnd (its m_hWnd), or nullptr.
 QWidget* WidgetOf(const CWnd* w);
+
+// The radio-button group that DDX_Radio(pDX, nIDC, ...) addresses: the control
+// ids, in template order, of the buttons belonging to nIDC's group. The group
+// starts at nIDC and runs until the next control carrying WS_GROUP (Win32's
+// group semantics), mirroring how real MFC's DDX_Radio walks GetNextDlgGroupItem.
+// Resolved from the dialog's .rc template; empty if dlg has no template.
+std::vector<int> RadioGroup(CWnd* dlg, int nIDC);
 
 // DDX_Control binding: rebind control id `nIDC` in dialog `dlg` to the typed
 // control object `rControl`. Detaches the builder's placeholder wrapper for

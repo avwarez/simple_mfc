@@ -271,6 +271,20 @@ if (SIMPLE_MFC_GUI STREQUAL "qt")
     set_tests_properties(qt_ddx_test PROPERTIES
         TIMEOUT 60
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    # GDI-independent common controls: CSliderCtrl/CProgressCtrl/CSpinButtonCtrl
+    # over native Qt widgets + DDX_Radio over a radio group, built from the
+    # IDD_CONTROLS template in the shared fixture.
+    add_executable(qt_controls_test
+        tests/qt_controls_test.cpp ${SMFC_GEN_TEST_DIALOGS})
+    target_link_libraries(qt_controls_test PRIVATE simple_mfc::gui_qt)
+    if (NOT MSVC)
+        target_compile_options(qt_controls_test PRIVATE -fms-extensions)
+    endif()
+    add_test(NAME qt_controls_test COMMAND qt_controls_test)
+    set_tests_properties(qt_controls_test PROPERTIES
+        TIMEOUT 60
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()
 
 # --- Conformance tests vs. real MFC (optional, MSVC + ATL/MFC only) --------

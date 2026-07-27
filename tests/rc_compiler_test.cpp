@@ -55,7 +55,7 @@ int main()
     // --- dialog parse ---------------------------------------------------
     ParseResult res = ParseResourceScript(slurp(dir + "/test_dialog.rc"), syms);
     CHECK(res.ok());
-    CHECK(res.dialogs.size() == 3);   // IDD_SAMPLE, IDD_NOTTEST, IDD_AFTER
+    CHECK(res.dialogs.size() == 4);   // IDD_SAMPLE, IDD_NOTTEST, IDD_AFTER, IDD_CONTROLS
     if (res.dialogs.empty()) { std::printf("no dialog parsed\n"); return 1; }
 
     const DialogDesc& d = res.dialogs[0];
@@ -160,6 +160,21 @@ int main()
     CHECK(da.controls.size() == 1);
     CHECK(find(da, 1103) != nullptr);              // IDC_AFTER_LABEL
 
+    // --- GDI-independent common controls (drives the Qt widget mapping) ----
+    const DialogDesc& dc = res.dialogs[3];
+    CHECK(dc.idName == "IDD_CONTROLS");
+    CHECK(dc.controls.size() == 5);
+    const ControlDesc* sld = find(dc, 1201);       // IDC_SLIDER
+    CHECK(sld && sld->kind == ControlKind::Custom && sld->windowClass == "msctls_trackbar32");
+    const ControlDesc* spn = find(dc, 1203);       // IDC_SPIN
+    CHECK(spn && spn->kind == ControlKind::Custom && spn->windowClass == "msctls_updown32");
+    // Radio group: IDC_RADIO1 carries WS_GROUP (0x20000), IDC_RADIO2 does not,
+    // so DDX_Radio's group walk stops after the two of them.
+    const ControlDesc* r1 = find(dc, 1204);
+    const ControlDesc* r2 = find(dc, 1205);
+    CHECK(r1 && r1->kind == ControlKind::RadioButton && (r1->style & 0x00020000u) != 0);
+    CHECK(r2 && r2->kind == ControlKind::RadioButton && (r2->style & 0x00020000u) == 0);
+
     // --- emitter --------------------------------------------------------
     std::string cpp = EmitGeneratedCpp(res.dialogs, "test_dialog.rc");
     CHECK(cpp.find("#include \"dialog_ir.h\"") != std::string::npos);
@@ -169,6 +184,6 @@ int main()
 
     if (g_failures == 0)
         std::printf("rc_compiler_test: parser + symbols + emitter OK "
-                    "(3 dialogs incl. NOT-style + no-runaway guard)\n");
+                    "(4 dialogs incl. NOT-style + no-runaway guard + controls)\n");
     return g_failures == 0 ? 0 : 1;
 }

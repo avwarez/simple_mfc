@@ -126,3 +126,44 @@ void AFXAPI DDX_CBIndex(CDataExchange* pDX, int nIDC, int& index)
     else
         cb->setCurrentIndex(index);
 }
+
+// --- DDX_Radio -------------------------------------------------------------
+// nIDC is the FIRST control of a radio-button group; `value` is the 0-based
+// index of the checked button within the group (-1 == none). Load (FALSE)
+// checks the value-th button; save (TRUE) reports which one is checked.
+void AFXAPI DDX_Radio(CDataExchange* pDX, int nIDC, int& value)
+{
+    if (!pDX || !pDX->m_pDlgWnd) return;
+    const std::vector<int> group = smfc_qt::RadioGroup(pDX->m_pDlgWnd, nIDC);
+    if (group.empty()) return;
+
+    if (pDX->m_bSaveAndValidate) {
+        value = -1;
+        for (int i = 0; i < static_cast<int>(group.size()); ++i) {
+            auto* b = qobject_cast<QAbstractButton*>(ctrlWidget(pDX, group[i]));
+            if (b && b->isChecked()) { value = i; break; }
+        }
+    } else {
+        for (int i = 0; i < static_cast<int>(group.size()); ++i) {
+            auto* b = qobject_cast<QAbstractButton*>(ctrlWidget(pDX, group[i]));
+            if (b) b->setChecked(i == value);
+        }
+    }
+}
+
+// --- DDV_* (Dialog Data Validation) ----------------------------------------
+// MFC runs DDV only in the save direction, right after the matching DDX_Text,
+// and aborts the exchange via pDX->Fail() when the value is out of range. The
+// driver's Fail() is a no-op for now (no CUserException unwinding), so an
+// out-of-range value is reported to Fail() but not yet rejected.
+void AFXAPI DDV_MinMaxInt(CDataExchange* pDX, int value, int minVal, int maxVal)
+{
+    if (pDX && pDX->m_bSaveAndValidate && (value < minVal || value > maxVal))
+        pDX->Fail();
+}
+
+void AFXAPI DDV_MinMaxFloat(CDataExchange* pDX, float value, float minVal, float maxVal)
+{
+    if (pDX && pDX->m_bSaveAndValidate && (value < minVal || value > maxVal))
+        pDX->Fail();
+}

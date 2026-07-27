@@ -45,3 +45,19 @@ FONT 8, "MS Shell Dlg"
 BEGIN
     LTEXT           "still here",IDC_AFTER_LABEL,7,7,66,8
 END
+
+// Exercises the GDI-independent common controls the Qt driver maps to native
+// Qt widgets (slider/progress/spin) plus a radio group for DDX_Radio.
+IDD_CONTROLS DIALOGEX 0, 0, 200, 100
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Controls"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    CONTROL         "",IDC_SLIDER,"msctls_trackbar32",TBS_HORZ | WS_TABSTOP,7,7,186,15
+    CONTROL         "",IDC_PROGRESS2,"msctls_progress32",PBS_SMOOTH,7,26,186,10
+    CONTROL         "",IDC_SPIN,"msctls_updown32",UDS_ARROWKEYS | WS_TABSTOP,7,42,20,14
+    CONTROL         "First",IDC_RADIO1,"Button",
+                    BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP,7,60,90,10
+    CONTROL         "Second",IDC_RADIO2,"Button",
+                    BS_AUTORADIOBUTTON,7,74,90,10
+END

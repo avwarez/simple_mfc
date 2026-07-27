@@ -19,3 +19,11 @@
 #define IDD_AFTER            1101
 #define IDC_HIDDEN_BTN       1102
 #define IDC_AFTER_LABEL      1103
+
+// Fourth dialog: GDI-independent common controls + a radio group (DDX_Radio).
+#define IDD_CONTROLS         1200
+#define IDC_SLIDER           1201
+#define IDC_PROGRESS2        1202
+#define IDC_SPIN             1203
+#define IDC_RADIO1           1204
+#define IDC_RADIO2           1205
