@@ -116,6 +116,22 @@ set_property(CACHE SIMPLE_MFC_GUI PROPERTY STRINGS none qt wx)
 
 option(SIMPLE_MFC_BUILD_GUI_CORE_TEST
        "Build the gui/core runtime test (message-map dispatch + threading)" OFF)
+option(SIMPLE_MFC_BUILD_RC_TESTS
+       "Build the .rc resource-compiler tests (std-only, no MFC interface)" OFF)
+
+# The neutral dialog-IR registry (gui/core/dialog_ir.h). It is the run-time
+# consumer of the .rc compiler's output and is looked up by the drivers, so it
+# is needed whenever the GUI core, a driver, or the .rc tests are built. Kept
+# a separate tiny target: it is pure std C++ (no MFC interface, no -fms), so
+# the codegen test can link it without pulling in the whole GUI core.
+if (NOT SIMPLE_MFC_GUI STREQUAL "none"
+        OR SIMPLE_MFC_BUILD_GUI_CORE_TEST
+        OR SIMPLE_MFC_BUILD_RC_TESTS)
+    add_library(simple_mfc_dialog_ir STATIC gui/core/dialog_registry.cpp)
+    add_library(simple_mfc::dialog_ir ALIAS simple_mfc_dialog_ir)
+    target_include_directories(simple_mfc_dialog_ir PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/gui/core)
+endif()
 
 if (NOT SIMPLE_MFC_GUI STREQUAL "none" OR SIMPLE_MFC_BUILD_GUI_CORE_TEST)
     add_library(simple_mfc_gui_core STATIC
@@ -123,7 +139,8 @@ if (NOT SIMPLE_MFC_GUI STREQUAL "none" OR SIMPLE_MFC_BUILD_GUI_CORE_TEST)
         gui/core/winthread.cpp
     )
     add_library(simple_mfc::gui_core ALIAS simple_mfc_gui_core)
-    target_link_libraries(simple_mfc_gui_core PUBLIC simple_mfc::simple_mfc)
+    target_link_libraries(simple_mfc_gui_core
+        PUBLIC simple_mfc::simple_mfc simple_mfc::dialog_ir)
 endif()
 
 if (SIMPLE_MFC_BUILD_GUI_CORE_TEST)
@@ -139,6 +156,54 @@ if (SIMPLE_MFC_BUILD_GUI_CORE_TEST)
     endif()
     add_test(NAME gui_core_test COMMAND gui_core_test)
     set_tests_properties(gui_core_test PROPERTIES TIMEOUT 60)
+endif()
+
+# --- .rc resource compiler (build-time codegen -> neutral dialog IR) --------
+# simple_mfc's own mini rc.exe. At an APP's build it reads the app's .rc +
+# resource.h and emits generated C++ that registers the neutral dialog IR
+# (see gui/core/rc/ and the plan's problem B). std-only, no MFC interface, so
+# it is a plain host tool. Built whenever a driver is selected (real apps need
+# it) or the .rc tests are on.
+if (NOT SIMPLE_MFC_GUI STREQUAL "none" OR SIMPLE_MFC_BUILD_RC_TESTS)
+    add_library(simple_mfc_rc STATIC gui/core/rc/rc_compiler.cpp)
+    target_include_directories(simple_mfc_rc PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/gui/core/rc
+        ${CMAKE_CURRENT_SOURCE_DIR}/gui/core)
+
+    add_executable(smfc_rc gui/core/rc/smfc_rc_main.cpp)
+    target_link_libraries(smfc_rc PRIVATE simple_mfc_rc)
+endif()
+
+if (SIMPLE_MFC_BUILD_RC_TESTS)
+    enable_testing()
+
+    # Stage 1: unit-test the parser/symbols/emitter directly.
+    add_executable(rc_compiler_test tests/rc_compiler_test.cpp)
+    target_link_libraries(rc_compiler_test PRIVATE simple_mfc_rc)
+    target_compile_definitions(rc_compiler_test PRIVATE
+        SMFC_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
+    add_test(NAME rc_compiler_test COMMAND rc_compiler_test)
+    set_tests_properties(rc_compiler_test PROPERTIES TIMEOUT 60)
+
+    # Stage 2: run smfc_rc on the fixture at BUILD time, compile its generated
+    # C++ into the test, and query the registry at run time -- the full
+    # .rc -> generated code -> in-memory template pipeline, end to end.
+    set(_smfc_gen ${CMAKE_CURRENT_BINARY_DIR}/generated_test_dialogs.cpp)
+    add_custom_command(
+        OUTPUT ${_smfc_gen}
+        COMMAND smfc_rc
+            --rc ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/test_dialog.rc
+            --header ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/test_resource.h
+            --out ${_smfc_gen}
+        DEPENDS smfc_rc
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/test_dialog.rc
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/test_resource.h
+        COMMENT "smfc_rc: compiling test_dialog.rc -> neutral dialog IR")
+
+    add_executable(rc_codegen_test tests/rc_codegen_test.cpp ${_smfc_gen})
+    target_link_libraries(rc_codegen_test PRIVATE simple_mfc::dialog_ir)
+    add_test(NAME rc_codegen_test COMMAND rc_codegen_test)
+    set_tests_properties(rc_codegen_test PROPERTIES TIMEOUT 60)
 endif()
 
 # --- Qt driver (SIMPLE_MFC_GUI=qt) -----------------------------------------
