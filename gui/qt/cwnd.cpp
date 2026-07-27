@@ -11,6 +11,7 @@
 // no-op/DefWindowProc defaults (real MFC's defaults are the same shape).
 #include "afxwin.h"
 #include "smfc_qt.h"
+#include "driver_internal.h"
 #include "dialog_ir.h"
 
 #include <QAbstractButton>
@@ -70,6 +71,33 @@ WndExtra* ExtraIfAny(const CWnd* w)
 }
 
 QString ToQString(const std::string& s) { return QString::fromStdString(s); }
+} // namespace
+
+// Driver-internal helpers (declared in driver_internal.h). Defined here
+// because the id->control map lives in this translation unit.
+namespace smfc_qt {
+QWidget* WidgetOf(const CWnd* w)
+{
+    return w ? AsQWidget(const_cast<CWnd*>(w)->GetSafeHwnd()) : nullptr;
+}
+
+void BindDlgControl(CWnd* dlg, int nIDC, CWnd& rControl)
+{
+    if (!dlg) return;
+    WndExtra* ex = ExtraIfAny(dlg);
+    if (!ex) return;
+    auto it = ex->idToWnd.find(nIDC);
+    if (it == ex->idToWnd.end() || !it->second) return;
+
+    HWND h = it->second->GetSafeHwnd();
+    if (!h) return;
+    it->second->Detach();          // release the placeholder wrapper's binding
+    rControl.Attach(h);            // the typed control now owns the HWND
+    ex->idToWnd[nIDC] = &rControl; // GetDlgItem(nIDC) returns it from now on
+}
+} // namespace smfc_qt
+
+namespace {
 
 // Dialog units -> pixels (Win32 MapDialogRect): x*baseX/4, y*baseY/8, where
 // the base units come from the dialog font metrics. Computed once per build.
@@ -288,6 +316,18 @@ BOOL CWnd::EnableWindow(BOOL bEnable)
     return FALSE;
 }
 
+// UpdateData drives Dialog Data Exchange: it builds a CDataExchange and hands
+// it to the (virtual) DoDataExchange the derived dialog overrides. FALSE loads
+// controls from members, TRUE saves members from controls -- exactly as MFC.
+BOOL CWnd::UpdateData(BOOL bSaveAndValidate)
+{
+    CDataExchange dx;
+    dx.m_pDlgWnd = this;
+    dx.m_bSaveAndValidate = bSaveAndValidate;
+    DoDataExchange(&dx);
+    return TRUE;
+}
+
 // Generic create surfaces: the concrete control/dialog builders (Phase 3)
 // override/replace these; kept as linkable defaults so CWnd is instantiable.
 BOOL CWnd::Create(LPCTSTR, LPCTSTR, DWORD, const RECT&, CWnd*, UINT, CCreateContext*) { return FALSE; }
@@ -448,6 +488,13 @@ void CDialog::EndDialog(int nResult)
         qd->done(nResult);
 }
 
-BOOL CDialog::OnInitDialog() { return TRUE; }
+BOOL CDialog::OnInitDialog()
+{
+    // Real MFC's CDialog::OnInitDialog loads the initial control state from the
+    // dialog's members via DDX; a derived OnInitDialog reaches this through its
+    // base call. (Controls were already built from the .rc template.)
+    UpdateData(FALSE);
+    return TRUE;
+}
 void CDialog::OnOK()     { EndDialog(1 /*IDOK*/); }
 void CDialog::OnCancel() { EndDialog(2 /*IDCANCEL*/); }

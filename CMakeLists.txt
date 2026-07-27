@@ -223,6 +223,8 @@ if (SIMPLE_MFC_GUI STREQUAL "qt")
     add_library(simple_mfc_gui_qt STATIC
         gui/qt/cwnd.cpp
         gui/qt/smfc_qt.cpp
+        gui/qt/ddx.cpp
+        gui/qt/controls.cpp
     )
     add_library(simple_mfc::gui_qt ALIAS simple_mfc_gui_qt)
     target_link_libraries(simple_mfc_gui_qt PUBLIC simple_mfc::gui_core Qt5::Widgets)
@@ -254,6 +256,19 @@ if (SIMPLE_MFC_GUI STREQUAL "qt")
     endif()
     add_test(NAME qt_dialog_test COMMAND qt_dialog_test)
     set_tests_properties(qt_dialog_test PROPERTIES
+        TIMEOUT 60
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    # DDX + typed controls: build a CDialog with member controls and a
+    # DoDataExchange, and check load/save through the QWidgets.
+    add_executable(qt_ddx_test
+        tests/qt_ddx_test.cpp ${SMFC_GEN_TEST_DIALOGS})
+    target_link_libraries(qt_ddx_test PRIVATE simple_mfc::gui_qt)
+    if (NOT MSVC)
+        target_compile_options(qt_ddx_test PRIVATE -fms-extensions)
+    endif()
+    add_test(NAME qt_ddx_test COMMAND qt_ddx_test)
+    set_tests_properties(qt_ddx_test PROPERTIES
         TIMEOUT 60
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()
