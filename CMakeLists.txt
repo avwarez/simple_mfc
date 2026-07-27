@@ -225,6 +225,7 @@ if (SIMPLE_MFC_GUI STREQUAL "qt")
         gui/qt/smfc_qt.cpp
         gui/qt/ddx.cpp
         gui/qt/controls.cpp
+        gui/qt/cdc.cpp
     )
     add_library(simple_mfc::gui_qt ALIAS simple_mfc_gui_qt)
     target_link_libraries(simple_mfc_gui_qt PUBLIC simple_mfc::gui_core Qt5::Widgets)
@@ -283,6 +284,19 @@ if (SIMPLE_MFC_GUI STREQUAL "qt")
     endif()
     add_test(NAME qt_controls_test COMMAND qt_controls_test)
     set_tests_properties(qt_controls_test PROPERTIES
+        TIMEOUT 60
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    # GDI slice 1: CDC/CPaintDC drawing primitives over QPainter, verified by
+    # reading back pixels from the driver's offscreen paint surface. Links the
+    # generated IR so CDialog(IDD_SAMPLE) has a template to size its canvas.
+    add_executable(qt_gdi_test tests/qt_gdi_test.cpp ${SMFC_GEN_TEST_DIALOGS})
+    target_link_libraries(qt_gdi_test PRIVATE simple_mfc::gui_qt)
+    if (NOT MSVC)
+        target_compile_options(qt_gdi_test PRIVATE -fms-extensions)
+    endif()
+    add_test(NAME qt_gdi_test COMMAND qt_gdi_test)
+    set_tests_properties(qt_gdi_test PROPERTIES
         TIMEOUT 60
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()

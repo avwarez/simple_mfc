@@ -285,6 +285,7 @@ BOOL CWnd::DestroyWindow()
                 if (child) child->Detach();
             ExtraMap().erase(this);
         }
+        smfc_qt::ReleaseWndSurface(this);   // free the CDC paint buffer, if any
         HandleMap().erase(m_hWnd);
         m_hWnd = nullptr;
         w->deleteLater();       // Qt deletes the child widgets with the parent
