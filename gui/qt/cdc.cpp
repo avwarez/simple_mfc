@@ -225,6 +225,25 @@ void ReleaseWndSurface(const CWnd* owner)
 {
     Surfaces().erase(owner);
 }
+const QImage* BitmapImageFromHandle(HBITMAP h)
+{
+    // HBITMAP is the CGdiObject* token (CBitmap::operator HBITMAP), which is the
+    // GdiObjs() key; resolve it back to the bitmap's pixels.
+    const auto* g = reinterpret_cast<const CGdiObject*>(h);
+    const GdiObj* o = objOf(g);
+    return (o && o->kind == GdiObj::Bitmap) ? &o->image : nullptr;
+}
+bool BlitImageToDC(CDC* dc, int x, int y, const QImage& img, int dw, int dh)
+{
+    GdiSurface* s = surfOf(dc);
+    if (!s || img.isNull()) return false;
+    QPainter p(&s->image);
+    if (dw > 0 && dh > 0 && (dw != img.width() || dh != img.height()))
+        p.drawImage(QRect(x, y, dw, dh), img);
+    else
+        p.drawImage(QPoint(x, y), img);
+    return true;
+}
 } // namespace smfc_qt
 
 // ---------------------------------------------------------------------------
@@ -593,6 +612,31 @@ void CDC::FrameRect(LPCRECT lpRect, CBrush* pBrush)
     p.fillRect(QRect(r.left(), r.bottom(), r.width(), 1), col);
     p.fillRect(QRect(r.left(), r.top(), 1, r.height()), col);
     p.fillRect(QRect(r.right(), r.top(), 1, r.height()), col);
+}
+
+// --- icons ------------------------------------------------------------------
+// Blit an icon (resolved from the driver's icon registry) onto the surface.
+BOOL CDC::DrawIcon(int x, int y, HICON hIcon)
+{
+    const QImage* img = smfc_qt::IconImage(hIcon);
+    if (!img) return FALSE;
+    return smfc_qt::BlitImageToDC(this, x, y, *img) ? TRUE : FALSE;
+}
+BOOL CDC::DrawIcon(POINT point, HICON hIcon) { return DrawIcon(point.x, point.y, hIcon); }
+
+// DrawState renders an image/text in a given state. Only the plain (normal) and
+// icon/text cases are modelled; the disabled/embossed styles draw normally.
+BOOL CDC::DrawState(CPoint pt, CSize size, HICON hIcon, UINT, CBrush*)
+{
+    const QImage* img = smfc_qt::IconImage(hIcon);
+    if (!img) return FALSE;
+    return smfc_qt::BlitImageToDC(this, pt.x, pt.y, *img, size.cx, size.cy) ? TRUE : FALSE;
+}
+BOOL CDC::DrawState(CPoint pt, CSize size, LPCTSTR lpszText, UINT, BOOL, int nTextLen, CBrush*)
+{
+    if (!lpszText) return FALSE;
+    RECT r = {pt.x, pt.y, pt.x + size.cx, pt.y + size.cy};
+    return DrawText(lpszText, nTextLen > 0 ? nTextLen : -1, &r, 0) > 0 ? TRUE : FALSE;
 }
 
 CSize  CDC::SetWindowExt(int, int)   { return CSize(0, 0); }

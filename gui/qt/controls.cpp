@@ -11,13 +11,18 @@
 
 #include <QAbstractButton>
 #include <QComboBox>
+#include <QImage>
+#include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QPixmap>
 #include <QProgressBar>
 #include <QSlider>
 #include <QSpinBox>
 #include <QString>
 #include <QVariant>
+
+#include <unordered_map>
 
 namespace {
 template <class T>
@@ -327,12 +332,51 @@ UINT CSpinButtonCtrl::GetBase() const
 }
 
 // --- CStatic image accessors ----------------------------------------------
-// SetBitmap/SetIcon need a real GDI HBITMAP/HICON to display; the GDI layer
-// (CDC/CBitmap over QPainter/QPixmap, Phase 4) does not exist yet, so these are
-// deferred no-ops for now. CStatic's TEXT behaviour already works via CWnd
-// (SetWindowText -> the bound QLabel). Defined here so the surface is complete
-// and linkable; they gain real bodies when the GDI layer lands.
-HBITMAP CStatic::SetBitmap(HBITMAP) { return nullptr; }
-HBITMAP CStatic::GetBitmap() const  { return nullptr; }
-HICON   CStatic::SetIcon(HICON)     { return nullptr; }
-HICON   CStatic::GetIcon() const    { return nullptr; }
+// SetBitmap/SetIcon store the GDI handle and, when the control is bound to a
+// QLabel, render the image into it (bitmap via the CBitmap's QImage, icon via
+// the driver's icon registry). The handle is kept in a driver-side map keyed by
+// the CStatic* — the round-trip source of truth Get{Bitmap,Icon} returns — so it
+// works whether or not a widget is attached (real MFC stores it on the HWND).
+namespace {
+struct StaticImg { HBITMAP bmp = nullptr; HICON icon = nullptr; };
+std::unordered_map<const CStatic*, StaticImg>& StaticImgs()
+{
+    static std::unordered_map<const CStatic*, StaticImg> m;
+    return m;
+}
+// Show a QImage (or clear, if null) on the CStatic's bound QLabel, if any.
+void showOnLabel(const CStatic* self, const QImage* img)
+{
+    if (auto* lbl = as<QLabel>(self))
+        lbl->setPixmap(img ? QPixmap::fromImage(*img) : QPixmap());
+}
+} // namespace
+
+HBITMAP CStatic::SetBitmap(HBITMAP hBitmap)
+{
+    StaticImg& si = StaticImgs()[this];
+    const HBITMAP prev = si.bmp;
+    si.bmp = hBitmap;
+    si.icon = nullptr;
+    showOnLabel(this, smfc_qt::BitmapImageFromHandle(hBitmap));
+    return prev;
+}
+HBITMAP CStatic::GetBitmap() const
+{
+    auto it = StaticImgs().find(this);
+    return it == StaticImgs().end() ? nullptr : it->second.bmp;
+}
+HICON CStatic::SetIcon(HICON hIcon)
+{
+    StaticImg& si = StaticImgs()[this];
+    const HICON prev = si.icon;
+    si.icon = hIcon;
+    si.bmp = nullptr;
+    showOnLabel(this, smfc_qt::IconImage(hIcon));
+    return prev;
+}
+HICON CStatic::GetIcon() const
+{
+    auto it = StaticImgs().find(this);
+    return it == StaticImgs().end() ? nullptr : it->second.icon;
+}

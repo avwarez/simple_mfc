@@ -226,6 +226,7 @@ if (SIMPLE_MFC_GUI STREQUAL "qt")
         gui/qt/ddx.cpp
         gui/qt/controls.cpp
         gui/qt/cdc.cpp
+        gui/qt/imagelist.cpp
     )
     add_library(simple_mfc::gui_qt ALIAS simple_mfc_gui_qt)
     target_link_libraries(simple_mfc_gui_qt PUBLIC simple_mfc::gui_core Qt5::Widgets)

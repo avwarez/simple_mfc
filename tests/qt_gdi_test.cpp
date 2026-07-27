@@ -165,6 +165,53 @@ int main(int argc, char** argv)
         bmp.DeleteObject();
     }
 
+    // --- Slice 4: CImageList (Add/Draw/ExtractIcon) + CDC::DrawIcon -------
+    {
+        const COLORREF teal = RGBv(0, 200, 200);
+        // Paint a 16x16 image into a bitmap through a memory DC.
+        CDC memDC;
+        memDC.CreateCompatibleDC(&dc);
+        CBitmap glyph;
+        glyph.CreateCompatibleBitmap(&dc, 16, 16);
+        CBitmap* pOld = memDC.SelectObject(&glyph);
+        memDC.FillSolidRect(0, 0, 16, 16, teal);
+        memDC.SelectObject(pOld);
+
+        CImageList il;
+        CHECK(il.Create(16, 16, 0, 1, 1) == TRUE);
+        CHECK(il.m_hImageList != nullptr);
+        const int idx = il.Add(&glyph, RGBv(255, 0, 255) /*magenta key: absent*/);
+        CHECK(idx == 0);
+        CHECK(il.GetImageCount() == 1);
+
+        // Draw image 0 onto the window at (250, 100).
+        POINT at = {250, 100};
+        CHECK(il.Draw(&dc, 0, at, 0) == TRUE);
+        QColor drawn = img->pixelColor(258, 108);
+        CHECK(drawn.green() > 120 && drawn.blue() > 120 && drawn.red() < 80);
+
+        // ExtractIcon mints a drawable HICON; DrawIcon blits it at (250, 130).
+        HICON hIco = il.ExtractIcon(0);
+        CHECK(hIco != nullptr);
+        CHECK(dc.DrawIcon(250, 130, hIco) == TRUE);
+        QColor ico = img->pixelColor(258, 138);
+        CHECK(ico.green() > 120 && ico.blue() > 120 && ico.red() < 80);
+
+        // CStatic image accessors: handle round-trip (unbound control).
+        CStatic stat;
+        CHECK(stat.GetBitmap() == nullptr);
+        HBITMAP hbm = (HBITMAP)glyph.m_hObject;
+        CHECK(stat.SetBitmap(hbm) == nullptr);   // no previous
+        CHECK(stat.GetBitmap() == hbm);
+        CHECK(stat.SetIcon(hIco) == nullptr);    // switching to icon clears bitmap
+        CHECK(stat.GetIcon() == hIco);
+        CHECK(stat.GetBitmap() == nullptr);
+
+        il.DeleteImageList();
+        memDC.DeleteDC();
+        glyph.DeleteObject();
+    }
+
     penRed.DeleteObject();
     penNull.DeleteObject();
     brGreen.DeleteObject();
@@ -178,6 +225,6 @@ int main(int argc, char** argv)
     if (g_failures == 0)
         std::printf("qt_gdi_test: CDC/CPaintDC fill/pixel/line/text/3drect + "
                     "CPen/CBrush/CFont SelectObject + CBitmap/CreateCompatibleDC/"
-                    "BitBlt CMemDC round-trip OK\n");
+                    "BitBlt CMemDC round-trip + CImageList/DrawIcon/CStatic OK\n");
     return g_failures == 0 ? 0 : 1;
 }

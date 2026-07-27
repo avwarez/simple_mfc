@@ -24,6 +24,24 @@ QWidget* WidgetOf(const CWnd* w);
 QImage* WndSurfaceImage(const CWnd* owner);
 void    ReleaseWndSurface(const CWnd* owner);
 
+// The QImage behind a CBitmap handle (HBITMAP == the CGdiObject* token), or
+// nullptr if the handle is not a live bitmap. Implemented in cdc.cpp, which owns
+// the GdiObjs() map; lets imagelist.cpp / controls.cpp read a bitmap's pixels.
+const QImage* BitmapImageFromHandle(HBITMAP h);
+
+// Blit an image onto a window/memory DC's offscreen surface at (x,y) (optionally
+// scaled to dw x dh; dw<=0 means "native size"). False if dc has no surface.
+// Implemented in cdc.cpp (owns surfOf); called by CImageList::Draw/DrawEx.
+bool BlitImageToDC(CDC* dc, int x, int y, const QImage& img, int dw = 0, int dh = 0);
+
+// --- icon registry (imagelist.cpp) -----------------------------------------
+// Icons have no Win32 producer in the portable build (no LoadIcon/CWinApp yet),
+// so a drawable HICON is minted here from pixels (e.g. CImageList::ExtractIcon).
+// RegisterIcon hands back an opaque HICON token; IconImage resolves it back to
+// the pixels (nullptr if unknown), for CDC::DrawIcon / CStatic::SetIcon.
+HICON         RegisterIcon(const QImage& img);
+const QImage* IconImage(HICON hIcon);
+
 // The radio-button group that DDX_Radio(pDX, nIDC, ...) addresses: the control
 // ids, in template order, of the buttons belonging to nIDC's group. The group
 // starts at nIDC and runs until the next control carrying WS_GROUP (Win32's
