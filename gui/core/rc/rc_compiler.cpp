@@ -112,8 +112,27 @@ const std::unordered_map<std::string, uint32_t>& styleConstants()
         {"TVS_SINGLEEXPAND", 0x0400u}, {"TVS_FULLROWSELECT", 0x1000u},
         {"TVS_NOSCROLL", 0x2000u}, {"TVS_NONEVENHEIGHT", 0x4000u},
         // TCS_* (tab)
-        {"TCS_TABS", 0x0000u}, {"TCS_BUTTONS", 0x0100u},
-        {"TCS_MULTILINE", 0x0200u}, {"TCS_FIXEDWIDTH", 0x0400u},
+        {"TCS_SCROLLOPPOSITE", 0x0001u}, {"TCS_BOTTOM", 0x0002u},
+        {"TCS_RIGHT", 0x0002u}, {"TCS_MULTISELECT", 0x0004u},
+        {"TCS_FLATBUTTONS", 0x0008u}, {"TCS_FORCEICONLEFT", 0x0010u},
+        {"TCS_FORCELABELLEFT", 0x0020u}, {"TCS_HOTTRACK", 0x0040u},
+        {"TCS_VERTICAL", 0x0080u}, {"TCS_TABS", 0x0000u},
+        {"TCS_BUTTONS", 0x0100u}, {"TCS_SINGLELINE", 0x0000u},
+        {"TCS_MULTILINE", 0x0200u}, {"TCS_RIGHTJUSTIFY", 0x0000u},
+        {"TCS_FIXEDWIDTH", 0x0400u}, {"TCS_RAGGEDRIGHT", 0x0800u},
+        {"TCS_FOCUSONBUTTONDOWN", 0x1000u}, {"TCS_OWNERDRAWFIXED", 0x2000u},
+        {"TCS_TOOLTIPS", 0x4000u}, {"TCS_FOCUSNEVER", 0x8000u},
+        // DTS_* (date/time picker), ACS_* (animation), extra TVS_/WS_EX_
+        {"DTS_UPDOWN", 0x0001u}, {"DTS_SHOWNONE", 0x0002u},
+        {"DTS_SHORTDATEFORMAT", 0x0000u}, {"DTS_LONGDATEFORMAT", 0x0004u},
+        {"DTS_SHORTDATECENTURYFORMAT", 0x000Cu}, {"DTS_TIMEFORMAT", 0x0009u},
+        {"DTS_APPCANPARSE", 0x0010u}, {"DTS_RIGHTALIGN", 0x0020u},
+        {"ACS_CENTER", 0x0001u}, {"ACS_TRANSPARENT", 0x0002u},
+        {"ACS_AUTOPLAY", 0x0004u}, {"ACS_TIMER", 0x0008u},
+        {"TVS_INFOTIP", 0x0800u}, {"TVS_RTLREADING", 0x0040u},
+        {"TVS_NOTOOLTIPS", 0x0080u}, {"TVS_NOHSCROLL", 0x8000u},
+        {"WS_EX_LEFTSCROLLBAR", 0x00004000u}, {"WS_EX_RTLREADING", 0x00002000u},
+        {"WS_EX_CONTROLPARENT", 0x00010000u}, {"WS_EX_MDICHILD", 0x00000040u},
         // Slider / progress / spin
         {"TBS_HORZ", 0x0000u}, {"TBS_VERT", 0x0002u},
         {"TBS_AUTOTICKS", 0x0001u}, {"TBS_BOTH", 0x0008u},
@@ -404,18 +423,26 @@ private:
     }
 
     // Parse a style expression (TOK | TOK | ..). Returns the OR of resolved
-    // constants; unresolved token names are appended to `unresolved`.
+    // constants; unresolved token names are appended to `unresolved`. Handles
+    // the RC `NOT STYLE` form, which removes a style bit from the (control's
+    // default) set -- here it simply clears that bit from the accumulator.
     uint32_t parseStyleExpr(std::vector<std::string>& unresolved)
     {
         uint32_t acc = 0;
         for (;;) {
+            bool negate = false;
+            if (cur().kind == TokKind::Id && cur().text == "NOT") {
+                negate = true;
+                ++i_;
+            }
             if (cur().kind == TokKind::Number) {
-                acc |= (uint32_t)cur().number;
+                const uint32_t bit = (uint32_t)cur().number;
+                if (negate) acc &= ~bit; else acc |= bit;
                 ++i_;
             } else if (cur().kind == TokKind::Id) {
                 bool f = false;
                 long v = resolveName(cur().text, f);
-                if (f) acc |= (uint32_t)v;
+                if (f) { if (negate) acc &= ~(uint32_t)v; else acc |= (uint32_t)v; }
                 else unresolved.push_back(cur().text);
                 ++i_;
             } else {

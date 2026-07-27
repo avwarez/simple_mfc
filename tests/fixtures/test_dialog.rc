@@ -26,3 +26,22 @@ BEGIN
     CONTROL         "",IDC_PROGRESS_BAR,"msctls_progress32",
                     PBS_SMOOTH | APP_CUSTOM_STYLE,7,116,206,10
 END
+
+// Exercises the RC `NOT STYLE` form (as real emule.rc does heavily). If the
+// style parser mishandles NOT it desyncs and eats IDD_AFTER below.
+IDD_NOTTEST DIALOGEX 0, 0, 100, 60
+STYLE DS_SETFONT | WS_POPUP | WS_CAPTION
+CAPTION "Not Test"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    PUSHBUTTON      "Hidden",IDC_HIDDEN_BTN,10,10,50,14,NOT WS_VISIBLE | WS_TABSTOP
+    EDITTEXT        IDC_NAME_EDIT,10,30,80,12,ES_AUTOHSCROLL | NOT WS_BORDER | NOT WS_TABSTOP
+END
+
+IDD_AFTER DIALOGEX 0, 0, 80, 40
+STYLE DS_SETFONT | WS_CHILD
+CAPTION "After"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    LTEXT           "still here",IDC_AFTER_LABEL,7,7,66,8
+END

@@ -55,7 +55,7 @@ int main()
     // --- dialog parse ---------------------------------------------------
     ParseResult res = ParseResourceScript(slurp(dir + "/test_dialog.rc"), syms);
     CHECK(res.ok());
-    CHECK(res.dialogs.size() == 1);
+    CHECK(res.dialogs.size() == 3);   // IDD_SAMPLE, IDD_NOTTEST, IDD_AFTER
     if (res.dialogs.empty()) { std::printf("no dialog parsed\n"); return 1; }
 
     const DialogDesc& d = res.dialogs[0];
@@ -136,6 +136,30 @@ int main()
         CHECK((prog->style & 0x0001u) != 0);   // PBS_SMOOTH still resolved
     }
 
+    // --- RC `NOT STYLE` + no-runaway guard ------------------------------
+    const DialogDesc& dn = res.dialogs[1];
+    CHECK(dn.idName == "IDD_NOTTEST");
+    const ControlDesc* hidden = find(dn, 1102);   // IDC_HIDDEN_BTN
+    CHECK(hidden != nullptr);
+    if (hidden) {
+        // NOT WS_VISIBLE removed the bit; WS_TABSTOP remains.
+        CHECK((hidden->style & 0x10000000u) == 0);  // WS_VISIBLE cleared
+        CHECK((hidden->style & 0x00010000u) != 0);  // WS_TABSTOP kept
+    }
+    const ControlDesc* ne = find(dn, 1001);        // IDC_NAME_EDIT (reused)
+    CHECK(ne != nullptr);
+    if (ne) {
+        CHECK((ne->style & 0x80u) != 0);            // ES_AUTOHSCROLL kept
+        CHECK((ne->style & 0x00800000u) == 0);      // NOT WS_BORDER
+        CHECK((ne->style & 0x00010000u) == 0);      // NOT WS_TABSTOP
+    }
+    // IDD_AFTER must survive: if NOT desynced the parser, it would have been
+    // eaten by IDD_NOTTEST's runaway (the real emule.rc failure mode).
+    const DialogDesc& da = res.dialogs[2];
+    CHECK(da.idName == "IDD_AFTER");
+    CHECK(da.controls.size() == 1);
+    CHECK(find(da, 1103) != nullptr);              // IDC_AFTER_LABEL
+
     // --- emitter --------------------------------------------------------
     std::string cpp = EmitGeneratedCpp(res.dialogs, "test_dialog.rc");
     CHECK(cpp.find("#include \"dialog_ir.h\"") != std::string::npos);
@@ -145,6 +169,6 @@ int main()
 
     if (g_failures == 0)
         std::printf("rc_compiler_test: parser + symbols + emitter OK "
-                    "(1 dialog, 11 controls)\n");
+                    "(3 dialogs incl. NOT-style + no-runaway guard)\n");
     return g_failures == 0 ? 0 : 1;
 }
