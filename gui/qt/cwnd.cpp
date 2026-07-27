@@ -10,9 +10,33 @@
 // Milestone-1 vertical slice needs is fleshed out; the rest are faithful
 // no-op/DefWindowProc defaults (real MFC's defaults are the same shape).
 #include "afxwin.h"
+#include "smfc_qt.h"
+#include "dialog_ir.h"
 
+#include <QAbstractButton>
+#include <QCheckBox>
+#include <QComboBox>
+#include <QDialog>
+#include <QFont>
+#include <QFontMetrics>
+#include <QGroupBox>
+#include <QLabel>
+#include <QLineEdit>
+#include <QListWidget>
+#include <QProgressBar>
+#include <QPushButton>
+#include <QRadioButton>
+#include <QScrollBar>
+#include <QSlider>
+#include <QString>
+#include <QTreeWidget>
+#include <QVariant>
 #include <QWidget>
+
+#include <memory>
+#include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace {
 // QWidget* -> CWnd* so a Qt event/signal can find the C++ window object.
@@ -22,6 +46,104 @@ std::unordered_map<const void*, CWnd*>& HandleMap()
     return m;
 }
 inline QWidget* AsQWidget(HWND h) { return reinterpret_cast<QWidget*>(h); }
+
+// Driver-side per-window state. The frozen MFC interface (include/) carries no
+// place to hang the built template id or the id->control map, and it must not
+// (encapsulation policy: internal mechanisms stay driver-private with our own
+// shapes). So it lives here, keyed by the owning CWnd*.
+struct WndExtra {
+    int templateId = 0;                       // CDialog's IDD, if any
+    std::unordered_map<int, CWnd*> idToWnd;   // control id -> its CWnd wrapper
+    std::vector<std::unique_ptr<CWnd>> childWnds; // owns the control wrappers
+};
+
+std::unordered_map<const CWnd*, WndExtra>& ExtraMap()
+{
+    static std::unordered_map<const CWnd*, WndExtra> m;
+    return m;
+}
+WndExtra& Extra(const CWnd* w) { return ExtraMap()[w]; }
+WndExtra* ExtraIfAny(const CWnd* w)
+{
+    auto it = ExtraMap().find(w);
+    return it == ExtraMap().end() ? nullptr : &it->second;
+}
+
+QString ToQString(const std::string& s) { return QString::fromStdString(s); }
+
+// Dialog units -> pixels (Win32 MapDialogRect): x*baseX/4, y*baseY/8, where
+// the base units come from the dialog font metrics. Computed once per build.
+struct BaseUnits { int x = 4; int y = 8; };
+BaseUnits dialogBaseUnits(const smfc::DialogDesc& d)
+{
+    QFont f(ToQString(d.fontFace), d.fontSize > 0 ? d.fontSize : 8);
+    QFontMetrics fm(f);
+    BaseUnits b;
+    b.x = fm.averageCharWidth();
+    if (b.x <= 0) b.x = fm.horizontalAdvance(QLatin1Char('X'));
+    if (b.x <= 0) b.x = 6;
+    b.y = fm.height();
+    if (b.y <= 0) b.y = 13;
+    return b;
+}
+QRect duToPx(const smfc::ControlDesc& c, const BaseUnits& b)
+{
+    return QRect((c.x * b.x) / 4, (c.y * b.y) / 8,
+                 (c.cx * b.x) / 4, (c.cy * b.y) / 8);
+}
+
+// Create the concrete Qt widget for a neutral control, set its caption, and
+// (for buttons) report that it should be wired to the owner's message map.
+QWidget* makeControlWidget(const smfc::ControlDesc& c, QWidget* parent,
+                           bool& isButton)
+{
+    using smfc::ControlKind;
+    const QString text = ToQString(c.text);
+    isButton = false;
+    switch (c.kind) {
+        case ControlKind::DefButton:
+        case ControlKind::Button: {
+            auto* w = new QPushButton(text, parent);
+            if (c.kind == ControlKind::DefButton) w->setDefault(true);
+            isButton = true;
+            return w;
+        }
+        case ControlKind::CheckBox: {
+            auto* w = new QCheckBox(text, parent);
+            isButton = true;
+            return w;
+        }
+        case ControlKind::RadioButton: {
+            auto* w = new QRadioButton(text, parent);
+            isButton = true;
+            return w;
+        }
+        case ControlKind::GroupBox:
+            return new QGroupBox(text, parent);
+        case ControlKind::Static:
+        case ControlKind::StaticIcon:
+            return new QLabel(text, parent);
+        case ControlKind::Edit:
+            return new QLineEdit(text, parent);
+        case ControlKind::ListBox:
+            return new QListWidget(parent);
+        case ControlKind::ComboBox:
+            return new QComboBox(parent);
+        case ControlKind::ScrollBar:
+            return new QScrollBar(parent);
+        case ControlKind::Custom:
+        default: {
+            // Map the well-known Win32 common-control classes; anything else
+            // becomes a bare placeholder QWidget so geometry/ids still work.
+            const std::string& k = c.windowClass;
+            if (k == "SysListView32")   return new QTreeWidget(parent);
+            if (k == "SysTreeView32")   return new QTreeWidget(parent);
+            if (k == "msctls_progress32") return new QProgressBar(parent);
+            if (k == "msctls_trackbar32") return new QSlider(parent);
+            return new QWidget(parent);
+        }
+    }
+}
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -100,19 +222,70 @@ BOOL CWnd::DestroyWindow()
 {
     if (QWidget* w = AsQWidget(m_hWnd))
     {
+        // Release the built child-control wrappers and their handle-map
+        // entries, then the window itself.
+        if (WndExtra* ex = ExtraIfAny(this)) {
+            for (auto& child : ex->childWnds)
+                if (child) child->Detach();
+            ExtraMap().erase(this);
+        }
         HandleMap().erase(m_hWnd);
         m_hWnd = nullptr;
-        w->deleteLater();
+        w->deleteLater();       // Qt deletes the child widgets with the parent
         return TRUE;
     }
     return FALSE;
 }
 
-CWnd* CWnd::GetDlgItem(int /*nID*/) const
+CWnd* CWnd::GetDlgItem(int nID) const
 {
-    // Resolved through the id->widget map the .rc-driven dialog builder sets
-    // up (Phase 3); not needed by the hand-wired vertical slice.
+    // Resolved through the id->control map the .rc-driven dialog builder set
+    // up (see buildDialogFromTemplate). Returns the control's CWnd wrapper,
+    // exactly as real MFC's GetDlgItem returns a CWnd* for the child.
+    if (const WndExtra* ex = ExtraIfAny(this)) {
+        auto it = ex->idToWnd.find(nID);
+        if (it != ex->idToWnd.end()) return it->second;
+    }
     return nullptr;
+}
+
+// --- Control text / geometry / enable (operate on the bound QWidget) -------
+void CWnd::SetWindowText(LPCTSTR lpszString)
+{
+    if (QWidget* w = AsQWidget(m_hWnd)) {
+        const QString s = lpszString ? QString::fromWCharArray(lpszString)
+                                     : QString();
+        // QLabel/QAbstractButton/QLineEdit expose a "text" property; a plain
+        // window (dialog) does not, so fall back to the window title.
+        if (!w->setProperty("text", s))
+            w->setWindowTitle(s);
+    }
+}
+
+void CWnd::GetWindowText(CString& rString) const
+{
+    QString s;
+    if (QWidget* w = AsQWidget(m_hWnd)) {
+        const QVariant v = w->property("text");
+        s = v.isValid() ? v.toString() : w->windowTitle();
+    }
+    rString = s.toStdWString().c_str();
+}
+
+void CWnd::MoveWindow(int x, int y, int nWidth, int nHeight, BOOL /*bRepaint*/)
+{
+    if (QWidget* w = AsQWidget(m_hWnd))
+        w->setGeometry(x, y, nWidth, nHeight);
+}
+
+BOOL CWnd::EnableWindow(BOOL bEnable)
+{
+    if (QWidget* w = AsQWidget(m_hWnd)) {
+        const BOOL wasDisabled = w->isEnabled() ? FALSE : TRUE;
+        w->setEnabled(bEnable != FALSE);
+        return wasDisabled;   // real MFC returns the previous *disabled* state
+    }
+    return FALSE;
 }
 
 // Generic create surfaces: the concrete control/dialog builders (Phase 3)
@@ -184,18 +357,97 @@ void   CWnd::OnEnable(BOOL) {}
 void   CWnd::OnActivate(UINT, CWnd*, BOOL) {}
 
 // ---------------------------------------------------------------------------
-// CDialog — minimal, enough to instantiate and to run the slice. The real
-// .rc-driven builder (DoModal building the template's controls + DDX) is
-// Phase 3.
+// Dialog builder — turns a neutral dialog-IR template (from the .rc compiler)
+// into a live QDialog with the template's controls, correct IDC_ ids and
+// geometry, and buttons wired into the owner's message map. This is the Qt
+// driver "consuming the IR": the same IR a future wx driver would consume.
+// ---------------------------------------------------------------------------
+namespace {
+QDialog* buildDialogFromTemplate(CWnd* self, int idd)
+{
+    const smfc::DialogDesc* d = smfc::FindDialog(idd);
+    if (!d)
+        return nullptr;   // no .rc supplied this dialog
+
+    auto* qd = new QDialog();
+    qd->setWindowTitle(ToQString(d->caption));
+    const BaseUnits b = dialogBaseUnits(*d);
+    if (d->cx > 0 && d->cy > 0)
+        qd->resize((d->cx * b.x) / 4, (d->cy * b.y) / 8);
+
+    WndExtra& ex = Extra(self);
+    ex.templateId = idd;
+    ex.idToWnd.clear();
+    ex.childWnds.clear();
+
+    for (const auto& c : d->controls) {
+        bool isButton = false;
+        QWidget* cw = makeControlWidget(c, qd, isButton);
+        cw->setGeometry(duToPx(c, b));
+
+        // Wrap each control in a CWnd so GetDlgItem/DDX_Control get a CWnd*.
+        auto wnd = std::make_unique<CWnd>();
+        wnd->Attach(reinterpret_cast<HWND>(cw));
+        if (c.id != 0 && c.id != -1)   // -1 == IDC_STATIC: unaddressable
+            ex.idToWnd[c.id] = wnd.get();
+        ex.childWnds.push_back(std::move(wnd));
+
+        // Route button notifications through the owner's message map, so an
+        // ON_BN_CLICKED(id, handler) in the derived dialog just fires.
+        if (isButton && c.id != 0) {
+            if (auto* qb = qobject_cast<QAbstractButton*>(cw))
+                smfc_qt::WireButton(self, qb, static_cast<UINT>(c.id));
+        }
+    }
+
+    self->Attach(reinterpret_cast<HWND>(qd));  // bind the dialog to its QWidget
+    return qd;
+}
+} // namespace
+
+// ---------------------------------------------------------------------------
+// CDialog — now IR-driven. The IDD is captured at construction (driver-side,
+// since the frozen interface has nowhere to store it) and used by Create/
+// DoModal to build the template. DDX execution + typed control classes are
+// the next step.
 // ---------------------------------------------------------------------------
 CDialog::CDialog() {}
-CDialog::CDialog(UINT /*nIDTemplate*/, CWnd* /*pParentWnd*/) {}
+CDialog::CDialog(UINT nIDTemplate, CWnd* /*pParentWnd*/)
+{
+    Extra(static_cast<CWnd*>(this)).templateId = static_cast<int>(nIDTemplate);
+}
 CDialog::CDialog(LPCTSTR /*lpszTemplateName*/, CWnd* /*pParentWnd*/) {}
 
-INT_PTR CDialog::DoModal() { return -1; }               // 2 == IDCANCEL; real impl Phase 3
-void    CDialog::EndDialog(int) {}
-BOOL    CDialog::Create(LPCTSTR, CWnd*) { return FALSE; }
-BOOL    CDialog::Create(UINT, CWnd*) { return FALSE; }
-BOOL    CDialog::OnInitDialog() { return TRUE; }
-void    CDialog::OnOK() {}
-void    CDialog::OnCancel() {}
+INT_PTR CDialog::DoModal()
+{
+    const int idd = Extra(static_cast<CWnd*>(this)).templateId;
+    QDialog* qd = buildDialogFromTemplate(this, idd);
+    if (!qd)
+        return -1;
+    OnInitDialog();
+    return static_cast<INT_PTR>(qd->exec());   // EndDialog -> QDialog::done
+}
+
+BOOL CDialog::Create(UINT nIDTemplate, CWnd* /*pParentWnd*/)
+{
+    // Modeless build: same template construction as DoModal, but non-blocking
+    // (this is also what a headless test drives without an event loop).
+    QDialog* qd = buildDialogFromTemplate(this, static_cast<int>(nIDTemplate));
+    if (!qd)
+        return FALSE;
+    OnInitDialog();
+    qd->show();
+    return TRUE;
+}
+
+BOOL CDialog::Create(LPCTSTR, CWnd*) { return FALSE; }
+
+void CDialog::EndDialog(int nResult)
+{
+    if (auto* qd = qobject_cast<QDialog*>(AsQWidget(m_hWnd)))
+        qd->done(nResult);
+}
+
+BOOL CDialog::OnInitDialog() { return TRUE; }
+void CDialog::OnOK()     { EndDialog(1 /*IDOK*/); }
+void CDialog::OnCancel() { EndDialog(2 /*IDCANCEL*/); }

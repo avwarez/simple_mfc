@@ -172,6 +172,25 @@ if (NOT SIMPLE_MFC_GUI STREQUAL "none" OR SIMPLE_MFC_BUILD_RC_TESTS)
 
     add_executable(smfc_rc gui/core/rc/smfc_rc_main.cpp)
     target_link_libraries(smfc_rc PRIVATE simple_mfc_rc)
+
+    # Build-time codegen of the shared test fixture. Declared once here (so its
+    # OUTPUT is unique) and consumed by rc_codegen_test and, under
+    # SIMPLE_MFC_GUI=qt, qt_dialog_test -- the very step an app's build performs
+    # on its own .rc. Only wired up when a consumer test is actually built.
+    if (SIMPLE_MFC_BUILD_RC_TESTS OR SIMPLE_MFC_GUI STREQUAL "qt")
+        set(SMFC_GEN_TEST_DIALOGS
+            ${CMAKE_CURRENT_BINARY_DIR}/generated_test_dialogs.cpp)
+        add_custom_command(
+            OUTPUT ${SMFC_GEN_TEST_DIALOGS}
+            COMMAND smfc_rc
+                --rc ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/test_dialog.rc
+                --header ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/test_resource.h
+                --out ${SMFC_GEN_TEST_DIALOGS}
+            DEPENDS smfc_rc
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/test_dialog.rc
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/test_resource.h
+            COMMENT "smfc_rc: compiling test_dialog.rc -> neutral dialog IR")
+    endif()
 endif()
 
 if (SIMPLE_MFC_BUILD_RC_TESTS)
@@ -185,22 +204,11 @@ if (SIMPLE_MFC_BUILD_RC_TESTS)
     add_test(NAME rc_compiler_test COMMAND rc_compiler_test)
     set_tests_properties(rc_compiler_test PROPERTIES TIMEOUT 60)
 
-    # Stage 2: run smfc_rc on the fixture at BUILD time, compile its generated
-    # C++ into the test, and query the registry at run time -- the full
-    # .rc -> generated code -> in-memory template pipeline, end to end.
-    set(_smfc_gen ${CMAKE_CURRENT_BINARY_DIR}/generated_test_dialogs.cpp)
-    add_custom_command(
-        OUTPUT ${_smfc_gen}
-        COMMAND smfc_rc
-            --rc ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/test_dialog.rc
-            --header ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/test_resource.h
-            --out ${_smfc_gen}
-        DEPENDS smfc_rc
-            ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/test_dialog.rc
-            ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/test_resource.h
-        COMMENT "smfc_rc: compiling test_dialog.rc -> neutral dialog IR")
-
-    add_executable(rc_codegen_test tests/rc_codegen_test.cpp ${_smfc_gen})
+    # Stage 2: compile the fixture's generated C++ (produced above) into the
+    # test and query the registry at run time -- the full .rc -> generated
+    # code -> in-memory template pipeline, end to end.
+    add_executable(rc_codegen_test
+        tests/rc_codegen_test.cpp ${SMFC_GEN_TEST_DIALOGS})
     target_link_libraries(rc_codegen_test PRIVATE simple_mfc::dialog_ir)
     add_test(NAME rc_codegen_test COMMAND rc_codegen_test)
     set_tests_properties(rc_codegen_test PROPERTIES TIMEOUT 60)
@@ -232,6 +240,20 @@ if (SIMPLE_MFC_GUI STREQUAL "qt")
     endif()
     add_test(NAME qt_slice_test COMMAND qt_slice_test)
     set_tests_properties(qt_slice_test PROPERTIES
+        TIMEOUT 60
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    # Driver-consumes-IR: build a CDialog from the .rc compiler's generated
+    # template (IDD_SAMPLE) and exercise GetDlgItem / text / click routing on
+    # the real QWidgets. smfc_rc generated the template above at build time.
+    add_executable(qt_dialog_test
+        tests/qt_dialog_test.cpp ${SMFC_GEN_TEST_DIALOGS})
+    target_link_libraries(qt_dialog_test PRIVATE simple_mfc::gui_qt)
+    if (NOT MSVC)
+        target_compile_options(qt_dialog_test PRIVATE -fms-extensions)
+    endif()
+    add_test(NAME qt_dialog_test COMMAND qt_dialog_test)
+    set_tests_properties(qt_dialog_test PROPERTIES
         TIMEOUT 60
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()
