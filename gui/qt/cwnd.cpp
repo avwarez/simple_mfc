@@ -34,6 +34,7 @@
 #include <QSlider>
 #include <QSpinBox>
 #include <QString>
+#include <QHeaderView>
 #include <QTreeWidget>
 #include <QVariant>
 #include <QWidget>
@@ -200,7 +201,16 @@ QWidget* makeControlWidget(const smfc::ControlDesc& c, QWidget* parent,
             // Map the well-known Win32 common-control classes; anything else
             // becomes a bare placeholder QWidget so geometry/ids still work.
             const std::string& k = c.windowClass;
-            if (k == "SysListView32")   return new QTreeWidget(parent);
+            if (k == "SysListView32") {
+                auto* tree = new QTreeWidget(parent);
+                // A list starts with no columns: InsertColumn defines them. Qt
+                // gives a QTreeWidget one column labelled "1" and falls back to
+                // that number whenever the header text is empty, so the header
+                // stays hidden until there is something real to put in it.
+                tree->header()->setVisible(false);
+                tree->setRootIsDecorated(false);   // a list, not a tree
+                return tree;
+            }
             if (k == "SysTreeView32")   return new QTreeWidget(parent);
             if (k == "msctls_progress32") return new QProgressBar(parent);
             if (k == "msctls_trackbar32") return new QSlider(parent);
@@ -424,6 +434,35 @@ void CWnd::GetWindowText(CString& rString) const
         s = v.isValid() ? v.toString() : w->windowTitle();
     }
     rString = s.toStdWString().c_str();
+}
+
+// The client area in client coordinates: left/top are always zero, so this
+// reports the size only, which is what drawing code needs it for.
+void CWnd::GetClientRect(LPRECT lpRect) const
+{
+    if (lpRect == nullptr)
+        return;
+    lpRect->left = lpRect->top = lpRect->right = lpRect->bottom = 0;
+    if (QWidget* w = smfc_qt::WidgetOf(this)) {
+        lpRect->right = w->width();
+        lpRect->bottom = w->height();
+    }
+}
+
+// The window rectangle in SCREEN coordinates, which is what distinguishes it
+// from GetClientRect.
+void CWnd::GetWindowRect(LPRECT lpRect) const
+{
+    if (lpRect == nullptr)
+        return;
+    lpRect->left = lpRect->top = lpRect->right = lpRect->bottom = 0;
+    if (QWidget* w = smfc_qt::WidgetOf(this)) {
+        const QPoint tl = w->mapToGlobal(QPoint(0, 0));
+        lpRect->left = tl.x();
+        lpRect->top = tl.y();
+        lpRect->right = tl.x() + w->width();
+        lpRect->bottom = tl.y() + w->height();
+    }
 }
 
 void CWnd::MoveWindow(int x, int y, int nWidth, int nHeight, BOOL /*bRepaint*/)

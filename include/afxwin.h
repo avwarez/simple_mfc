@@ -269,6 +269,68 @@ using LPMSG = MSG*;
 #define STN_CLICKED          0
 #define STN_DBLCLK           1
 
+// COLORREF packing and the ShowWindow commands. Same POSIX-shim rationale as
+// the WM_* block above: <wingdi.h> and <winuser.h> supply these on Windows.
+// A COLORREF is 0x00BBGGRR, and application code both builds one with RGB()
+// and takes it apart with the GetXValue macros, so all four have to agree.
+#define RGB(r, g, b)  ((COLORREF)(((unsigned char)(r)) \
+                      | ((unsigned short)((unsigned char)(g)) << 8) \
+                      | (((unsigned long)(unsigned char)(b)) << 16)))
+#define GetRValue(rgb)  ((unsigned char)(rgb))
+#define GetGValue(rgb)  ((unsigned char)(((unsigned short)(rgb)) >> 8))
+#define GetBValue(rgb)  ((unsigned char)((rgb) >> 16))
+
+// Background modes for CDC::SetBkMode.
+#define TRANSPARENT             1
+#define OPAQUE                  2
+
+// CWnd::ShowWindow commands.
+#define SW_HIDE                 0
+#define SW_SHOWNORMAL           1
+#define SW_NORMAL               1
+#define SW_SHOWMINIMIZED        2
+#define SW_SHOWMAXIMIZED        3
+#define SW_MAXIMIZE             3
+#define SW_SHOWNOACTIVATE       4
+#define SW_SHOW                 5
+#define SW_MINIMIZE             6
+#define SW_SHOWMINNOACTIVE      7
+#define SW_SHOWNA               8
+#define SW_RESTORE              9
+#define SW_SHOWDEFAULT          10
+
+// MessageBox flags and the standard command ids its buttons return. Same
+// POSIX-shim rationale as the WM_* block above: on Windows these come from
+// <winuser.h>, and the values are the real ones because application code
+// combines them by OR and compares the result against IDYES/IDOK by value.
+#define MB_OK                   0x00000000
+#define MB_OKCANCEL             0x00000001
+#define MB_ABORTRETRYIGNORE     0x00000002
+#define MB_YESNOCANCEL          0x00000003
+#define MB_YESNO                0x00000004
+#define MB_RETRYCANCEL          0x00000005
+#define MB_TYPEMASK             0x0000000F
+#define MB_ICONHAND             0x00000010
+#define MB_ICONERROR            MB_ICONHAND
+#define MB_ICONSTOP             MB_ICONHAND
+#define MB_ICONQUESTION         0x00000020
+#define MB_ICONEXCLAMATION      0x00000030
+#define MB_ICONWARNING          MB_ICONEXCLAMATION
+#define MB_ICONASTERISK         0x00000040
+#define MB_ICONINFORMATION      MB_ICONASTERISK
+#define MB_ICONMASK             0x000000F0
+#define MB_DEFBUTTON1           0x00000000
+#define MB_DEFBUTTON2           0x00000100
+#define MB_DEFBUTTON3           0x00000200
+
+#define IDOK                    1
+#define IDCANCEL                2
+#define IDABORT                 3
+#define IDRETRY                 4
+#define IDIGNORE                5
+#define IDYES                   6
+#define IDNO                    7
+
 // A few kernel32 constants the threading layer needs (real target: from
 // <windows.h>). Same POSIX-shim rationale as the WM_* block above.
 #define CREATE_SUSPENDED        0x00000004

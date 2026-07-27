@@ -234,6 +234,7 @@ if (SIMPLE_MFC_GUI STREQUAL "qt")
         gui/qt/imagelist.cpp
         gui/qt/listctrl.cpp
         gui/qt/winapp.cpp
+        gui/qt/messagebox.cpp
         gui/qt/afxwinmain.cpp
         gui/qt/main.cpp
     )
@@ -337,6 +338,51 @@ if (SIMPLE_MFC_GUI STREQUAL "qt")
     endif()
     add_test(NAME qt_app_test COMMAND qt_app_test)
     set_tests_properties(qt_app_test PROPERTIES
+        TIMEOUT 60
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endif()
+
+# --- Demo application ------------------------------------------------------
+# A complete little MFC application (examples/demo) built the way a real one
+# is: its .rc goes through smfc_rc, its source knows nothing about Qt, and it
+# supplies no main() - the framework's own entry point is linked in from the
+# library. This is the end-to-end proof that an MFC program links and runs.
+if (SIMPLE_MFC_GUI STREQUAL "qt")
+    set(SMFC_DEMO_DIALOGS ${CMAKE_CURRENT_BINARY_DIR}/generated_demo_dialogs.cpp)
+    add_custom_command(
+        OUTPUT ${SMFC_DEMO_DIALOGS}
+        COMMAND smfc_rc
+            --rc ${CMAKE_CURRENT_SOURCE_DIR}/examples/demo/demo.rc
+            --header ${CMAKE_CURRENT_SOURCE_DIR}/examples/demo/resource.h
+            --out ${SMFC_DEMO_DIALOGS}
+        DEPENDS smfc_rc
+            ${CMAKE_CURRENT_SOURCE_DIR}/examples/demo/demo.rc
+            ${CMAKE_CURRENT_SOURCE_DIR}/examples/demo/resource.h
+        COMMENT "smfc_rc: compiling demo.rc -> neutral dialog IR")
+
+    add_executable(smfc_demo examples/demo/demo.cpp ${SMFC_DEMO_DIALOGS})
+    target_link_libraries(smfc_demo PRIVATE simple_mfc::gui_qt)
+    target_include_directories(smfc_demo PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/examples/demo)
+    # The bare-name message-map form (ON_BN_CLICKED(ID, OnFoo)) real MFC
+    # compiles via an MSVC extension; GCC/Clang need this to accept it.
+    if (NOT MSVC)
+        target_compile_options(smfc_demo PRIVATE -fms-extensions)
+    endif()
+
+    # The same demo.cpp, linked into a test that supplies its own main and
+    # drives the startup by hand, so the window can be rendered and inspected
+    # instead of waited on.
+    add_executable(qt_demo_test tests/qt_demo_test.cpp
+        examples/demo/demo.cpp ${SMFC_DEMO_DIALOGS})
+    target_link_libraries(qt_demo_test PRIVATE simple_mfc::gui_qt)
+    target_include_directories(qt_demo_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/examples/demo)
+    if (NOT MSVC)
+        target_compile_options(qt_demo_test PRIVATE -fms-extensions)
+    endif()
+    add_test(NAME qt_demo_test COMMAND qt_demo_test)
+    set_tests_properties(qt_demo_test PROPERTIES
         TIMEOUT 60
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()

@@ -1,0 +1,29 @@
+// demo.rc — the demo application's dialog template, written exactly as a
+// Visual Studio .rc is. It is compiled by smfc_rc at build time into the
+// neutral dialog IR the driver builds real widgets from; nothing in the
+// application reads this file at run time.
+#include "resource.h"
+
+IDD_DEMO_DIALOG DIALOGEX 0, 0, 260, 190
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "simple_mfc demo"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    LTEXT           "Name:",IDC_STATIC,7,9,30,8
+    EDITTEXT        IDC_NAME_EDIT,40,7,150,14,ES_AUTOHSCROLL
+    DEFPUSHBUTTON   "Greet",IDC_GREET_BUTTON,196,7,55,14
+    CONTROL         "Enable the task list",IDC_ENABLE_CHECK,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,7,28,150,10
+
+    // LVS_OWNERDRAWFIXED: the list paints its own rows, through the
+    // CListCtrl::DrawItem override below. Nothing in the code switches this
+    // on - the style bit alone does, exactly as on Windows.
+    CONTROL         "",IDC_TASK_LIST,"SysListView32",
+                    LVS_REPORT | LVS_OWNERDRAWFIXED | WS_BORDER | WS_TABSTOP,
+                    7,44,244,80
+
+    CONTROL         "",IDC_LEVEL_SLIDER,"msctls_trackbar32",
+                    TBS_HORZ | WS_TABSTOP,7,130,150,15
+    CONTROL         "",IDC_PROGRESS,"msctls_progress32",PBS_SMOOTH,7,150,244,10
+    LTEXT           "ready",IDC_STATUS_TEXT,7,166,244,10
+END
