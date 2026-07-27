@@ -18,7 +18,9 @@
 #define WM_SIZEPARENT        0x0361     // lParam = &AFX_SIZEPARENTPARAMS
 #define WM_SETMESSAGESTRING  0x0362     // wParam = nIDS or 0, lParam = lpszOther or 0
 #define WM_IDLEUPDATECMDUI   0x0363     // wParam == bDisableIfNoHandler
-#define WM_INITIALUPDATE     0x0364     // (params unused) - sent to children
+// WM_INITIALUPDATE (0x0364) is already provided by afxwin.h (an earlier pass
+// put it there for the eMule files that reference it), so it is intentionally
+// NOT redefined here to avoid a double-definition.
 #define WM_COMMANDHELP       0x0365     // lParam = dwHelpContext, if 0L use default
 #define WM_HELPHITTEST       0x0366     // wParam = 0, lParam = window based coordinates
 #define WM_EXITHELPMODE      0x0367     // (params unused)

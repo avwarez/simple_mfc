@@ -105,6 +105,42 @@ if (SIMPLE_MFC_BUILD_SMOKE_TEST)
     set_tests_properties(smoke_test PROPERTIES TIMEOUT 60)
 endif()
 
+# --- GUI runtime (toolkit-agnostic core), optional -------------------------
+# gui/core is the std, toolkit-agnostic GUI/threading runtime (message-map
+# DISPATCH + CWinThread/AfxBeginThread) that backs the frozen MFC-subset
+# declarations in include/. It is NOT part of the compile-check (which stays
+# header-only): building it is opt-in. The toolkit DRIVERS (gui/qt, gui/wx)
+# link on top of this and are wired in when SIMPLE_MFC_GUI selects them.
+set(SIMPLE_MFC_GUI "none" CACHE STRING "GUI backend to build: none | qt | wx")
+set_property(CACHE SIMPLE_MFC_GUI PROPERTY STRINGS none qt wx)
+
+option(SIMPLE_MFC_BUILD_GUI_CORE_TEST
+       "Build the gui/core runtime test (message-map dispatch + threading)" OFF)
+
+if (NOT SIMPLE_MFC_GUI STREQUAL "none" OR SIMPLE_MFC_BUILD_GUI_CORE_TEST)
+    add_library(simple_mfc_gui_core STATIC
+        gui/core/cmdtarget_map.cpp
+        gui/core/winthread.cpp
+    )
+    add_library(simple_mfc::gui_core ALIAS simple_mfc_gui_core)
+    target_link_libraries(simple_mfc_gui_core PUBLIC simple_mfc::simple_mfc)
+endif()
+
+if (SIMPLE_MFC_BUILD_GUI_CORE_TEST)
+    enable_testing()
+    add_executable(gui_core_test tests/gui_core_test.cpp)
+    target_link_libraries(gui_core_test PRIVATE simple_mfc::gui_core)
+    # eMule (and this test) write message-map handlers in the bare-name
+    # pointer-to-member form, ON_COMMAND(ID, OnFoo); real MFC compiles it via
+    # an MSVC extension. GCC/Clang accept the same construct with
+    # -fms-extensions, so the test exercises the exact eMule map form.
+    if (NOT MSVC)
+        target_compile_options(gui_core_test PRIVATE -fms-extensions)
+    endif()
+    add_test(NAME gui_core_test COMMAND gui_core_test)
+    set_tests_properties(gui_core_test PROPERTIES TIMEOUT 60)
+endif()
+
 # --- Conformance tests vs. real MFC (optional, MSVC + ATL/MFC only) --------
 # Compares simple_mfc's behavior/results against the actual Visual Studio
 # MFC libraries, method by method, with identical inputs. Off by default:

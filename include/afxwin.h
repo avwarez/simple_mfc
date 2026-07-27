@@ -142,6 +142,132 @@ struct IMAGEINFO;
 struct tagMSG;
 using MSG = tagMSG;
 using LPMSG = MSG*;
+
+// Win32 window-message and control-notification constants. On a real
+// Windows target these come from <winuser.h> (pulled in by <windows.h>
+// above); this block is the POSIX half of the same Win32 PLATFORM shim as
+// the HWND/WPARAM/MSG stand-ins right above -- it is NOT part of the MFC
+// interface (real MFC does not define these; Windows does). The numeric
+// values are the actual Win32 ones because the message-map machinery
+// (afxmsg_.h) and eMule's own WM_USER-relative custom messages assume the
+// standard bases.
+#define WM_NULL              0x0000
+#define WM_CREATE            0x0001
+#define WM_DESTROY           0x0002
+#define WM_MOVE              0x0003
+#define WM_SIZE              0x0005
+#define WM_ACTIVATE          0x0006
+#define WM_SETFOCUS          0x0007
+#define WM_KILLFOCUS         0x0008
+#define WM_ENABLE            0x000A
+#define WM_SETREDRAW         0x000B
+#define WM_SETTEXT           0x000C
+#define WM_GETTEXT           0x000D
+#define WM_GETTEXTLENGTH     0x000E
+#define WM_PAINT             0x000F
+#define WM_CLOSE             0x0010
+#define WM_QUERYENDSESSION   0x0011
+#define WM_QUIT              0x0012
+#define WM_QUERYOPEN         0x0013
+#define WM_ERASEBKGND        0x0014
+#define WM_SYSCOLORCHANGE    0x0015
+#define WM_ENDSESSION        0x0016
+#define WM_SHOWWINDOW        0x0018
+#define WM_WININICHANGE      0x001A
+#define WM_SETTINGCHANGE     WM_WININICHANGE
+#define WM_ACTIVATEAPP       0x001C
+#define WM_CANCELMODE        0x001F
+#define WM_SETCURSOR         0x0020
+#define WM_MOUSEACTIVATE     0x0021
+#define WM_GETMINMAXINFO     0x0024
+#define WM_DRAWITEM          0x002B
+#define WM_MEASUREITEM       0x002C
+#define WM_DELETEITEM        0x002D
+#define WM_SETFONT           0x0030
+#define WM_GETFONT           0x0031
+#define WM_QUERYDRAGICON     0x0037
+#define WM_COMPAREITEM       0x0039
+#define WM_NOTIFY            0x004E
+#define WM_HELP              0x0053
+#define WM_CONTEXTMENU       0x007B
+#define WM_NCCREATE          0x0081
+#define WM_NCDESTROY         0x0082
+#define WM_NCCALCSIZE        0x0083
+#define WM_NCHITTEST         0x0084
+#define WM_NCPAINT           0x0085
+#define WM_NCACTIVATE        0x0086
+#define WM_GETDLGCODE        0x0087
+#define WM_NCMOUSEMOVE       0x00A0
+#define WM_NCLBUTTONDOWN     0x00A1
+#define WM_NCLBUTTONUP       0x00A2
+#define WM_NCLBUTTONDBLCLK   0x00A3
+#define WM_NCRBUTTONDOWN     0x00A4
+#define WM_KEYDOWN           0x0100
+#define WM_KEYUP             0x0101
+#define WM_CHAR              0x0102
+#define WM_SYSKEYDOWN        0x0104
+#define WM_SYSKEYUP          0x0105
+#define WM_COMMAND           0x0111
+#define WM_SYSCOMMAND        0x0112
+#define WM_TIMER             0x0113
+#define WM_HSCROLL           0x0114
+#define WM_VSCROLL           0x0115
+#define WM_INITMENU          0x0116
+#define WM_INITMENUPOPUP     0x0117
+#define WM_MENUSELECT        0x011F
+#define WM_MENUCHAR          0x0120
+#define WM_CTLCOLORMSGBOX    0x0132
+#define WM_CTLCOLOREDIT      0x0133
+#define WM_CTLCOLORLISTBOX   0x0134
+#define WM_CTLCOLORBTN       0x0135
+#define WM_CTLCOLORDLG       0x0136
+#define WM_CTLCOLORSCROLLBAR 0x0137
+#define WM_CTLCOLORSTATIC    0x0138
+#define WM_MOUSEMOVE         0x0200
+#define WM_LBUTTONDOWN       0x0201
+#define WM_LBUTTONUP         0x0202
+#define WM_LBUTTONDBLCLK     0x0203
+#define WM_RBUTTONDOWN       0x0204
+#define WM_RBUTTONUP         0x0205
+#define WM_RBUTTONDBLCLK     0x0206
+#define WM_MBUTTONDOWN       0x0207
+#define WM_MBUTTONUP         0x0208
+#define WM_MOUSEWHEEL        0x020A
+#define WM_CAPTURECHANGED    0x0215
+#define WM_DEVICECHANGE      0x0219
+#define WM_QUERYNEWPALETTE   0x030F
+#define WM_PALETTECHANGED    0x0311
+#define WM_USER              0x0400
+#define WM_APP               0x8000
+
+// Control notification codes (nCode of an ON_CONTROL entry, HIWORD of
+// WM_COMMAND's wParam).
+#define BN_CLICKED           0
+#define BN_DOUBLECLICKED     5
+#define EN_SETFOCUS          0x0100
+#define EN_KILLFOCUS         0x0200
+#define EN_CHANGE            0x0300
+#define EN_UPDATE            0x0400
+#define CBN_SELCHANGE        1
+#define CBN_DBLCLK           2
+#define CBN_SETFOCUS         3
+#define CBN_KILLFOCUS        4
+#define CBN_EDITCHANGE       5
+#define CBN_SELENDOK         9
+#define STN_CLICKED          0
+#define STN_DBLCLK           1
+
+// A few kernel32 constants the threading layer needs (real target: from
+// <windows.h>). Same POSIX-shim rationale as the WM_* block above.
+#define CREATE_SUSPENDED        0x00000004
+#define INFINITE                0xFFFFFFFF
+#define THREAD_PRIORITY_IDLE            (-15)
+#define THREAD_PRIORITY_LOWEST         (-2)
+#define THREAD_PRIORITY_BELOW_NORMAL   (-1)
+#define THREAD_PRIORITY_NORMAL         0
+#define THREAD_PRIORITY_ABOVE_NORMAL   1
+#define THREAD_PRIORITY_HIGHEST        2
+#define THREAD_PRIORITY_TIME_CRITICAL  15
 #endif
 // The owner-draw callback structures. Bare-tag forward declarations, so
 // they merge with the real winuser.h definitions rather than conflicting
@@ -524,6 +650,20 @@ public:
     // How a thread with m_bAutoDelete cleared is disposed of; eMule's
     // CGDIThread/CPreviewThread override it.
     virtual void Delete();
+    // Real MFC declares ~CWinThread (it closes the OS handle and frees the
+    // thread's state). Needed here so the pimpl below is released.
+    virtual ~CWinThread();
+
+private:
+    // Internal implementation state (the std::thread, the worker procedure,
+    // and the create-suspended gate). Kept OUT of this frozen MFC-subset
+    // interface: it is a simple_mfc implementation mechanism, not part of
+    // the MFC contract, so it is private, opaque, and its name/shape are our
+    // own (real MFC's equivalents -- m_pfnThreadProc, m_hThread's real HANDLE
+    // -- are internal too). Defined in gui/core/winthread.cpp. Derived
+    // classes never touch it; they use the public methods above.
+    struct Impl;
+    Impl* m_pImpl = nullptr;
 };
 
 // ---------------------------------------------------------------------
