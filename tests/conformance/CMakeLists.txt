@@ -33,6 +33,18 @@ set_target_properties(real_mfc_probe PROPERTIES
     MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
 )
 target_compile_definitions(real_mfc_probe PRIVATE SIMPLE_MFC_USE_REAL_MFC UNICODE _UNICODE)
+
+# --- real_mfc GDI probe ----------------------------------------------------
+# gdi_cases.cpp has no simple_mfc counterpart HERE: our CDC is implemented in
+# gui/qt, so the only build that has one is the Qt build, which does not exist
+# on Windows. This target's whole job is therefore to RECORD what real MFC's
+# GDI does, for the Qt build to be compared against later. There is no
+# side-by-side comparison to run on this machine.
+add_executable(real_mfc_gdi_probe gdi_cases.cpp)
+set_target_properties(real_mfc_gdi_probe PROPERTIES
+    MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
+)
+target_compile_definitions(real_mfc_gdi_probe PRIVATE SIMPLE_MFC_USE_REAL_MFC UNICODE _UNICODE)
 unset(CMAKE_MFC_FLAG)
 
 add_test(
@@ -74,4 +86,23 @@ else()
         "golden_recording_is_current: skipped, no recording yet — the CI job "
         "uploads real_mfc_probe's output as the 'real-mfc-golden' artifact; "
         "commit it to golden/real_mfc_win32.txt to enable POSIX conformance.")
+endif()
+
+# Same currency check for the GDI recording.
+set(GDI_GOLDEN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/golden/real_mfc_gdi_win32.txt")
+if (EXISTS "${GDI_GOLDEN_FILE}")
+    add_test(
+        NAME gdi_golden_recording_is_current
+        COMMAND ${CMAKE_COMMAND}
+                "-DPROBE_EXE=$<TARGET_FILE:real_mfc_gdi_probe>"
+                "-DGOLDEN_FILE=${GDI_GOLDEN_FILE}"
+                "-DEXCLUDE_FILE=${CMAKE_CURRENT_SOURCE_DIR}/golden/gdi_platform_dependent.txt"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/golden.cmake"
+    )
+    set_tests_properties(gdi_golden_recording_is_current PROPERTIES TIMEOUT 900)
+else()
+    message(STATUS
+        "gdi_golden_recording_is_current: skipped, no recording yet — the CI "
+        "job uploads real_mfc_gdi_probe's output as the 'real-mfc-gdi-golden' "
+        "artifact; commit it to golden/real_mfc_gdi_win32.txt.")
 endif()

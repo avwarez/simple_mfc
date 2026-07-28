@@ -110,8 +110,31 @@ jobs:
               (New-Object System.Text.UTF8Encoding $false))
           Write-Host "recorded $($out.Count) cases"
 
-      - name: Upload the golden recording
+      # The GDI half. gdi_cases.cpp has no simple_mfc probe on Windows at all
+      # (our CDC lives in gui/qt, which is not built here), so recording it is
+      # the ONLY thing this machine can contribute to GDI conformance -- the
+      # comparison itself happens in the Qt job on Linux.
+      - name: Record real MFC's GDI output as the golden file
+        shell: pwsh
+        env:
+          TZ: UTC0
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = Get-ChildItem -Path build -Recurse -Filter real_mfc_gdi_probe.exe |
+                 Select-Object -First 1
+          if (-not $exe) { throw "real_mfc_gdi_probe.exe not found under build/" }
+          New-Item -ItemType Directory -Force -Path artifact | Out-Null
+          $out = & $exe.FullName
+          [System.IO.File]::WriteAllText(
+              "artifact/real_mfc_gdi_win32.txt",
+              ($out -join "`n") + "`n",
+              (New-Object System.Text.UTF8Encoding $false))
+          Write-Host "recorded $($out.Count) GDI cases"
+
+      - name: Upload the golden recordings
         uses: actions/upload-artifact@v4
         with:
           name: real-mfc-golden
-          path: artifact/real_mfc_win32.txt
+          path: |
+            artifact/real_mfc_win32.txt
+            artifact/real_mfc_gdi_win32.txt

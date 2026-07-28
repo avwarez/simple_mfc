@@ -451,6 +451,45 @@ elseif (SIMPLE_MFC_BUILD_GOLDEN_CONFORMANCE)
         "(produced by the conformance job in .github/workflows/msvc.yml)")
 endif()
 
+# --- GDI golden conformance (Qt build only) --------------------------------
+# The frontend's half of the same idea. CDC is implemented in gui/qt, so this
+# probe only exists where the Qt driver is built -- and real MFC's GDI only
+# exists on Windows, so the two are never present together and the comparison
+# HAS to go through a recording. This is the first verification of any kind
+# that the GUI layer behaves like MFC rather than merely like itself.
+#
+# It needs no window and no QApplication: a memory DC is backed by an image,
+# and every result is read back through CDC::GetPixel, which is MFC's own API
+# rather than anything driver-internal.
+set(SIMPLE_MFC_GDI_GOLDEN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/tests/conformance/golden/real_mfc_gdi_win32.txt")
+if (SIMPLE_MFC_BUILD_GOLDEN_CONFORMANCE AND SIMPLE_MFC_GUI STREQUAL "qt"
+    AND EXISTS "${SIMPLE_MFC_GDI_GOLDEN_FILE}")
+    enable_testing()
+    add_executable(simple_mfc_gdi_golden_probe tests/conformance/gdi_cases.cpp)
+    target_compile_definitions(simple_mfc_gdi_golden_probe
+        PRIVATE SIMPLE_MFC_USE_NATIVE UNICODE _UNICODE)
+    # gui_qt pulls gui_core and the library transitively. No -fms-extensions:
+    # gdi_cases.cpp deliberately contains no message map, so it stays within
+    # standard C++ and could be built by any compiler.
+    target_link_libraries(simple_mfc_gdi_golden_probe PRIVATE simple_mfc::gui_qt)
+
+    add_test(
+        NAME gdi_golden_conformance
+        COMMAND ${CMAKE_COMMAND}
+                "-DPROBE_EXE=$<TARGET_FILE:simple_mfc_gdi_golden_probe>"
+                "-DGOLDEN_FILE=${SIMPLE_MFC_GDI_GOLDEN_FILE}"
+                "-DEXCLUDE_FILE=${CMAKE_CURRENT_SOURCE_DIR}/tests/conformance/golden/gdi_platform_dependent.txt"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/conformance/golden.cmake"
+    )
+    set_tests_properties(gdi_golden_conformance PROPERTIES
+        TIMEOUT 600
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+elseif (SIMPLE_MFC_BUILD_GOLDEN_CONFORMANCE AND SIMPLE_MFC_GUI STREQUAL "qt")
+    message(STATUS
+        "gdi_golden_conformance: skipped, no recording at ${SIMPLE_MFC_GDI_GOLDEN_FILE} "
+        "(produced by the conformance job in .github/workflows/msvc.yml)")
+endif()
+
 # --- Install (optional, for use as an external library) --------------------
 include(GNUInstallDirs)
 install(TARGETS simple_mfc

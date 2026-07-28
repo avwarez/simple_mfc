@@ -1,0 +1,16 @@
+# GDI cases whose value is a platform fact rather than a behaviour, and which
+# therefore cannot be compared between the recorded Windows output and the Qt
+# build. Every entry needs a reason.
+#
+# Same discipline as platform_dependent.txt: golden.cmake errors on a STALE
+# entry (one naming a case absent from either side), so this list cannot rot
+# into a hiding place. It is NOT a place for "this differs and I have not
+# worked out why" -- a divergence with any cause other than the platform's
+# own facts is a genuine conformance bug and belongs in the failure report.
+#
+# Deliberately empty for now. gdi_cases.cpp is scoped to primitives whose
+# results should be identical by construction: solid fills, axis-aligned
+# edges, single-pixel probes and the DCs' own state bookkeeping. Text
+# rendering, antialiasing and curve rasterization are excluded at the SOURCE
+# level (they are simply not exercised) rather than listed here, because a
+# case that cannot be compared should not be emitted in the first place.
