@@ -636,8 +636,25 @@ CArchive& CArchive::operator>>(BYTE& by) { return ArReadRaw(*this, by); }
 CArchive& CArchive::operator>>(WORD& w) { return ArReadRaw(*this, w); }
 CArchive& CArchive::operator>>(int& i) { return ArReadRaw(*this, i); }
 CArchive& CArchive::operator>>(UINT& u) { return ArReadRaw(*this, u); }
-CArchive& CArchive::operator>>(long& l) { return ArReadRaw(*this, l); }
+// MFC's archive slot for `long` is 32 bits wide, because on Windows `long`
+// IS 32 bits. Off Windows the C++ type is 64 bits, but the WIRE FORMAT is
+// not ours to redefine: a file written here has to be readable by a real
+// MFC build, and vice versa. So the slot stays 32 bits and the value is
+// narrowed/sign-extended across it, exactly as it would be on Windows.
+CArchive& CArchive::operator>>(long& l)
+{
+#ifdef _WIN32
+    return ArReadRaw(*this, l);
+#else
+    std::int32_t v = 0;
+    Read(&v, sizeof(v));
+    l = v;                  // sign-extends, matching a 32-bit LONG load
+    return *this;
+#endif
+}
+#ifdef _WIN32
 CArchive& CArchive::operator>>(DWORD& dw) { return ArReadRaw(*this, dw); }
+#endif
 CArchive& CArchive::operator>>(float& f) { return ArReadRaw(*this, f); }
 CArchive& CArchive::operator>>(double& d) { return ArReadRaw(*this, d); }
 CArchive& CArchive::operator>>(ULONGLONG& dwdw) { return ArReadRaw(*this, dwdw); }
@@ -646,8 +663,17 @@ CArchive& CArchive::operator<<(BYTE by) { return ArWriteRaw(*this, by); }
 CArchive& CArchive::operator<<(WORD w) { return ArWriteRaw(*this, w); }
 CArchive& CArchive::operator<<(int i) { return ArWriteRaw(*this, i); }
 CArchive& CArchive::operator<<(UINT u) { return ArWriteRaw(*this, u); }
-CArchive& CArchive::operator<<(long l) { return ArWriteRaw(*this, l); }
+CArchive& CArchive::operator<<(long l)
+{
+#ifdef _WIN32
+    return ArWriteRaw(*this, l);
+#else
+    return ArWriteRaw(*this, static_cast<std::int32_t>(l));   // see operator>> above
+#endif
+}
+#ifdef _WIN32
 CArchive& CArchive::operator<<(DWORD dw) { return ArWriteRaw(*this, dw); }
+#endif
 CArchive& CArchive::operator<<(float f) { return ArWriteRaw(*this, f); }
 CArchive& CArchive::operator<<(double d) { return ArWriteRaw(*this, d); }
 CArchive& CArchive::operator<<(ULONGLONG dwdw) { return ArWriteRaw(*this, dwdw); }

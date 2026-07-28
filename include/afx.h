@@ -41,26 +41,40 @@
 #define AFX_CDECL __cdecl   // real MFC's calling-convention marker on static
                             // thread procs (`static UINT AFX_CDECL RunProc(...)`)
 
-// KNOWN DIVERGENCE, deliberate: on Windows (LLP64) `long` is 32 bits, so
-// Win32's DWORD/LONG are exactly 32 bits and are nevertheless DISTINCT
-// types from UINT/int -- which is precisely what lets MFC overload on both
-// (CArchive::operator<< has separate UINT and DWORD overloads, and eMule
-// relies on that). On a 64-bit Unix (LP64) `long` is 64 bits, so the two
+// On Windows (LLP64) `long` is 32 bits, so Win32's DWORD/LONG are exactly
+// 32 bits AND are distinct types from UINT/int -- which is what lets MFC
+// overload on both (CArchive::operator<< has separate UINT and DWORD
+// overloads). On a 64-bit Unix (LP64) `long` is 64 bits, so the two
 // properties become mutually exclusive: standard C++ offers no second
-// 32-bit integer type distinct from `int`. Distinctness is kept here,
-// because losing it makes those overload sets ill-formed, which means
-// sizeof(DWORD)/sizeof(LONG) is 8 rather than 4 off Windows. Anything
-// depending on the WIDTH -- serialization above all (CArchive's byte
-// stream differs accordingly) -- must use a fixed-width type explicitly
-// and never assume DWORD is 32 bits. Immaterial to today's only consumer,
-// which builds on Windows against the real <windows.h> typedefs; it is a
-// trap waiting for the eventual Linux port.
+// 32-bit integer type distinct from `int`. One of them has to go.
+//
+// WIDTH WINS off Windows. DWORD is 32 bits by definition in Win32, and
+// every consequence of getting that wrong is silent: struct layouts shift,
+// and above all serialized bytes change. Measured, not assumed -- the
+// golden conformance run caught CArchive writing 47 bytes where real MFC
+// writes 39, because `long` and `DWORD` each went out 8 bytes wide. eMule's
+// on-disk formats (known.met and friends) are read by other clients, so a
+// widened field is a corrupt file, not an internal detail.
+//
+// The cost is exactly two overload pairs -- CArchive's UINT/DWORD in each
+// direction -- which collapse into one off Windows and are #ifdef'd out
+// there accordingly. Nothing else in the library depended on the
+// distinction. The Windows interface is untouched, so what eMule compiles
+// against is unchanged.
 using UINT = unsigned int;
 using WORD = unsigned short;
 using BYTE = unsigned char;
+#ifdef _WIN32
 using DWORD = unsigned long;
+#else
+using DWORD = unsigned int;
+#endif
 using HANDLE = void*;   // identical to <windows.h>'s `typedef void* HANDLE`
+#ifdef _WIN32
 using LONG = long;
+#else
+using LONG = int;
+#endif
 using LONGLONG = long long;
 using ULONGLONG = unsigned long long;
 using BOOL = int;
@@ -1170,7 +1184,12 @@ public:
     CArchive& operator>>(int& i);
     CArchive& operator>>(UINT& u);
     CArchive& operator>>(long& l);
+#ifdef _WIN32
+    // Off Windows DWORD is `unsigned int`, i.e. the same type as UINT, so
+    // this overload would redeclare the one above. See the typedef block at
+    // the top of this header for why width wins there.
     CArchive& operator>>(DWORD& dw);
+#endif
     CArchive& operator>>(float& f);
     CArchive& operator>>(double& d);
     CArchive& operator>>(ULONGLONG& dwdw);
@@ -1181,7 +1200,9 @@ public:
     CArchive& operator<<(int i);
     CArchive& operator<<(UINT u);
     CArchive& operator<<(long l);
-    CArchive& operator<<(DWORD dw);
+#ifdef _WIN32
+    CArchive& operator<<(DWORD dw);   // == UINT off Windows, see above
+#endif
     CArchive& operator<<(float f);
     CArchive& operator<<(double d);
     CArchive& operator<<(ULONGLONG dwdw);

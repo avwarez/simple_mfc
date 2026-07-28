@@ -1,0 +1,733 @@
+RTTI.CFileException.IsKindOf.CException	TRUE
+RTTI.CFileException.IsKindOf.CObject	TRUE
+RTTI.CFileException.IsKindOf.CMemoryException	FALSE
+RTTI.CFileException.ClassName	CFileException
+RTTI.CFileException.IsSerializable	FALSE
+RTTI.CMemoryException.IsKindOf.CSimpleException	TRUE
+RTTI.CMemoryException.IsKindOf.CException	TRUE
+RTTI.CMemoryException.IsKindOf.CFileException	FALSE
+RTTI.CFile.IsKindOf.CObject	TRUE
+RTTI.CFile.IsKindOf.CFileException	FALSE
+CFileException.GetErrorMessage.returns_true	TRUE
+CFileException.m_cause	2
+CFileException.m_lOsError	2
+CFileException.m_strFileName	missing_file.dat
+CFileException.Delete.m_cause_before	3
+AfxThrowFileException.caught.m_cause	13
+AfxThrowMemoryException.caught	TRUE
+CString.IsEmpty.initial	FALSE
+CString.GetLength.initial	17
+CString.Trim.result	Hello, World!
+CString.MakeUpper.result	HELLO, WORLD!
+CString.MakeLower.result	hello, world!
+CString.Find.substr	7
+CString.Find.missing	-1
+CString.Find.char	7
+CString.ReverseFind	8
+CString.Format.result	2026-Jul-09
+CString.AppendFormat.result	base+42=done
+CString.Left5	Hello
+CString.Right6	World!
+CString.Mid7_5	World
+CString.Mid7_NoCount	World!
+CString.Replace.count	2
+CString.Replace.result	Hell0, W0rld!
+CString.ReplaceChar.count	3
+CString.ReplaceChar.result	HeLLo, WorLd!
+CString.Compare.equal	0
+CString.Compare.less	-1
+CString.Compare.greater	1
+CString.CompareNoCase.equal	0
+CString.CompareNoCase.less	-1
+CString.Delete.result	 World!
+CString.Delete.returned_length	7
+CString.Insert.string.result	Hello, World
+CString.Insert.char.result	abc
+CString.SpanExcluding	12345
+CString.Tokenize.1	a
+CString.Tokenize.pos_after_1	2
+CString.Tokenize.2	b
+CString.Tokenize.pos_after_2	4
+CString.Tokenize.3_empty	c
+CString.TrimChar	hello
+CString.TrimSet	hello
+CString.TrimRight.default	hello
+CString.TrimRight.char	hello
+CString.GetAt1	98
+CString.SetAt.result	aZc
+CString.operatorPlus	foobar
+CString.operatorEq.true	TRUE
+CString.operatorEq.false	FALSE
+CString.operatorNe	TRUE
+CString.GetBuffer_ReleaseBuffer.result	buffered
+CString.GetBuffer_ReleaseBuffer.length	8
+CString.Empty.IsEmptyAfter	TRUE
+CString.CharRepeatCtor	xxxxx
+CString.GetBuffer_NoArg	abc
+CString.TrimRight.set	hello
+CString.operatorIndex2	100
+CString.operatorPlusEqString	foobar
+CString.operatorPlusEqChar	foo!
+CString.operatorLess.true	TRUE
+CString.operatorLess.false	FALSE
+CString.Format.hex	0000DEAD
+CString.Format.char	Z|9
+CString.Format.float	3.142
+CString.Format.width	[   42][42   ][+42]
+CString.Format.percent	100% done
+CString.Empty.TrimStaysEmpty	TRUE
+CString.Empty.FindMissing	-1
+CString.Empty.Length	0
+CString.Left0	
+CString.LeftBeyond	abc
+CString.Right0	
+CString.RightBeyond	abc
+CString.MidAtEnd	
+CString.MidBeyondCount	bc
+CString.Find.fromIndex	3
+CString.ReverseFind.missing	-1
+CFile.Open.create	TRUE
+CFile.Open.read	TRUE
+CFile.GetLength	29
+CFile.Read.count	29
+CFile.Read.content	Hello, MFC conformance suite!
+CFile.Seek.position	7
+CFile.ReadAfterSeek	MFC c
+CFile.Seek.current.after3	3
+CFile.Seek.current.after3plus2	5
+CFile.Seek.current.backward	4
+CFile.SeekToBegin.position	0
+CFile.SeekToEnd.position	29
+CFile.GetFileName	simple_mfc_conformance_file.bin
+CFile.GetFilePath	C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\simple_mfc_conformance_file.bin
+CFile.GetStatus.instance.ok	TRUE
+CFile.GetStatus.instance.size	29
+CFile.GetStatus.static.ok	TRUE
+CFile.GetStatus.static.size	29
+CFile.Rename.thenGetStatus.ok	TRUE
+CFile.Remove.thenGetStatus.fails	TRUE
+CFile.CtorOpen.GetLength	16
+CFile.SetLength4.GetLength	4
+CStdioFile.ReadString.line1.ok	TRUE
+CStdioFile.ReadString.line1	first line\r
+CStdioFile.ReadString.line2.ok	TRUE
+CStdioFile.ReadString.line2	second line\r
+CStdioFile.ReadString.line3PastEof.fails	TRUE
+CStdioFile.ReadString.buffer.nonNull	TRUE
+CStdioFile.ReadString.buffer.content	buffer overload line\r\n
+CMemFile.GetLength	17
+CMemFile.Read.count	17
+CMemFile.Read.content	in-memory payload
+CMemFile.Seek.position	3
+CMemFile.Seek.current	5
+CMemFile.Seek.end.minus3	14
+CMemFile.SetLength4.GetLength	4
+CMemFile.SetLength10.GetLength	10
+CMemFile.Detach.lengthBefore	19
+CMemFile.Detach.nonNull	TRUE
+CMemFile.Detach.lengthAfter	0
+CMemFile.Attach.length	19
+CMemFile.Attach.readCount	19
+CMemFile.Attach.content	detach-and-reattach
+CArchive.store.IsStoring	TRUE
+CArchive.store.IsLoading	FALSE
+CArchive.store.byteCount	39
+CArchive.store.bytes	AB3412C01DFEFF005ED0B2FFFFFFFFEFBEADDE0000C03F00000000000002C00807060504030201
+CArchive.load.IsLoading	TRUE
+CArchive.load.IsStoring	FALSE
+CArchive.roundTrip.BYTE	171
+CArchive.roundTrip.WORD	4660
+CArchive.roundTrip.int	-123456
+CArchive.roundTrip.UINT	3000000000
+CArchive.roundTrip.long	-1
+CArchive.roundTrip.DWORD	3735928559
+CArchive.roundTrip.float	0000C03F
+CArchive.roundTrip.double	00000000000002C0
+CArchive.roundTrip.ULONGLONG	72623859790382856
+CArchive.roundTrip.CString	archived string
+CFileFind.MatchCount.txt	2
+CFileFind.Match.0	alpha.txt
+CFileFind.Match.1	beta.txt
+CFileFind.Single.foundOne	TRUE
+CFileFind.Single.GetFilePath	C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\simple_mfc_conformance_find\\alpha.txt
+CFileFind.Single.GetLength	1
+CFileFind.Single.IsDirectory	FALSE
+CFileFind.Single.GetRoot	C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\simple_mfc_conformance_find\\
+CObList.GetCount	3
+CObList.IsEmpty	FALSE
+CObList.IterationOrder	3,1,2
+CObList.GetHead.value	3
+CObList.GetTail.value	2
+CObList.Find.found	TRUE
+CObList.Find.notFound	FALSE
+CObList.FindIndex1.value	1
+CObList.RemoveHead.value	3
+CObList.CountAfterRemoveHead	2
+CObList.GetTailPosition.value	2
+CObList.GetPrev.value	2
+CObList.SetAt.value	999
+CObList.CountAfterInserts	4
+CObList.IterationOrderAfterInserts	999,111,222,2
+CObList.CountAfterRemoveAt	3
+CObList.RemoveTail.value	2
+CObList.CountAfterRemoveTail	2
+CObList.IsEmptyAfterRemoveAll	TRUE
+CPtrList.GetCount	3
+CPtrList.IsEmpty	FALSE
+CPtrList.GetHead	33
+CPtrList.GetTail	22
+CPtrList.IterationOrder	33,11,22
+CPtrList.Find.found	TRUE
+CPtrList.Find.notFound	FALSE
+CPtrList.FindIndex1	11
+CPtrList.GetTailPosition	22
+CPtrList.CountAfterInsertAfter	4
+CPtrList.CountAfterInsertBefore	5
+CPtrList.RemoveHead.value	33
+CPtrList.CountAfterRemoveHead	4
+CPtrList.RemoveTail.value	22
+CPtrList.CountAfterRemoveTail	3
+CPtrList.IsEmptyAfterRemoveAll	TRUE
+CStringList.GetCount	3
+CStringList.IsEmpty	FALSE
+CStringList.GetHead	zero
+CStringList.GetTail	two
+CStringList.IterationOrder	zero,one,two
+CStringList.Find.found	TRUE
+CStringList.Find.notFound	FALSE
+CStringList.RemoveHead.value	zero
+CStringList.CountAfterRemoveHead	2
+CStringList.RemoveTail.value	two
+CStringList.CountAfterRemoveTail	1
+CStringList.IsEmptyAfterRemoveAll	TRUE
+CPtrArray.GetCount	2
+CPtrArray.GetAt0	100
+CPtrArray.GetUpperBound	1
+CPtrArray.CountAfterSetAtGrow5	6
+CPtrArray.GetAt5	500
+CPtrArray.GetAt0AfterSetAt	999
+CPtrArray.CountAfterInsertAt0	7
+CPtrArray.GetAt0AfterInsert	1
+CPtrArray.CountAfterRemoveAt0	6
+CPtrArray.Append.result	6
+CPtrArray.CountAfterAppend	7
+CPtrArray.Copy.count	7
+CPtrArray.CountAfterSetSize2	2
+CPtrArray.IsEmpty	FALSE
+CPtrArray.IsEmptyAfterRemoveAll	TRUE
+CStringArray.GetCount	3
+CStringArray.GetAt1	bb
+CStringArray.SetAt1	BB
+CStringArray.CountAfterRemoveAt0	2
+CStringArray.GetAt0AfterRemove	BB
+CStringArray.GetSize	2
+CStringArray.IsEmpty	FALSE
+CStringArray.CountAfterInsertAt0	3
+CStringArray.GetAt0AfterInsert	zz
+CStringArray.CountAfterSetSize1	1
+CStringArray.IsEmptyAfterRemoveAll	TRUE
+CByteArray.GetSize	3
+CByteArray.GetAt1	20
+CByteArray.SizeAfterSetSize5	5
+CUIntArray.GetSize	2
+CUIntArray.GetAt0	111
+CUIntArray.GetAt1	222
+CArray_int.GetCount	3
+CArray_int.operatorIndex1	2
+CArray_int.AfterAssignIndex1	42
+CArray_int.CountAfterInsertAt0	4
+CArray_int.GetAt0AfterInsert	100
+CArray_int.CountAfterRemoveAt0	3
+CArray_int.GetUpperBound	2
+CArray_int.GetData.first	1
+CArray_int.CountAfterFreeExtra	3
+CArray_int.GetAt0AfterSetAt	999
+CArray_int.CountAfterSetAtGrow5	6
+CArray_int.GetAt5	555
+CArray_int.Append.result	6
+CArray_int.CountAfterAppend	7
+CArray_int.Copy.count	7
+CArray_int.CountAfterSetSize2	2
+CArray_int.IsEmpty	FALSE
+CArray_int.IsEmptyAfterRemoveAll	TRUE
+CList_CString.GetCount	3
+CList_CString.IsEmpty	FALSE
+CList_CString.GetHead	w
+CList_CString.GetTail	y
+CList_CString.IterationOrder	w,x,y
+CList_CString.Find.found	TRUE
+CList_CString.Find.notFound	FALSE
+CList_CString.FindIndex1.value	x
+CList_CString.GetTailPosition.value	y
+CList_CString.GetPrev.value	y
+CList_CString.SetAt.value	W2
+CList_CString.CountAfterInsertAfter	4
+CList_CString.CountAfterInsertBefore	5
+CList_CString.IterationOrderAfterInserts	W2,inserted,beforeThird,x,y
+CList_CString.CountAfterRemoveAt	4
+CList_CString.RemoveHead.value	inserted
+CList_CString.CountAfterRemoveHead	3
+CList_CString.RemoveTail.value	y
+CList_CString.CountAfterRemoveTail	2
+CList_CString.IsEmptyAfterRemoveAll	TRUE
+CMap.GetCount	3
+CMap.Lookup.found	TRUE
+CMap.Lookup.value	2
+CMap.Lookup.notFound	FALSE
+CMap.RemoveKey.existing	TRUE
+CMap.RemoveKey.missing	FALSE
+CMap.CountAfterRemoveKey	2
+CMap.IterationCount	2
+CMap.IterationSum	5
+CMap.PLookup.found	TRUE
+CMap.PLookup.value	3
+CMap.GetSize	2
+CMap.IsEmpty	FALSE
+CMap.GetHashTableSize.nonZero	TRUE
+CMap.CountAfterInitHashTableThenSetAt	1
+CMap.PIteration.count	2
+CMap.PIteration.sum	5
+CMap.IsEmptyAfterRemoveAll	TRUE
+CMap.CountAfterRemoveAll	0
+CMap.ExplicitBlockSizeCtor.GetCount	1
+CMap.SetAt.overwrite.count	1
+CMap.SetAt.overwrite.value	99
+CTime.GetYear	2026
+CTime.GetMonth	7
+CTime.GetDay	19
+CTime.GetHour	14
+CTime.GetMinute	30
+CTime.GetSecond	45
+CTime.GetDayOfWeek	1
+CTime.operatorLess.true	TRUE
+CTime.operatorLess.false	FALSE
+CTime.operatorEq.true	TRUE
+CTime.operatorEq.false	FALSE
+CTimeSpan.FromDiff.GetDays	1
+CTimeSpan.FromDiff.GetTotalSeconds	86400
+CTime.PlusSpan.equalsT2	TRUE
+CTimeSpan.ctor.GetDays	1
+CTimeSpan.ctor.GetHours	2
+CTimeSpan.ctor.GetMinutes	3
+CTimeSpan.ctor.GetSeconds	4
+CTimeSpan.ctor.GetTotalSeconds	93784
+CTimeSpan.ctor.GetTotalHours	26
+CTimeSpan.ctor.GetTotalMinutes	1563
+CTime.Format	2026-07-19 14:30:45
+CTime.GetTime	1784471445
+CTime.defaultCtor.GetTime	0
+CTime.explicitEpochCtor.equalsT1	TRUE
+CTime.GetCurrentTime.plausibleYear	TRUE
+CTimeSpan.defaultCtor.GetTotalSeconds	0
+CTimeSpan.explicitSecondsCtor.GetHours	1
+CTimeSpan.explicitSecondsCtor.GetTotalSeconds	3661
+CTimeSpan.operatorPlus.GetTotalMinutes	90
+CTimeSpan.operatorMinus.GetTotalMinutes	30
+CTime.2000.GetYear	2000
+CTime.2000.GetMonth	1
+CTime.2000.GetDay	1
+CTime.2000.GetDayOfWeek	7
+CTime.2000.Format	2000/01/01 00:00:00 day001
+CTime.Leap.GetMonth	2
+CTime.Leap.GetDay	29
+CTime.Leap.GetDayOfWeek	5
+CTime.Leap.Format	24-02-29T23:59:59
+CTimeSpan.negative.GetTotalSeconds	-86400
+CTimeSpan.negative.GetDays	-1
+CPoint.x	10
+CPoint.y	20
+CPoint.plusPoint	13,24
+CPoint.plusSize	15,27
+CPoint.minusPoint	7,16
+CPoint.unaryMinus	-10,-20
+CPoint.Offset	11,18
+CPoint.OffsetSize	15,27
+CPoint.SetPoint	42,-42
+CPoint.operatorEq.true	TRUE
+CPoint.operatorEq.false	FALSE
+CPoint.operatorNe	TRUE
+CPoint.plusEqualsSize	15,27
+CPoint.minusEqualsPoint	7,16
+CSize.plus	6,9
+CSize.minus	4,5
+CSize.unaryMinus	-5,-7
+CSize.operatorEq.true	TRUE
+CSize.operatorNe	TRUE
+CSize.plusPoint	8,11
+CRect.Width	100
+CRect.Height	200
+CRect.Size	100,200
+CRect.CenterPoint	60,120
+CRect.TopLeft	10,20
+CRect.BottomRight	110,220
+CRect.IsRectEmpty.false	FALSE
+CRect.PtInRect.inside	TRUE
+CRect.PtInRect.onRightEdge	FALSE
+CRect.PtInRect.onTopLeft	TRUE
+CRect.ctor.pointSize	(1,2,31,42)
+CRect.ctor.corners	(1,2,31,42)
+CRect.ctor.fromRECT	(5,6,7,8)
+CRect.SetRectEmpty	(0,0,0,0)
+CRect.IsRectEmpty.true	TRUE
+CRect.SetRect	(1,2,3,4)
+CRect.MoveToXY	(0,0,100,200)
+CRect.MoveToX	(-5,20,95,220)
+CRect.MoveToY	(10,-5,110,195)
+CRect.MoveToXY.point	(7,9,107,209)
+CRect.OffsetRect.xy	(15,15,115,215)
+CRect.OffsetRect.point	(12,23,112,223)
+CRect.OffsetRect.size	(12,23,112,223)
+CRect.InflateRect.xy	(5,10,115,230)
+CRect.InflateRect.ltrb	(9,18,113,224)
+CRect.InflateRect.size	(6,14,114,226)
+CRect.InflateRect.rect	(9,18,113,224)
+CRect.DeflateRect.xy	(15,30,105,210)
+CRect.DeflateRect.ltrb	(11,22,107,216)
+CRect.DeflateRect.size	(14,26,106,214)
+CRect.DeflateRect.rect	(11,22,107,216)
+CRect.IntersectRect.overlapping.result	TRUE
+CRect.IntersectRect.overlapping	(5,5,10,10)
+CRect.IntersectRect.disjoint.result	FALSE
+CRect.IntersectRect.disjoint	(0,0,0,0)
+CRect.UnionRect.result	TRUE
+CRect.UnionRect	(0,0,15,15)
+CRect.UnionRect.withEmpty.result	TRUE
+CRect.UnionRect.withEmpty	(0,0,10,10)
+CRect.operatorEq.true	TRUE
+CRect.operatorNe	TRUE
+CRect.operatorPlus.point	(3,4,13,14)
+CRect.operatorPlus.size	(3,4,13,14)
+CRect.operatorMinus.point	(-3,-4,7,6)
+CRect.operatorPlus.rect	(-1,-2,13,14)
+CRect.operatorMinus.rect	(1,2,7,6)
+CRect.operatorAndEquals	(5,5,10,10)
+CRect.operatorOrEquals	(0,0,15,15)
+CRect.operatorPlusEquals.point	(1,1,11,11)
+CRect.operatorMinusEquals.size	(-1,-1,9,9)
+CTempBuffer.fixed.values	0,3,6,9,12,15,18,21
+CTempBuffer.heap.first	0
+CTempBuffer.heap.last	99
+CTempBuffer.growPreservesContent	100,101,102,103
+CTempBuffer.AllocateBytes.ends	AZ
+CSimpleArray.GetSize	5
+CSimpleArray.index0	10
+CSimpleArray.index4	20
+CSimpleArray.GetData.contents	10,20,30,40,20
+CSimpleArray.Find.present	2
+CSimpleArray.Find.firstOfDup	1
+CSimpleArray.Find.absent	-1
+CSimpleArray.Remove.present	1
+CSimpleArray.GetSize.afterRemove	4
+CSimpleArray.Remove.absent	0
+CSimpleArray.RemoveAt.mid	1
+CSimpleArray.afterRemovals	10,40,20
+CSimpleArray.GetSize.afterRemoveAll	0
+CRBMap.count	5
+CRBMap.ordered	10=100,20=200,30=300,40=400,50=500
+CRBMap.count.afterOverwrite	5
+CRBMap.ordered.afterOverwrite	10=100,20=200,30=333,40=400,50=500
+CRBMap.headKey	10
+CRBMap.headValue	100
+CRBMap.tailKey	50
+CRBMap.reversed	50=500,40=400,30=333,20=200,10=100
+CRBMap.valuesInOrder	100,200,333,400,500
+CRBMap.FindFirstKeyAfter.exact	40
+CRBMap.FindFirstKeyAfter.gap	30
+CRBMap.FindFirstKeyAfter.pastEnd.none	TRUE
+CRBMap.count.afterRemoveHead	4
+CRBMap.ordered.afterRemoveHead	20=200,30=333,40=400,50=500
+CRBMap.emptyAfterRemoveAll	TRUE
+AfxParseURL.http.explicitPort	1 service=HTTP server=example.com object=/path/to/file port=8080
+AfxParseURL.https.defaultPort	1 service=HTTPS server=example.com object=/index.html port=443
+AfxParseURL.https.explicitPort	1 service=HTTPS server=secure.example.com object=/a port=8443
+AfxParseURL.http.defaultPort	1 service=HTTP server=example.com object=/ port=80
+AfxParseURL.http.noObject	1 service=HTTP server=example.com object=/ port=80
+AfxParseURL.ftp.explicitPort	1 service=FTP server=files.example.com object=/pub/readme.txt port=2121
+AfxParseURL.ftp.defaultPort	1 service=FTP server=files.example.com object=/pub/ port=21
+AfxParseURL.http.query	1 service=HTTP server=example.com object=/search?q=mfc&lang=en port=80
+AfxParseURL.http.deepPath	1 service=HTTP server=example.com object=/a/b/c/d.html port=80
+AfxParseURL.schemeless.fails	0
+AfxParseURL.empty.fails	0
+CCriticalSection.counter_after_4x5000	20000
+CCriticalSection.Lock.direct	TRUE
+CCriticalSection.Unlock.direct	TRUE
+CCriticalSection.LockWithTimeout.direct	TRUE
+CEvent.AutoReset.woken_before_set	0
+CEvent.AutoReset.woken_after_set	1
+CEvent.ManualReset.firstLock	TRUE
+CEvent.ManualReset.secondLock	TRUE
+CEvent.ManualReset.thirdLockTimesOut	TRUE
+CEvent.Unlock.noop	TRUE
+CEvent.PulseEvent.returns_true	TRUE
+CEvent.AfterPulse.timesOut	TRUE
+CMutex.SingleLock.locked	TRUE
+CMutex.SingleLock.unlockedAfterUnlock	TRUE
+CSingleLock.Unlock2Arg	TRUE
+Pattern.CString.Format.00	-82739|cjywuk
+Pattern.CString.Format.01	21435
+Pattern.CString.Format.02	6556.90542
+Pattern.CString.Format.03	00003D32
+Pattern.CString.Format.04	[xdtl]=-70185
+Pattern.CString.Format.05	33235|vvltcvbx
+Pattern.CString.Format.06	 44420
+Pattern.CString.Format.07	-3449.76536
+Pattern.CString.Format.08	00005F1D
+Pattern.CString.Format.09	[x       ]=+65217
+Pattern.CString.Format.10	52417|j
+Pattern.CString.Format.11	60905
+Pattern.CString.Format.12	9700.9901
+Pattern.CString.Format.13	FFFED71D
+Pattern.CString.Format.14	[mpdlrg ]=+5681
+Pattern.CString.Format.15	-60906|wziqxai
+Pattern.CString.Format.16	    -85845
+Pattern.CString.Format.17	8657.261347
+Pattern.CString.Format.18	000158F1
+Pattern.CString.Format.19	[kgdk ]=+98490
+Pattern.CString.Format.20	48276|scvmfqweim
+Pattern.CString.Format.21	 69422
+Pattern.CString.Format.22	1644.18
+Pattern.CString.Format.23	00010A07
+Pattern.CString.Format.24	[pdksy  ]=-31417
+Pattern.CString.Format.25	-67117|idgquwu
+Pattern.CString.Format.26	      -29649
+Pattern.CString.Format.27	-1991.672422
+Pattern.CString.Format.28	000131C3
+Pattern.CString.Format.29	[movhu    ]=+37549
+Pattern.CString.Format.30	90405|cwwqw
+Pattern.CString.Format.31	-48273
+Pattern.CString.Format.32	4466.4564
+Pattern.CString.Format.33	0000A45D
+Pattern.CString.Format.34	[j         ]=-51581
+Pattern.CString.Format.35	937|fuxpdddb
+Pattern.CString.Format.36	76923
+Pattern.CString.Format.37	3969.267272
+Pattern.CString.Format.38	0000E6ED
+Pattern.CString.Format.39	[h   ]=+28401
+Pattern.CRect.00	inter=(0,0,0,0) union=(98,-24,322,545) w1=136 h1=89 empty1=0
+Pattern.CRect.PtInRect.00	FALSE
+Pattern.CRect.Subtract.00	1:(186,456,322,545)
+Pattern.CRect.01	inter=(0,0,0,0) union=(-59,-25,523,247) w1=49 h1=239 empty1=0
+Pattern.CRect.PtInRect.01	FALSE
+Pattern.CRect.Subtract.01	1:(-59,8,-10,247)
+Pattern.CRect.02	inter=(0,0,0,0) union=(-349,-56,307,638) w1=198 h1=206 empty1=0
+Pattern.CRect.PtInRect.02	FALSE
+Pattern.CRect.Subtract.02	1:(-349,432,-151,638)
+Pattern.CRect.03	inter=(0,0,0,0) union=(33,-156,635,187) w1=154 h1=198 empty1=0
+Pattern.CRect.PtInRect.03	FALSE
+Pattern.CRect.Subtract.03	1:(33,-156,187,42)
+Pattern.CRect.04	inter=(0,0,0,0) union=(-200,100,144,396) w1=272 h1=33 empty1=0
+Pattern.CRect.PtInRect.04	FALSE
+Pattern.CRect.Subtract.04	1:(-128,100,144,133)
+Pattern.CRect.05	inter=(0,0,0,0) union=(-330,-471,715,-124) w1=221 h1=268 empty1=0
+Pattern.CRect.PtInRect.05	FALSE
+Pattern.CRect.Subtract.05	1:(494,-471,715,-203)
+Pattern.CRect.06	inter=(0,0,0,0) union=(375,-302,560,252) w1=39 h1=211 empty1=0
+Pattern.CRect.PtInRect.06	FALSE
+Pattern.CRect.Subtract.06	1:(375,-302,414,-91)
+Pattern.CRect.07	inter=(0,0,0,0) union=(25,-409,330,498) w1=160 h1=24 empty1=0
+Pattern.CRect.PtInRect.07	FALSE
+Pattern.CRect.Subtract.07	1:(170,474,330,498)
+Pattern.CRect.08	inter=(0,0,0,0) union=(-81,142,424,318) w1=122 h1=35 empty1=0
+Pattern.CRect.PtInRect.08	FALSE
+Pattern.CRect.Subtract.08	1:(302,283,424,318)
+Pattern.CRect.09	inter=(0,0,0,0) union=(-137,-401,205,-206) w1=297 h1=20 empty1=0
+Pattern.CRect.PtInRect.09	FALSE
+Pattern.CRect.Subtract.09	1:(-137,-401,160,-381)
+Pattern.CRect.10	inter=(0,0,0,0) union=(351,-151,393,369) w1=39 h1=132 empty1=0
+Pattern.CRect.PtInRect.10	FALSE
+Pattern.CRect.Subtract.10	1:(351,237,390,369)
+Pattern.CRect.11	inter=(0,0,0,0) union=(276,-253,551,255) w1=45 h1=184 empty1=0
+Pattern.CRect.PtInRect.11	FALSE
+Pattern.CRect.Subtract.11	1:(282,-253,327,-69)
+Pattern.CRect.12	inter=(0,0,0,0) union=(-12,-204,184,183) w1=136 h1=213 empty1=0
+Pattern.CRect.PtInRect.12	FALSE
+Pattern.CRect.Subtract.12	1:(48,-204,184,9)
+Pattern.CRect.13	inter=(0,0,0,0) union=(-312,-233,171,42) w1=76 h1=75 empty1=0
+Pattern.CRect.PtInRect.13	FALSE
+Pattern.CRect.Subtract.13	1:(95,-33,171,42)
+Pattern.CRect.14	inter=(0,0,0,0) union=(-64,54,711,326) w1=22 h1=272 empty1=0
+Pattern.CRect.PtInRect.14	FALSE
+Pattern.CRect.Subtract.14	1:(-64,54,-42,326)
+Pattern.CRect.15	inter=(0,0,0,0) union=(-476,-191,-314,-70) w1=23 h1=10 empty1=0
+Pattern.CRect.PtInRect.15	FALSE
+Pattern.CRect.Subtract.15	1:(-337,-80,-314,-70)
+Pattern.CRect.16	inter=(0,0,0,0) union=(215,-369,580,52) w1=206 h1=53 empty1=0
+Pattern.CRect.PtInRect.16	FALSE
+Pattern.CRect.Subtract.16	1:(374,-369,580,-316)
+Pattern.CRect.17	inter=(0,0,0,0) union=(3,-265,307,113) w1=24 h1=153 empty1=0
+Pattern.CRect.PtInRect.17	FALSE
+Pattern.CRect.Subtract.17	1:(3,-40,27,113)
+Pattern.CRect.18	inter=(0,0,0,0) union=(-372,-97,399,202) w1=232 h1=47 empty1=0
+Pattern.CRect.PtInRect.18	FALSE
+Pattern.CRect.Subtract.18	1:(167,53,399,100)
+Pattern.CRect.19	inter=(0,0,0,0) union=(-267,-352,-61,501) w1=178 h1=261 empty1=0
+Pattern.CRect.PtInRect.19	FALSE
+Pattern.CRect.Subtract.19	1:(-253,-352,-75,-91)
+Pattern.CRect.20	inter=(0,0,0,0) union=(-82,-200,497,454) w1=214 h1=147 empty1=0
+Pattern.CRect.PtInRect.20	FALSE
+Pattern.CRect.Subtract.20	1:(283,-200,497,-53)
+Pattern.CRect.21	inter=(-100,375,33,491) union=(-128,227,196,612) w1=296 h1=264 empty1=0
+Pattern.CRect.PtInRect.21	FALSE
+Pattern.CRect.Subtract.21	1:(-100,227,196,491)
+Pattern.CRect.22	inter=(0,0,0,0) union=(-384,151,378,443) w1=194 h1=6 empty1=0
+Pattern.CRect.PtInRect.22	FALSE
+Pattern.CRect.Subtract.22	1:(184,405,378,411)
+Pattern.CRect.23	inter=(0,0,0,0) union=(69,-350,519,252) w1=267 h1=226 empty1=0
+Pattern.CRect.PtInRect.23	FALSE
+Pattern.CRect.Subtract.23	1:(69,26,336,252)
+Pattern.CRect.24	inter=(0,0,0,0) union=(-212,-161,617,639) w1=287 h1=245 empty1=0
+Pattern.CRect.PtInRect.24	FALSE
+Pattern.CRect.Subtract.24	1:(330,394,617,639)
+Pattern.CRect.25	inter=(0,0,0,0) union=(-486,-392,-3,92) w1=76 h1=64 empty1=0
+Pattern.CRect.PtInRect.25	FALSE
+Pattern.CRect.Subtract.25	1:(-79,-392,-3,-328)
+Pattern.CRect.26	inter=(0,0,0,0) union=(169,-121,383,114) w1=75 h1=235 empty1=0
+Pattern.CRect.PtInRect.26	FALSE
+Pattern.CRect.Subtract.26	1:(308,-121,383,114)
+Pattern.CRect.27	inter=(0,0,0,0) union=(-76,221,566,458) w1=200 h1=142 empty1=0
+Pattern.CRect.PtInRect.27	FALSE
+Pattern.CRect.Subtract.27	1:(-76,221,124,363)
+Pattern.CRect.28	inter=(0,0,0,0) union=(7,-39,252,683) w1=180 h1=191 empty1=0
+Pattern.CRect.PtInRect.28	FALSE
+Pattern.CRect.Subtract.28	1:(72,492,252,683)
+Pattern.CRect.29	inter=(0,0,0,0) union=(-286,-497,278,-268) w1=18 h1=94 empty1=0
+Pattern.CRect.PtInRect.29	FALSE
+Pattern.CRect.Subtract.29	1:(-286,-402,-268,-308)
+Pattern.CRect.30	inter=(0,0,0,0) union=(-229,-143,14,361) w1=235 h1=83 empty1=0
+Pattern.CRect.PtInRect.30	FALSE
+Pattern.CRect.Subtract.30	1:(-221,-143,14,-60)
+Pattern.CRect.31	inter=(0,0,0,0) union=(-489,-59,230,281) w1=110 h1=83 empty1=0
+Pattern.CRect.PtInRect.31	FALSE
+Pattern.CRect.Subtract.31	1:(-489,198,-379,281)
+Pattern.CRect.32	inter=(0,0,0,0) union=(253,-76,511,452) w1=102 h1=10 empty1=0
+Pattern.CRect.PtInRect.32	FALSE
+Pattern.CRect.Subtract.32	1:(253,-76,355,-66)
+Pattern.CRect.33	inter=(0,0,0,0) union=(-357,-437,484,375) w1=299 h1=144 empty1=0
+Pattern.CRect.PtInRect.33	FALSE
+Pattern.CRect.Subtract.33	1:(185,-437,484,-293)
+Pattern.CRect.34	inter=(0,0,0,0) union=(-325,-436,34,280) w1=69 h1=37 empty1=0
+Pattern.CRect.PtInRect.34	FALSE
+Pattern.CRect.Subtract.34	1:(-35,-436,34,-399)
+Pattern.CRect.35	inter=(0,0,0,0) union=(-88,-68,703,479) w1=268 h1=78 empty1=0
+Pattern.CRect.PtInRect.35	FALSE
+Pattern.CRect.Subtract.35	1:(435,-68,703,10)
+Pattern.CRect.36	inter=(0,0,0,0) union=(-19,344,646,619) w1=192 h1=196 empty1=0
+Pattern.CRect.PtInRect.36	FALSE
+Pattern.CRect.Subtract.36	1:(454,344,646,540)
+Pattern.CRect.37	inter=(0,0,0,0) union=(-344,-318,547,468) w1=283 h1=243 empty1=0
+Pattern.CRect.PtInRect.37	FALSE
+Pattern.CRect.Subtract.37	1:(264,-318,547,-75)
+Pattern.CRect.38	inter=(0,0,0,0) union=(125,-460,321,84) w1=97 h1=111 empty1=0
+Pattern.CRect.PtInRect.38	FALSE
+Pattern.CRect.Subtract.38	1:(125,-27,222,84)
+Pattern.CRect.39	inter=(0,0,0,0) union=(172,-471,452,537) w1=148 h1=47 empty1=0
+Pattern.CRect.PtInRect.39	FALSE
+Pattern.CRect.Subtract.39	1:(172,490,320,537)
+Pattern.CTime.00	2074-2-13 3:57:9 dow=3
+Pattern.CTime.01	1987-6-8 16:14:27 dow=2
+Pattern.CTimeSpan.Diff.01	-2735552562
+Pattern.CTime.02	1986-4-16 16:8:47 dow=4
+Pattern.CTimeSpan.Diff.02	-36115540
+Pattern.CTime.03	2056-4-25 1:4:32 dow=3
+Pattern.CTimeSpan.Diff.03	2209798545
+Pattern.CTime.04	2064-9-6 2:47:58 dow=7
+Pattern.CTimeSpan.Diff.04	264044606
+Pattern.CTime.05	2007-6-8 14:7:53 dow=6
+Pattern.CTimeSpan.Diff.05	-1806583205
+Pattern.CTime.06	2030-8-9 17:3:45 dow=6
+Pattern.CTimeSpan.Diff.06	731213752
+Pattern.CTime.07	2008-5-8 10:28:3 dow=5
+Pattern.CTimeSpan.Diff.07	-702282942
+Pattern.CTime.08	2018-3-16 11:20:42 dow=6
+Pattern.CTimeSpan.Diff.08	310956759
+Pattern.CTime.09	2050-5-1 11:17:39 dow=1
+Pattern.CTimeSpan.Diff.09	1013817417
+Pattern.CTime.10	1989-12-1 4:32:8 dow=6
+Pattern.CTimeSpan.Diff.10	-1906526731
+Pattern.CTime.11	2005-5-17 23:49:20 dow=3
+Pattern.CTimeSpan.Diff.11	487883832
+Pattern.CTime.12	2063-11-17 23:29:14 dow=7
+Pattern.CTimeSpan.Diff.12	1846193994
+Pattern.CTime.13	2066-4-3 0:31:39 dow=7
+Pattern.CTimeSpan.Diff.13	74912545
+Pattern.CTime.14	2003-5-13 3:9:26 dow=3
+Pattern.CTimeSpan.Diff.14	-1984684933
+Pattern.CTime.15	2058-2-7 7:32:21 dow=5
+Pattern.CTimeSpan.Diff.15	1727497375
+Pattern.CTime.16	1973-8-13 17:35:56 dow=2
+Pattern.CTimeSpan.Diff.16	-2666181385
+Pattern.CTime.17	1970-1-1 21:9:45 dow=5
+Pattern.CTimeSpan.Diff.17	-114035171
+Pattern.CTime.18	2088-12-6 3:1:16 dow=2
+Pattern.CTimeSpan.Diff.18	3753064291
+Pattern.CTime.19	2024-4-29 18:59:5 dow=2
+Pattern.CTimeSpan.Diff.19	-2038723331
+Pattern.CTime.20	2022-11-16 17:7:33 dow=4
+Pattern.CTimeSpan.Diff.20	-45798692
+Pattern.CTime.21	2058-2-14 9:58:58 dow=5
+Pattern.CTimeSpan.Diff.21	1112287885
+Pattern.CTime.22	1984-1-3 21:46:18 dow=3
+Pattern.CTimeSpan.Diff.22	-2338891960
+Pattern.CTime.23	2011-3-1 4:56:42 dow=3
+Pattern.CTimeSpan.Diff.23	856941024
+Pattern.Base64.00	1:236:ZLjLQk7l7LT5FoC5KxHrpHRmNIDqAvO0RJdBz50GhGxYUrKr+rcbVrfUJDhUZJ8FHW/I1cH1MkatqHib2Ferjtk8nULZ3bVFbKkPuBQAKj35H/PqWXPgi4N0k3XPKRtCrK4KccpVIW7XdgsdpK1Hsjx5U9Zux/YXfLX61H3uGAMjcv1twzVO9SyKw699jOIZEZSRVlowvL10LPXTKVoLj+rVPOq8Domi1Kepyg62qg==
+Pattern.Base64.01	1:332:ZYFMesNDyQUEuC0Xw0MlIhjGzVplULuz0L+qYG4K843tJyf9r9n5oZ8eCLKWJecrBYTPwtksf8mn\r\nkQuTCCdM5W3UIlPWt8B3ia3/Y4+zQ6QGLQnA2pTnByQN9oJxfkvaNX5bDuPSDRfKn/JEu/ehn0lH\r\nG7plboIxAs8/3Y4VTdiU9BScIcigSLX34IUpWSupVUKfDBvz3lVjdybG1KMVyvKy7vNhYCc27gK5\r\nR4xBaN733MvEiVunrlZbSMuHy+Z8vwYhdo5rRVQRl2LmvVxLmF6QZKb5Dy8Kz1U7Jpp76fuj+L5r\r\n1OhcR9n7boW51n0Es0w0
+Pattern.Base64.02	1:236:FeMct1xM157PODUmueo7EUeLR2Y2F8UcQO6BNDgysV9G6lG3kM6np3QQWgOEvUkeA+jw97Oz1kqnsC5dXqLEoXhYIqbSUxqzvgFx9eCS4Ncr3xVdfI7f9UQFfgtAPLpw51cA3gh62BboQN7xt6/DcfFQFmYPn3pog1zS84Uh/ELL/06/d7ek7gGyfkg0RTleKcdzEO2H6anwxxOypN8as3mTg5dtcg7bfEi9Pt/40R3m
+Pattern.Base64.03	1:384:suPKlXeZU8lovwU2jFlNxhZmxkqaku5UlVavlG6PeKTA6NeEaOou5ZObjgtP2ukvgmsGBaauvwTG\r\n4oQnCtnPyPUGl20TuDBlBExoIFhIuR0UwBcvBuFfMMpIA31DZLvjj12lGbfuIm7gCVomlMYg1tfL\r\nVDEMSFWZKViTgZdT2YRuCA2KtjK8grcPeK1BYiq2k8XRRAtFeAYKiYc/sftSxzW04OeHKeENLAc3\r\nQIHksdEDVlJgAI3jB2hOAttHZIceR3YwtuW+xLBFZzROq00XLUgTyXHE0v+u5Oloy45I0jhGcbZY\r\nZE5BXTxIh+R94d8ugIbF5iGixvf4LaY3rMxKKPzN/sZXzJ6VX3X15qzWpWwecqeWwIMGchUi
+Pattern.Base64.04	1:352:2lUR/Mbp8Ct5lGzV5GaVTBxJoM9JHaftrJdcylSU3MYhRrNuYMcGZsTMcBGWvQ6Ac8f/qQ6+XajEUYLLKidxIe0yWqzbI4keZM7IX8aN8FDDBFrbRswrCyaQln9W4L1+lLK26cMFF71OkSSPm6AAAmv5QSP1cA5o3wEblaKnWN6DK7cZneQ/rwOW2H1e/ietzwAagNkEx/mc53Yp+hWH+lss2DK7LuxNYaa1tUEQ9R6xp86SIWpZ9OMpBBc2XIgaQ8yRt2gM3G3Fq4W8Zz7l4jDUwXduk5qM04kJ6Zv+dyYbWg97sbsJjiVcO8oWGJsCyL/DeifhJqJWAQqBytB28jGirfRfCA==
+Pattern.Base64.05	1:24:ksdfSBQN9GqppgsQAecQUtA=
+Pattern.Base64.06	1:376:lpuGR8nzzn+i+4IlULH84XEt+cqN3Mxj7Dtf1oE6gNFIVvGrpX21jYZFmliIo6vqNqMZ+nilhKrXg0a63tVpRZdfHt2/kDkt9POuDr9R6HhShTgfvmQxHpgmyG8tPJ9uk/pmimUDpKt+cJp5GY2hQZ1S/joJoIsSZ7ghdNWQOX0Fq2flaZFGf3PxuOAUWTb0IPBfwbFx/5vgwLaD6owYkEvtkRZcZi4ltBalH1G+Gv44CjrB/D1vxIvg9G5xJudvHdqkeAddYxAyUSwBD+8dep+/5TykuJqOJJ2l6lLOaV28ONOpLUsVYVUKST3UKDr+ttmbGvMq6GgWIDrzFLhnrhCrwzbESzJEYoixQpQIYiGbisFAEqxaTA==
+Pattern.Base64.07	1:20:7aqfqPJhzbP3UlHp4dhF
+Pattern.Base64.08	1:340:LdViEYmpbYNgOXkEDU2bJYhjyquJl7P6kafJ7yqOxbMPLHBQ/Q5HEbtusNmh302CKltE5hjkX0phAo17SWAw45N0eEl+G7fF8cu8eJEMgMXQNaq3eapB37RMoOKkdD1V6NJfypSnVtdWHcp8ri6f0TEU6tRO3Oilxy6bqVDL0G5FNGugGPVl3FFZKc2k24DqHxmNx0lxzyrzOJNFouHAJMJGk9OV5/2Zvm4gPIFtVDLSTUfoz8Zj+9e6AbP7Y4iV9v+PaH/F/z3Z1ii6gF4p1biJZ3H2vQHZ5YqedWezkY7Nb5XSpy/m8FVVVwFJgLxmZm5Lj7JgzNxF9lpGvTkH
+Pattern.Base64.09	1:60:rkM59IoMLMDB1NDPIkhwQfb/eVkO/jcHgBO7xQGj7vt6pQsYMctocdn7tTY=
+Pattern.Base64.10	1:228:MRmvuY5XPoJbA8J/A9/hZInTfCZxtTeaa0s2Nx/NzGy/n0P9KSxrQxRSkJprDYduVdSj8BhDJxc0yINRUl/4KE5Epb1dWhzkZP10Dtw1qrU48/6re2uvKri0Q8R3U64K5hEzUWMvmM/QXHud/+zAd2BPxQMtg5iyGMsqiHSbcmALHN9bsej9M9qOl6UYfj2dnmcUcYYIEi67MTZq+OcASM+2S7aGR6pGeKQ1
+Pattern.Base64.11	1:262:c8ZV2evdmAMiYJlAgwgCjD4hO4wzYd86YZgOvvjtCBGXKRyk7DP5yc6Lx2vEC832cQx0XELKKVDw\r\nMbDaB222Xi48vXT9HFXUIQ97vhZocF1R9nRkhd+bUHqM/XxTXq7iESp9WHql5d8nMPqPC7MOnMpE\r\nbyXW+JLSIco9cJFLMxLJQXSMNbLTpCJT8+GQRBbNQ674oIETjOSNmc1HQeEkyTfArJQ1PH21w73A\r\nZWjTrBCRP2LJKPtleycl1oUbZQ==
+Pattern.Base64.12	1:20:XLMYjGUbuVBqQMuXLA==
+Pattern.Base64.13	1:184:K7lRbt43ERANv8rPognrpvTY2izYV0ZBIR5m5fUmls8PKuw/7wRvlKnbGdTNmXP3/IsSI/bt068a\r\nfh33Plcf5d/3mtNDaQnWpKAew2tN/mV3y06Abfzp4aOpEvma79kpDaMrC9P5GmS4qcgCNxngO5Nc\r\nZGZDEk2qWzo8Ecv98DbtD3OGdyg=
+Pattern.Base64.14	1:248:2T0gll+6w5FDEcRg/4/sWBUJ3ogWfOQNh20sp4Vk3xeIEaUJd4uW/lTA79E+KoECRakNHIpm7iNUIZqxDLxnpo/p/QCFaqoGpFCmbtHI0j9sjaMVO771HkI3QMBVCL+4bvgu+eZEUcv/USVDltdFZoqZ1FloQQUMfRtA+D+WQn0Z8o/aesNT9w6SzPpI/bb0UNHPGpj5M8jnuXaQTBP4vhrY2m6G+vEmVkX6nrRvAAY5+DV4to90om7z
+Pattern.Base64.15	1:320:rCRzlFQ3EgIm40PesZJxe2oFLQXdvVvp9SwLh/HLgONOsciIzj/xRTOrIo9gKaGkmRE+ips9s9f8\r\noJw8Nw50ls6T4Fv1WQlvYr/GBwjntnl3k9h1pTD10NTDFyZI5Ktck8Pr8KDkDiOWzKg6K5E5tiMx\r\n2aaCYCjEb8h0ylddNwyZFJoZ/3akTgsTciJM+h9FQOwrdFMhiS01nq8KV0NAmrLAqarEH/HrqQ9k\r\nK91BfRTVEKU3Z/o1pbzZfomNcLmIkMJ/SeAYoCLYQdj/Oq5F5eM0duDHwLvPnrPCXa62ZtOTGeO/\r\naEP+Eg==
+Pattern.Base64.16	1:372:qUI+YLZ4HvqJMbaSqtbWoIRqp/KJLuuyjgGEAaHoI7UB5OUbWuJ0nFgaasrrA+JRbN9GRt0nq9Ma41rE8JmCAHi5DdeyRn6Zryhx5RnU31Laxt9frH8DbLZOvToBFvTUkKSBDGecmKKC44eNzORfEr9V+auoorX4CJ9rIE0veqtQkvKG+jzNpVn4MGLRKwNn6vuYAt5kv4CQnu+NEIpFG9NEALV17l2S2TMGfypNg91A1tmMP4XzAEUdccRCBqmb2S1KwnFL5mYMHCRuEJ3AN39A9Ey+bufNIuXR0iXBWhE8GC6iX37X6eO0gC9ST3vKWcqKhr/tZPnH5opZvGTqMbZXP1Ob4vwls88MNfAvq02EpvpeBQ==
+Pattern.Base64.17	1:406:tkypLc2AnddqysNclLbhxtLwkQiBMCwQt7tbwQ2og9p6OkNx/ekVH99NppWGqtFm6Mpnw5U3DSjR\r\nOyR4nNwRcVIoPtpJ7DPA+1UZxHg9d4a48qCGOOZPmiWl7hSlGTsQecutA8OcP4JF6Bjxqdz14K29\r\ninDja5V9L4DyIxWR4Y02vnGhzKZjA8gfpMUYOAx0wftDRoYOW4A9qYqnYiWu4a5a6tbLGm+CV883\r\n4+ZfSdDOCfT4lS/blEoWvcEXwnTLsS03byb94MP0vsQiRgKQUeST56QdMMjDi+dRg0LlyuQ2OQwV\r\nkShNSLqsRBr14tqw683+owywdEV8x0pxkjLGdA5VIGd/bVOKg2FTd0shYWynfMwYLN2/DEhrlX6Y\r\nVfJE68A4L/xxJnk=
+Pattern.Base64.18	1:212:9z9mng1xIzSQlWyTQZD+1t+ggO7Mjq9QrrCA4b4lF54bT+df+RvkAauD1xglTExOyRXMaZRHCHVPTVU5AnrN/MV0dJX0hTvg+o7f9jYlDEuxK9xGyNXib7zIysFrSg5E2L0RP7tO7SLuyqqiRhTdHjhiXikucGeFmplbND4xNgdRIm4hJt8ZSNujeMcVgkf/fgcMTUetwrMtCP+dWICf
+Pattern.Base64.19	1:126:AoClYtRw/bmtnUTcg3FlhGgnbaTIVAHMLr008O8DkV5BKr9MTKfzc1G0LMYVWr5MEFwcYIptT4ss\r\nRmX1Vxqq+vt69z266w5vu4Wu4EHHXhYqfPFYwwGJzesRKg==
+Pattern.Base64.20	1:36:7XFRgTa1AexkhwkC7VldOBpts4PKbD41KGED
+Pattern.Base64.21	1:180:Jgs2obJncc739+b8keSuqds9Pg0YMMJs6D23/42apkhZ7iARmURXN4NlhSJW+AZlJeHjsdTQXZ8p\r\n6pU2x3/yL+1PqGBYQRTiDOdTgQB7VprZjgZhsiXKhtQZD1JkqOr6M9CVeMd4JCRkcgxNxajDcw6O\r\nNTHqEZis4NmkMx61LJbS4Q==
+Pattern.Base64.22	1:88:47lYRJlH/CpO1ieItQL9RoIs0uWRl5URuDpdzxARj06tv2Sybfv255GAEpYJnS4FNKTd8dyNxWxYE9hea5cOVSk=
+Pattern.Base64.23	1:184:q0fYuq+v/UT/X40toFMRxytr1lAnczM7gAUcBLZsV5CtvSQf3GXooAOYeuSQN3PDTW2FEJOuebyy\r\nkvWXqFKaDfJAl93GPazxH6Q6Fgt6pjEtpm7UNf6rlhBFQS5kQ0QXSNZ7Eg9ejdN2oP355m8PXApU\r\nyT1LciKpnIrPbQE202L3/tK/fz+b
+Pattern.Base64.24	1:336:Xikl+0TIkgwbPj/SiEAAU55+YUmSJ6aNC4y+P08Ekitn+cB6Xr5KIatvb2vU67ev1No51M/3gMuWQPHvWjiFxCuGE3md96mt53745S/jJq6xebEc7gFNTrI1tRO0LlRPiyRmuptXJ7A0WMIVyLRWmG19IJcm6b5RulVoYvNIy9tugfHqD4HvBfkYfYqfQNTFGv0azsdx9so4pGwGYvLSdNIxWR6WahXUaFQq7mmStOPsYJkYCXUzS35LPMyTV+QXc8OqrdEjRx1VmbjLZtm+Ef1Qklq/OWpU5WKzxpNvhUdB+qF3Y6FWmcywkXiSEPUq4ppsIOmD/mKzCZA=
+Pattern.Base64.25	1:106:PH0WEY2FKtB5iOAxIHxpWfYsa1mRzLHc+pPEpirmCKzWYhvii9CSS1puicIH2KhepRuayJhCcSZa\r\n2PoLzO6RKjm5Pj2OFOnqMtw4keY=
+Pattern.Base64.26	1:232:P69qNPkgINCEHmfxs2Vxz5n2QGO3pzKyiH7HkUCmPxZamLJEZuxm/78H/6yJTEZ71tbHbjdVL1FdjriH1gJSb0ud21oIEPlsO+/AMRvJmV9vHkl3r3WNTtzDXIquZc6jABRnUO6XsL6KvuTh2t8Ri/G1jyl8NYjUxhMfd0/m8MXJXRgtN+GDNqu6nHzCSgfyCyJKtUC8tZ5zI+83xTCn4sHlXTAKGrMur8Dhwxk=
+Pattern.Base64.27	1:238:flTDs8W/9uUxcXQi5sKOulwWhkA35jajrwwSOQuUlZSLlKxlPiXvBQTeZqrxKZS37wb/w0uqygtl\r\n+wz/h4MTCFYKgGhuWXJ1bJbFYotVtuNHyL+zIPZBsqEav+UbYoSc9qsxkYk4UpDDK9ZMvQhA/mpr\r\nIZ72Nkl1xGD/xro2xdaP95C6qxGGZuXJdgW4U+cFTFl4liwee6yfdQvJcC3gUQ7Ctze3sdBfqumy\r\nCg==
+Pattern.Base64.28	1:260:HL8m11oYQ7+nJbdANIQq9IdqCtYU81RiYKH3OMzp5KqNWSSzYsA3iYjp/gumuBOuPCFBFb9wShTf0CiSPHa9vIKp6wNAgRdi0yNYE2CwqaKeWXodmaylmOzLM4Bh9YDXYS2pSeKV0P9bYg1hcKBfzaE66dZsD3u5d1KnV5zr09GDJlgbcSYn3Knhz8oEVt3cOcxrBPWcO+0ANLJeAzTrSMiJnYQRyAz/iHbJRqBKm+wYPn0Btcf32N0Tdzy4ip595HY=
+Pattern.Base64.29	1:48:+y7Yp8b6EJcc0DKHsPDxCHyTKlUrME1ia5eSUI5IC/hbaWeE
+Pattern.AtlUnicodeToUTF8.00	18::ᄽ󷝓N\\=Ã󜭯
+Pattern.AtlUnicodeToUTF8.01	35:𕩡᰻󫂠b𐮣񏕉é⨘?,𰇜ࠌ
+Pattern.AtlUnicodeToUTF8.02	18:⋜᭱ᐙ⅛󝕄X
+Pattern.AtlUnicodeToUTF8.03	49:Ô񝺺󤞌ⳔÂ񃾾Ù𬭈Ë񭴤ᘮ៙þþ0éI⼝
+Pattern.AtlUnicodeToUTF8.04	22:򼓐↹¢⩏񒧛¬Ê*
+Pattern.AtlUnicodeToUTF8.05	35:/ก𾆀􀅙À򭨡੎\\ú󂲇ç$੐
+Pattern.AtlUnicodeToUTF8.06	28:ὄ½GʛÐÓU(v񙑴ը󃥑_V
+Pattern.AtlUnicodeToUTF8.07	33:ᬭ׈◰፣𗒿񷗽»􈕰𞡄ᚤ
+Pattern.AtlUnicodeToUTF8.08	23:|ᵖ±Ð3𵅖𛏭Áᾙ
+Pattern.AtlUnicodeToUTF8.09	38:ô>!Õwäæ񜎹⊧Ë򟠮üÄÚ򵜃ᥥ
+Pattern.AtlUnicodeToUTF8.10	41:񋁠ஃwᖕï[ᢎ򂞬¯¼ûᖧá¹⟪⫉
+Pattern.AtlUnicodeToUTF8.11	11:d⦷⭣⺩
+Pattern.AtlUnicodeToUTF8.12	38:N<⢩%G£𥳟wvØ᭙·Äâb:Ç­Òࢋ
+Pattern.AtlUnicodeToUTF8.13	29:񮁗ӿ@Â⣖b󐍸O♆򐰚BÒ
+Pattern.AtlUnicodeToUTF8.14	19:󄋋z␭򃐭6}⬿i
+Pattern.AtlUnicodeToUTF8.15	14:±񭔷ñؐiÂ
+Pattern.AtlUnicodeToUTF8.16	32:%%vF⛎Lõ⻨ᗻA[􁞳򠳪ðcۈ
+Pattern.AtlUnicodeToUTF8.17	25:2ᜃ᎚FఠåQⷘ⫢񫋢
+Pattern.AtlUnicodeToUTF8.18	16:⽗I W🿌򸲉
+Pattern.AtlUnicodeToUTF8.19	44:⮿ý𰗅Ⴧü򋢪h2෎ËĽÊ⿷ù񢭰񫡘O
+Pattern.AtlUnicodeToUTF8.20	6:𞘝(
+Pattern.AtlUnicodeToUTF8.21	39:ù:©ᤄ/⢋𵕹𬼋VⰜH񤎦£󲉛¦d
+Pattern.AtlUnicodeToUTF8.22	23:sæl¨񋂠c򌰁¿ë•
+Pattern.AtlUnicodeToUTF8.23	20:Ⳑ៏àತ񣡂𼉿
+Pattern.AtlUnicodeToUTF8.24	46:°=𵻇⍒򢦁Ï,𹨻إ𞜧᧫bB᐀⌀ߖ⑦¢
+Pattern.AtlUnicodeToUTF8.25	28:Á􏲮򘏴ᐯ੉^$¥ɛ𱑎T
+Pattern.AtlUnicodeToUTF8.26	3:­
+Pattern.AtlUnicodeToUTF8.27	26:¦↼᨝³⾕򼼃ǘ\\öýt
+Pattern.AtlUnicodeToUTF8.28	44:३⒨Ⓨ𰔖Ü⪷íƮ®Êӥò*Ó➍𶞕⺠
+Pattern.AtlUnicodeToUTF8.29	5:Lᓆ
+#END	732

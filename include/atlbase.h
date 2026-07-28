@@ -30,12 +30,14 @@
 // eMule uses it for the shell/file-association settings; signatures
 // verified against the Microsoft Learn CRegKey class page.
 #ifndef _WIN32
+// All 32 bits wide, as in Win32 -- see the typedef block in afx.h for why
+// `unsigned long` is the wrong spelling of that off Windows.
 using HKEY = void*;
-using REGSAM = unsigned long;
+using REGSAM = unsigned int;            // Win32: ACCESS_MASK, i.e. a DWORD
 using LPSECURITY_ATTRIBUTES = void*;
-using LPDWORD = unsigned long*;
-using ULONG = unsigned long;
-using LONG = long;
+using LPDWORD = unsigned int*;          // Win32: DWORD*
+using ULONG = unsigned int;
+using LONG = int;
 #define REG_NONE 0
 #define REG_SZ 1
 #define REG_OPTION_NON_VOLATILE 0
