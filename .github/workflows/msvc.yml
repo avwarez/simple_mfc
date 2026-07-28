@@ -75,4 +75,43 @@ jobs:
         run: cmake --build build --config Release
 
       - name: Run conformance suite (simple_mfc vs. real MFC)
+        env:
+          # Several cases build a CTime from local components and read back
+          # epoch seconds, so their value moves with the zone. Pinned here and
+          # in golden.cmake alike, so the recording and every later replay of
+          # it agree by construction rather than by the runner's default.
+          TZ: UTC0
         run: ctest --test-dir build -C Release --output-on-failure
+
+      # Real MFC exists only here. Record what it printed so builds on
+      # platforms that have no MFC at all -- above all the POSIX build the Qt
+      # frontend runs on -- can be compared against it. Commit the artifact to
+      # tests/conformance/golden/real_mfc_win32.txt to arm that comparison;
+      # once committed, the golden_recording_is_current test above re-derives
+      # this on every run and fails if the file has drifted.
+      - name: Record real MFC's output as the golden file
+        shell: pwsh
+        env:
+          TZ: UTC0
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = Get-ChildItem -Path build -Recurse -Filter real_mfc_probe.exe |
+                 Select-Object -First 1
+          if (-not $exe) { throw "real_mfc_probe.exe not found under build/" }
+          New-Item -ItemType Directory -Force -Path artifact | Out-Null
+          # -Encoding ascii would mangle the probe's UTF-8; the probe already
+          # emits UTF-8 bytes explicitly (see Utf8() in cases.cpp), so write
+          # them through unchanged and with LF endings, matching what the
+          # POSIX side will read back.
+          $out = & $exe.FullName
+          [System.IO.File]::WriteAllText(
+              "artifact/real_mfc_win32.txt",
+              ($out -join "`n") + "`n",
+              (New-Object System.Text.UTF8Encoding $false))
+          Write-Host "recorded $($out.Count) cases"
+
+      - name: Upload the golden recording
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-mfc-golden
+          path: artifact/real_mfc_win32.txt

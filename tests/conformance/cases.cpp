@@ -47,7 +47,14 @@
     #error "Define either SIMPLE_MFC_USE_NATIVE or SIMPLE_MFC_USE_REAL_MFC"
 #endif
 
-#include <windows.h>
+// Only Windows has windows.h, and only the real-MFC probe genuinely needs
+// it. The native probe is also built on POSIX (see the golden-file job in
+// ../../.github/workflows/msvc.yml + posix-conformance.yml): there it runs
+// against no MFC at all, and its output is compared against the recorded
+// output of the real-MFC probe from the Windows run.
+#ifdef _WIN32
+    #include <windows.h>
+#endif
 
 // windows.h #defines FindNextFile to FindNextFileW under UNICODE builds.
 // Real MFC's own headers include windows.h *before* declaring CFileFind,
@@ -89,13 +96,71 @@
 
 #include <atomic>
 #include <chrono>
-#include <crtdbg.h>
+#ifdef _WIN32
+    #include <crtdbg.h>
+#endif
 #include <cstdio>
 #include <cstdlib>
 #include <random>
 #include <string>
 #include <thread>
 #include <vector>
+
+// ---------------------------------------------------------------------
+// POSIX stand-ins for the handful of Win32 calls this harness itself uses.
+//
+// These are the TEST HARNESS's own scaffolding — creating a scratch
+// directory, converting to UTF-8 for printing — not part of what is under
+// test. Nothing here touches simple_mfc's own behaviour: every one of
+// these is a call the harness makes *around* the MFC code, never a call
+// the MFC code makes. The Win32 error constants keep their real numeric
+// values, because those ARE compared (CFileException::m_lOsError).
+// ---------------------------------------------------------------------
+#ifndef _WIN32
+    #include <filesystem>
+
+    #define MAX_PATH 260
+
+    // Real winerror.h values — these get printed and compared.
+    #define ERROR_FILE_NOT_FOUND 2L
+    #define ERROR_DISK_FULL      112L
+    #define ERROR_BAD_PATHNAME   161L
+
+    static void wcscpy_s(wchar_t* dst, size_t n, const wchar_t* src)
+    {
+        if (!dst || n == 0) return;
+        size_t i = 0;
+        for (; src && src[i] && i + 1 < n; ++i) dst[i] = src[i];
+        dst[i] = L'\0';
+    }
+
+    static void GetTempPathW(unsigned long n, wchar_t* buf)
+    {
+        wcscpy_s(buf, n, L"/tmp/");
+    }
+
+    static void CreateDirectoryW(const wchar_t* path, void*)
+    {
+        std::error_code ec;
+        std::filesystem::create_directories(std::filesystem::path(path), ec);
+    }
+
+    static void RemoveDirectoryW(const wchar_t* path)
+    {
+        std::error_code ec;
+        std::filesystem::remove(std::filesystem::path(path), ec);
+    }
+#endif
+
+// The native path separator, used by the harness when it builds a scratch
+// path by hand. A literal '\\' is not a separator on POSIX — it is an
+// ordinary character in a file name, so hard-coding it would silently
+// create one weirdly-named file instead of a directory tree.
+#ifdef _WIN32
+    #define SMFC_SEP L"\\"
+#else
+    #define SMFC_SEP L"/"
+#endif
 
 namespace
 {
@@ -114,8 +179,13 @@ namespace
 // Real MFC's ASSERT macros feed the first of those, and this suite runs
 // real MFC code by construction, so it is not hypothetical here. Redirect
 // all three to stderr / immediate exit.
+//
+// None of these exist off Windows, and none of them have a POSIX analogue
+// worth writing: a POSIX process that aborts just dies, which is exactly
+// the outcome this function works to obtain on Windows.
 void SilenceWindowsDialogs()
 {
+#ifdef _WIN32
     for (int report : {_CRT_WARN, _CRT_ERROR, _CRT_ASSERT})
     {
         _CrtSetReportMode(report, _CRTDBG_MODE_FILE);
@@ -123,6 +193,7 @@ void SilenceWindowsDialogs()
     }
     _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
+#endif
 }
 } // namespace
 
@@ -141,11 +212,52 @@ int g_index = 0;
 std::string Utf8(const wchar_t* w)
 {
     if (!w) return {};
+#ifdef _WIN32
     int n = WideCharToMultiByte(CP_UTF8, 0, w, -1, nullptr, 0, nullptr, nullptr);
     if (n <= 0) return {};
     std::string out(static_cast<size_t>(n - 1), '\0');
     WideCharToMultiByte(CP_UTF8, 0, w, -1, out.data(), n, nullptr, nullptr);
     return out;
+#else
+    // Encoded by hand rather than through the locale: the whole point of
+    // this function is that the two probes' bytes must be comparable, and
+    // a locale-dependent conversion is exactly the kind of thing that
+    // would make them differ for reasons that have nothing to do with MFC.
+    // wchar_t is UTF-32 here; surrogate pairs (which a UTF-16 Windows
+    // wchar_t would carry) are recombined so both sides encode the same
+    // code point to the same bytes.
+    std::string out;
+    for (const wchar_t* p = w; *p; ++p)
+    {
+        unsigned long cp = static_cast<unsigned long>(*p);
+        if (cp >= 0xD800 && cp <= 0xDBFF && p[1] >= 0xDC00 && p[1] <= 0xDFFF)
+        {
+            cp = 0x10000 + ((cp - 0xD800) << 10) + (static_cast<unsigned long>(p[1]) - 0xDC00);
+            ++p;
+        }
+        if (cp < 0x80)
+            out += static_cast<char>(cp);
+        else if (cp < 0x800)
+        {
+            out += static_cast<char>(0xC0 | (cp >> 6));
+            out += static_cast<char>(0x80 | (cp & 0x3F));
+        }
+        else if (cp < 0x10000)
+        {
+            out += static_cast<char>(0xE0 | (cp >> 12));
+            out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+            out += static_cast<char>(0x80 | (cp & 0x3F));
+        }
+        else
+        {
+            out += static_cast<char>(0xF0 | (cp >> 18));
+            out += static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
+            out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+            out += static_cast<char>(0x80 | (cp & 0x3F));
+        }
+    }
+    return out;
+#endif
 }
 
 // A handful of values under test (CStdioFile::ReadString results in
@@ -720,7 +832,7 @@ static void TestCMemFile()
 // ---------------------------------------------------------------------
 static void TestCFileFind()
 {
-    CString dir = TempDir() + CString(L"simple_mfc_conformance_find\\");
+    CString dir = TempDir() + CString(L"simple_mfc_conformance_find" SMFC_SEP);
     CreateDirectoryW(dir, nullptr);
 
     const wchar_t* names[] = {L"alpha.txt", L"beta.txt", L"gamma.dat"};

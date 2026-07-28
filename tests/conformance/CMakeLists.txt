@@ -47,3 +47,31 @@ add_test(
 # itself is stuck, not a probe. Either way the job fails in minutes instead
 # of holding a CI runner for hours.
 set_tests_properties(conformance_vs_real_mfc PROPERTIES TIMEOUT 900)
+
+# --- The golden recording stays accurate -----------------------------------
+# golden/real_mfc_win32.txt is real MFC's output, committed so that builds on
+# platforms where real MFC does not exist (i.e. the POSIX build we ship) can
+# be compared against it. A recording is only worth as much as its currency:
+# this re-derives it from real MFC on every Windows run and fails if the two
+# have drifted, so the file can never quietly become fiction.
+#
+# The same platform_dependent.txt exclusions apply here, because the runner's
+# own temp directory is not guaranteed stable between runs either — and
+# running the list against both sides is what keeps it honest.
+set(GOLDEN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/golden/real_mfc_win32.txt")
+if (EXISTS "${GOLDEN_FILE}")
+    add_test(
+        NAME golden_recording_is_current
+        COMMAND ${CMAKE_COMMAND}
+                "-DPROBE_EXE=$<TARGET_FILE:real_mfc_probe>"
+                "-DGOLDEN_FILE=${GOLDEN_FILE}"
+                "-DEXCLUDE_FILE=${CMAKE_CURRENT_SOURCE_DIR}/golden/platform_dependent.txt"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/golden.cmake"
+    )
+    set_tests_properties(golden_recording_is_current PROPERTIES TIMEOUT 900)
+else()
+    message(STATUS
+        "golden_recording_is_current: skipped, no recording yet — the CI job "
+        "uploads real_mfc_probe's output as the 'real-mfc-golden' artifact; "
+        "commit it to golden/real_mfc_win32.txt to enable POSIX conformance.")
+endif()

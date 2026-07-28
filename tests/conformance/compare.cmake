@@ -61,10 +61,18 @@ endfunction()
 # a variable "<prefix>_<sanitized name>" holding its value. Returns the
 # list of case names, and fails on a malformed or duplicated record.
 # ---------------------------------------------------------------------
+#
+# Records are walked with string(FIND) over the raw text and are NEVER
+# turned into a CMake list. Splitting on "\n" and iterating the result
+# looks equivalent and is not: reading a string as a list makes CMake apply
+# list-escaping rules to the contents, and the fuzzed-Unicode values from
+# the Pattern.* cases trip them. It silently glued the final 20 records
+# into a single element, so both probes lost the same 20 cases, the
+# comparison still reported success, and those cases were never actually
+# compared. Byte offsets are safe here because the only positions ever cut
+# at are ASCII \n and \t, which cannot occur inside a UTF-8 multi-byte
+# sequence.
 function(parse_records label text prefix out_names)
-    # Semicolons would otherwise be swallowed by CMake's own list syntax
-    # once the text is split on newlines.
-    string(REPLACE ";" "\\;" text "${text}")
     # The probes write "\n"; the Windows CRT turns that into "\r\n" on the
     # pipe. No record can legitimately contain a bare CR — cases.cpp's
     # Escape() renders a real carriage return as the two characters \r —
@@ -72,9 +80,19 @@ function(parse_records label text prefix out_names)
     string(REPLACE "\r" "" text "${text}")
     string(REGEX REPLACE "\n+$" "" text "${text}")
 
-    string(REPLACE "\n" ";" lines "${text}")
     set(names "")
-    foreach(line IN LISTS lines)
+    string(LENGTH "${text}" text_len)
+    set(pos 0)
+    while(pos LESS text_len)
+        string(SUBSTRING "${text}" ${pos} -1 rest)
+        string(FIND "${rest}" "\n" nl)
+        if (nl EQUAL -1)
+            set(line "${rest}")
+            set(pos ${text_len})
+        else()
+            string(SUBSTRING "${rest}" 0 ${nl} line)
+            math(EXPR pos "${pos} + ${nl} + 1")
+        endif()
         if (line STREQUAL "")
             continue()
         endif()
@@ -102,7 +120,7 @@ function(parse_records label text prefix out_names)
         set(${prefix}_${key} "${value}")
         set(${prefix}_${key} "${value}" PARENT_SCOPE)
         list(APPEND names "${name}")
-    endforeach()
+    endwhile()
     set(${out_names} "${names}" PARENT_SCOPE)
 endfunction()
 

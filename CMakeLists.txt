@@ -398,6 +398,47 @@ if (SIMPLE_MFC_BUILD_CONFORMANCE_TESTS)
     add_subdirectory(tests/conformance)
 endif()
 
+# --- Golden-file conformance (every platform, POSIX included) --------------
+# The suite above compares two MSVC builds with each other, so the build we
+# actually ship — the POSIX one the Qt frontend runs on — was never compared
+# against real MFC at all. This runs the same cases.cpp here and diffs it
+# against real MFC's RECORDED output, produced by the Windows job (the only
+# place real MFC exists) and committed under tests/conformance/golden/.
+#
+# This is what catches a divergence that lives only in a non-MSVC code path.
+# The CString::Format dialect bug was exactly that shape: six conformance
+# cases covered Format, all of them passed on both MSVC probes, and the
+# shipped build still truncated every wide string to one character.
+#
+# ON by default and silently skipped when the recording is absent, so a
+# fresh checkout without the golden still configures.
+option(SIMPLE_MFC_BUILD_GOLDEN_CONFORMANCE
+       "Compare this build against real MFC's recorded output" ON)
+set(SIMPLE_MFC_GOLDEN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/tests/conformance/golden/real_mfc_win32.txt")
+if (SIMPLE_MFC_BUILD_GOLDEN_CONFORMANCE AND EXISTS "${SIMPLE_MFC_GOLDEN_FILE}")
+    enable_testing()
+    add_executable(simple_mfc_golden_probe tests/conformance/cases.cpp)
+    target_compile_definitions(simple_mfc_golden_probe
+        PRIVATE SIMPLE_MFC_USE_NATIVE UNICODE _UNICODE)
+    target_link_libraries(simple_mfc_golden_probe PRIVATE simple_mfc::simple_mfc)
+    find_package(Threads REQUIRED)
+    target_link_libraries(simple_mfc_golden_probe PRIVATE Threads::Threads)
+
+    add_test(
+        NAME golden_conformance
+        COMMAND ${CMAKE_COMMAND}
+                "-DPROBE_EXE=$<TARGET_FILE:simple_mfc_golden_probe>"
+                "-DGOLDEN_FILE=${SIMPLE_MFC_GOLDEN_FILE}"
+                "-DEXCLUDE_FILE=${CMAKE_CURRENT_SOURCE_DIR}/tests/conformance/golden/platform_dependent.txt"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/conformance/golden.cmake"
+    )
+    set_tests_properties(golden_conformance PROPERTIES TIMEOUT 600)
+elseif (SIMPLE_MFC_BUILD_GOLDEN_CONFORMANCE)
+    message(STATUS
+        "golden_conformance: skipped, no recording at ${SIMPLE_MFC_GOLDEN_FILE} "
+        "(produced by the conformance job in .github/workflows/msvc.yml)")
+endif()
+
 # --- Install (optional, for use as an external library) --------------------
 include(GNUInstallDirs)
 install(TARGETS simple_mfc

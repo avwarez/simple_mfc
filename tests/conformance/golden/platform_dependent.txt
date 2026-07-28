@@ -1,0 +1,22 @@
+# Cases whose VALUE is a platform fact rather than a behaviour, and which
+# therefore cannot be compared between the recorded Windows output and a
+# POSIX build. Every entry needs a reason.
+#
+# This list is the one place where a real divergence could hide, so keep it
+# short and justify each line. golden.cmake errors out on a "stale" entry —
+# one naming a case that no longer exists on either side — so the list
+# cannot quietly outlive what it describes.
+#
+# NOT a place for "this fails and I don't know why". A case that differs
+# for any reason other than the platform's own naming of things is a
+# genuine conformance bug and belongs in the failure report, not here.
+
+# --- Temporary-directory paths -------------------------------------------
+# GetTempPath() is C:\Users\RUNNER~1\AppData\Local\Temp\ on the Windows
+# runner and /tmp/ here. The methods under test return the path they were
+# given, so what is being compared is the OS's temp location, not MFC.
+# CFileFind.Single.GetRoot additionally carries the separator, which is the
+# other half of the same fact.
+CFile.GetFilePath
+CFileFind.Single.GetFilePath
+CFileFind.Single.GetRoot
