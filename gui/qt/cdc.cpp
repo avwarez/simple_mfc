@@ -127,6 +127,46 @@ GdiObj& makeObj(CGdiObject* g, GdiObj::Kind k)
     return o;
 }
 
+// The DC's stock objects. A Win32 DC always has a pen, a brush and a font
+// selected -- BLACK_PEN, WHITE_BRUSH, SYSTEM_FONT -- so SelectObject NEVER
+// returns null: it returns whatever was selected before, and on a fresh DC
+// that is the stock object. Returning null instead silently breaks the
+// universal `pOld = dc.SelectObject(&x); ...; dc.SelectObject(pOld);` idiom,
+// because restoring null is not restoring anything. Confirmed against real
+// MFC by Gdi.SelectObject.pen_returned_non_null.
+//
+// One instance each, process-wide, exactly as Win32's stock objects are
+// shared; deliberately leaked, since they must outlive every DC.
+CPen* StockPen()
+{
+    static CPen* p = []{
+        auto* q = new CPen();
+        GdiObj& o = makeObj(q, GdiObj::Pen);
+        o.pen = QPen(Qt::black);
+        return q;
+    }();
+    return p;
+}
+CBrush* StockBrush()
+{
+    static CBrush* p = []{
+        auto* q = new CBrush();
+        GdiObj& o = makeObj(q, GdiObj::Brush);
+        o.brush = QBrush(Qt::white, Qt::SolidPattern);
+        return q;
+    }();
+    return p;
+}
+CFont* StockFont()
+{
+    static CFont* p = []{
+        auto* q = new CFont();
+        makeObj(q, GdiObj::Font);
+        return q;
+    }();
+    return p;
+}
+
 // The per-window paint surface + current DC state.
 struct GdiSurface {
     QImage image;
@@ -135,6 +175,12 @@ struct GdiSurface {
     int      bkMode    = kOpaque;
     UINT     textAlign = 0;            // TA_LEFT | TA_TOP
     QPoint   cur{0, 0};
+    // Viewport / window origin. Every primitive takes LOGICAL coordinates and
+    // the surface converts: device = logical - windowOrg + viewportOrg. Both
+    // default to (0,0), so with MM_TEXT and no origin calls this is the
+    // identity and nothing changes for callers that never touch it.
+    QPoint   vpOrg{0, 0};
+    QPoint   wndOrg{0, 0};
     // Currently selected objects: the resolved Qt values used when drawing, and
     // the app CGdiObject*s so SelectObject can return the previously selected
     // one (the `CPen* pOld = dc.SelectObject(&pen); ...; dc.SelectObject(pOld);`
@@ -153,6 +199,21 @@ struct GdiSurface {
     bool     isMemDC = false;
     CBitmap* selBitmap = nullptr;
 };
+
+// Logical -> device, and the same shift as a QPainter translation. Applied at
+// every drawing site and in Get/SetPixel, so a shifted origin moves what is
+// drawn AND what is probed, which is what makes the two cancel out for a
+// caller working purely in logical units.
+QPoint OrgShift(const GdiSurface* s)
+{
+    return QPoint(s->vpOrg.x() - s->wndOrg.x(), s->vpOrg.y() - s->wndOrg.y());
+}
+void ApplyOrg(QPainter& p, const GdiSurface* s)
+{
+    const QPoint d = OrgShift(s);
+    if (!d.isNull())
+        p.translate(d.x(), d.y());
+}
 
 std::unordered_map<const void*, GdiSurface>& Surfaces()
 {
@@ -238,6 +299,7 @@ bool BlitImageToDC(CDC* dc, int x, int y, const QImage& img, int dw, int dh)
     GdiSurface* s = surfOf(dc);
     if (!s || img.isNull()) return false;
     QPainter p(&s->image);
+    ApplyOrg(p, s);
     if (dw > 0 && dh > 0 && (dw != img.width() || dh != img.height()))
         p.drawImage(QRect(x, y, dw, dh), img);
     else
@@ -339,6 +401,12 @@ BOOL CDC::BitBlt(int x, int y, int nWidth, int nHeight,
     GdiSurface* srcS = surfOf(pSrcDC);
     if (!d || !srcS) return FALSE;
     QPainter p(&d->image);
+    ApplyOrg(p, d);
+    // The source rectangle is in the SOURCE DC's logical space, so it converts
+    // through that DC's origin, not this one's.
+    const QPoint srcShift = OrgShift(srcS);
+    xSrc += srcShift.x();
+    ySrc += srcShift.y();
     switch (dwRop) {
         case kSrcPaint: p.setCompositionMode(QPainter::CompositionMode_Plus); break;
         case kSrcAnd:   p.setCompositionMode(QPainter::CompositionMode_Multiply); break;
@@ -396,8 +464,18 @@ void CDC::FillSolidRect(int x, int y, int cx, int cy, COLORREF clr)
 {
     GdiSurface* s = surfOf(this);
     if (!s) return;
-    QPainter p(&s->image);
-    p.fillRect(QRect(x, y, cx, cy), toQColor(clr));
+    {
+        QPainter p(&s->image);
+        ApplyOrg(p, s);
+        p.fillRect(QRect(x, y, cx, cy), toQColor(clr));
+    }
+    // Real MFC implements this as ::SetBkColor(clr) followed by an
+    // ETO_OPAQUE ::ExtTextOut, and never restores the colour -- so the DC's
+    // background colour is left set to clr as a side effect. Surprising, but
+    // it is observable through GetBkColor and code does depend on it, so the
+    // side effect is part of the behaviour rather than an implementation
+    // detail. Confirmed against real MFC by Gdi.SetBkColor.first_returns_previous.
+    s->bkColor = clr;
 }
 void CDC::FillSolidRect(LPCRECT lpRect, COLORREF clr)
 {
@@ -411,6 +489,7 @@ BOOL CDC::Rectangle(int x1, int y1, int x2, int y2)
     GdiSurface* s = surfOf(this);
     if (!s) return FALSE;
     QPainter p(&s->image);
+    ApplyOrg(p, s);
     p.setPen(s->curNullPen ? QPen(Qt::NoPen) : s->curPen);
     p.setBrush(s->curNullBrush ? QBrush(Qt::NoBrush) : s->curBrush);
     p.drawRect(QRect(x1, y1, x2 - x1 - 1, y2 - y1 - 1));
@@ -442,6 +521,7 @@ void CDC::DrawFocusRect(LPCRECT lpRect)
     GdiSurface* s = surfOf(this);
     if (!s || !lpRect) return;
     QPainter p(&s->image);
+    ApplyOrg(p, s);
     QPen pen(Qt::black);
     pen.setStyle(Qt::DotLine);
     p.setPen(pen);
@@ -466,10 +546,23 @@ BOOL CDC::LineTo(int x, int y)
 {
     GdiSurface* s = surfOf(this);
     if (!s) return FALSE;
-    if (!s->curNullPen) {
+    // GDI's LineTo EXCLUDES its endpoint: the pixel at (x,y) is left alone and
+    // becomes the start of the next segment, which is what makes a chain of
+    // LineTo calls paint each joint exactly once. Qt's drawLine includes both
+    // ends, so shorten by one step along whichever axis the rasterizer would
+    // have moved on last. For an axis-aligned line -- the only kind the
+    // conformance suite compares, diagonal rasterization being each
+    // implementation's own business -- that is exact.
+    const int dx = x - s->cur.x();
+    const int dy = y - s->cur.y();
+    if (!s->curNullPen && (dx != 0 || dy != 0)) {
+        QPoint last(x, y);
+        if (std::abs(dx) >= std::abs(dy)) last.rx() -= (dx > 0) - (dx < 0);
+        if (std::abs(dy) >= std::abs(dx)) last.ry() -= (dy > 0) - (dy < 0);
         QPainter p(&s->image);
+        ApplyOrg(p, s);
         p.setPen(s->curPen);
-        p.drawLine(s->cur, QPoint(x, y));
+        p.drawLine(s->cur, last);
     }
     s->cur = QPoint(x, y);   // MoveTo semantics still advance under a NULL pen
     return TRUE;
@@ -486,6 +579,7 @@ BOOL CDC::TextOut(int x, int y, LPCTSTR lpszString, int nCount)
     const QString text = QString::fromWCharArray(lpszString,
                                                  nCount < 0 ? -1 : nCount);
     QPainter p(&s->image);
+    ApplyOrg(p, s);
     p.setFont(s->curFont);
     const QFontMetrics fm(s->curFont);
     if (s->bkMode == kOpaque)
@@ -517,6 +611,7 @@ int CDC::DrawText(LPCTSTR lpszString, int nCount, LPRECT lpRect, UINT nFormat)
     flags |= (nFormat & kDtNoPrefix) ? Qt::TextHideMnemonic : Qt::TextShowMnemonic;
 
     QPainter p(&s->image);
+    ApplyOrg(p, s);
     p.setFont(s->curFont);
     const QRect r = toQRect(lpRect);
     if (nFormat & kDtCalcRect) {
@@ -556,17 +651,25 @@ CSize CDC::GetTextExtent(const CString& str)
 COLORREF CDC::SetPixel(int x, int y, COLORREF crColor)
 {
     GdiSurface* s = surfOf(this);
-    if (!s || x < 0 || y < 0 || x >= s->image.width() || y >= s->image.height())
+    if (!s) return COLORREF(-1);
+    const QPoint d = OrgShift(s);   // logical -> device
+    x += d.x(); y += d.y();
+    if (x < 0 || y < 0 || x >= s->image.width() || y >= s->image.height())
         return COLORREF(-1);
     s->image.setPixelColor(x, y, toQColor(crColor));
+    // Win32 returns the colour the pixel was actually set TO (which can differ
+    // from the request on a palettized surface), not the colour it held.
     return crColor;
 }
 COLORREF CDC::SetPixel(POINT point, COLORREF crColor) { return SetPixel(point.x, point.y, crColor); }
 COLORREF CDC::GetPixel(int x, int y)
 {
     GdiSurface* s = surfOf(this);
-    if (!s || x < 0 || y < 0 || x >= s->image.width() || y >= s->image.height())
-        return COLORREF(-1);
+    if (!s) return COLORREF(-1);
+    const QPoint d = OrgShift(s);   // logical -> device
+    x += d.x(); y += d.y();
+    if (x < 0 || y < 0 || x >= s->image.width() || y >= s->image.height())
+        return COLORREF(-1);        // Win32: CLR_INVALID
     return toColorref(s->image.pixelColor(x, y));
 }
 COLORREF CDC::GetPixel(POINT point) { return GetPixel(point.x, point.y); }
@@ -580,7 +683,7 @@ CFont* CDC::SelectObject(CFont* pFont)
 {
     GdiSurface* s = surfOf(this);
     if (!s) return nullptr;
-    CFont* prev = s->selFont;
+    CFont* prev = s->selFont ? s->selFont : StockFont();
     s->selFont = pFont;
     const GdiObj* o = objOf(pFont);
     s->curFont = o ? o->font : QFont();   // null selects the stock font
@@ -590,7 +693,7 @@ CPen* CDC::SelectObject(CPen* pPen)
 {
     GdiSurface* s = surfOf(this);
     if (!s) return nullptr;
-    CPen* prev = s->selPen;
+    CPen* prev = s->selPen ? s->selPen : StockPen();
     s->selPen = pPen;
     if (const GdiObj* o = objOf(pPen)) { s->curPen = o->pen; s->curNullPen = o->nullPen; }
     else { s->curPen = QPen(Qt::black); s->curNullPen = false; }
@@ -600,7 +703,7 @@ CBrush* CDC::SelectObject(CBrush* pBrush)
 {
     GdiSurface* s = surfOf(this);
     if (!s) return nullptr;
-    CBrush* prev = s->selBrush;
+    CBrush* prev = s->selBrush ? s->selBrush : StockBrush();
     s->selBrush = pBrush;
     if (const GdiObj* o = objOf(pBrush)) { s->curBrush = o->brush; s->curNullBrush = o->nullBrush; }
     else { s->curBrush = QBrush(Qt::white, Qt::SolidPattern); s->curNullBrush = false; }
@@ -645,6 +748,7 @@ void CDC::FillRect(LPCRECT lpRect, CBrush* pBrush)
     if (!s || !lpRect) return;
     const GdiObj* o = objOf(pBrush);
     QPainter p(&s->image);
+    ApplyOrg(p, s);
     p.fillRect(toQRect(lpRect), o ? o->brush : s->curBrush);
 }
 void CDC::FrameRect(LPCRECT lpRect, CBrush* pBrush)
@@ -655,6 +759,7 @@ void CDC::FrameRect(LPCRECT lpRect, CBrush* pBrush)
     const QColor col = (o ? o->brush.color() : s->curBrush.color());
     const QRect r = toQRect(lpRect);
     QPainter p(&s->image);
+    ApplyOrg(p, s);
     // A 1px border in the brush colour (real FrameRect strokes with the brush).
     p.fillRect(QRect(r.left(), r.top(), r.width(), 1), col);
     p.fillRect(QRect(r.left(), r.bottom(), r.width(), 1), col);
@@ -689,8 +794,23 @@ BOOL CDC::DrawState(CPoint pt, CSize size, LPCTSTR lpszText, UINT, BOOL, int nTe
 
 CSize  CDC::SetWindowExt(int, int)   { return CSize(0, 0); }
 CSize  CDC::SetViewportExt(int, int) { return CSize(0, 0); }
-CPoint CDC::SetWindowOrg(int, int)   { return CPoint(0, 0); }
-CPoint CDC::SetViewportOrg(int, int) { return CPoint(0, 0); }
+// Both return the PREVIOUS origin, which is what the save/restore idiom needs.
+CPoint CDC::SetWindowOrg(int x, int y)
+{
+    GdiSurface* s = surfOf(this);
+    if (!s) return CPoint(0, 0);
+    const QPoint prev = s->wndOrg;
+    s->wndOrg = QPoint(x, y);
+    return CPoint(prev.x(), prev.y());
+}
+CPoint CDC::SetViewportOrg(int x, int y)
+{
+    GdiSurface* s = surfOf(this);
+    if (!s) return CPoint(0, 0);
+    const QPoint prev = s->vpOrg;
+    s->vpOrg = QPoint(x, y);
+    return CPoint(prev.x(), prev.y());
+}
 int    CDC::SelectClipRgn(CRgn*)     { return 1; /* SIMPLEREGION */ }
 
 // ---------------------------------------------------------------------------

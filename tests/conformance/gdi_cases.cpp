@@ -219,7 +219,7 @@ void TestPixels()
     CDC& dc = cv.dc;
 
     const COLORREF c = Rgb(1, 2, 3);
-    LineColor("Gdi.SetPixel.returns_previous", dc.SetPixel(5, 5, c));
+    LineColor("Gdi.SetPixel.returns_colour_set", dc.SetPixel(5, 5, c));
     LineColor("Gdi.GetPixel.after_SetPixel", dc.GetPixel(5, 5));
     LineColor("Gdi.GetPixel.neighbour_untouched", dc.GetPixel(6, 5));
 
