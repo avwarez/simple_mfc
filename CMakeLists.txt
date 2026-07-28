@@ -283,6 +283,19 @@ if (SIMPLE_MFC_GUI STREQUAL "qt")
         TIMEOUT 60
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+    # CWnd's dialog-item and window-service helpers (SetDlgItemText & co) --
+    # the busiest corner of the GUI API in the pilot project.
+    add_executable(qt_dlgitem_test
+        tests/qt_dlgitem_test.cpp ${SMFC_GEN_TEST_DIALOGS})
+    target_link_libraries(qt_dlgitem_test PRIVATE simple_mfc::gui_qt)
+    if (NOT MSVC)
+        target_compile_options(qt_dlgitem_test PRIVATE -fms-extensions)
+    endif()
+    add_test(NAME qt_dlgitem_test COMMAND qt_dlgitem_test)
+    set_tests_properties(qt_dlgitem_test PROPERTIES
+        TIMEOUT 60
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
     # DDX + typed controls: build a CDialog with member controls and a
     # DoDataExchange, and check load/save through the QWidgets.
     add_executable(qt_ddx_test

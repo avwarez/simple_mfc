@@ -331,6 +331,13 @@ using LPMSG = MSG*;
 #define IDYES                   6
 #define IDNO                    7
 
+// Button check states: what CheckDlgButton takes and IsDlgButtonChecked
+// returns. Same POSIX-shim rationale as the WM_* block above (on Windows
+// these come from <winuser.h>); eMule compares against them by name.
+#define BST_UNCHECKED           0x0000
+#define BST_CHECKED             0x0001
+#define BST_INDETERMINATE       0x0002
+
 // A few kernel32 constants the threading layer needs (real target: from
 // <windows.h>). Same POSIX-shim rationale as the WM_* block above.
 #define CREATE_SUSPENDED        0x00000004

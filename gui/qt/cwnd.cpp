@@ -15,6 +15,7 @@
 #include "dialog_ir.h"
 
 #include <QAbstractButton>
+#include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialog>
@@ -35,10 +36,14 @@
 #include <QSpinBox>
 #include <QString>
 #include <QHeaderView>
+#include <QTimer>
 #include <QTreeWidget>
 #include <QVariant>
 #include <QWidget>
 
+#include <cerrno>
+#include <climits>
+#include <cwchar>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -76,6 +81,28 @@ WndExtra* ExtraIfAny(const CWnd* w)
 }
 
 QString ToQString(const std::string& s) { return QString::fromStdString(s); }
+
+// --- SetTimer/KillTimer registry -------------------------------------------
+// A Win32 timer is owned by the window and identified by an id the caller
+// chooses; re-arming an existing id replaces it rather than adding a second
+// timer. There is nowhere in the frozen interface to hang a QTimer, so the
+// timers live here, keyed by owner window and id.
+std::unordered_map<const CWnd*, std::unordered_map<UINT_PTR, QTimer*>>& TimerMap()
+{
+    static std::unordered_map<const CWnd*, std::unordered_map<UINT_PTR, QTimer*>> m;
+    return m;
+}
+
+// Stop and delete every timer owned by `w`. Called when the window goes away:
+// a timer that outlived its window would keep firing WM_TIMER into freed memory.
+void KillAllTimers(const CWnd* w)
+{
+    auto it = TimerMap().find(w);
+    if (it == TimerMap().end()) return;
+    for (auto& kv : it->second)
+        if (kv.second) { kv.second->stop(); delete kv.second; }
+    TimerMap().erase(it);
+}
 } // namespace
 
 // Driver-internal helpers (declared in driver_internal.h). Defined here
@@ -274,6 +301,14 @@ LRESULT CWnd::WindowProc(UINT message, WPARAM wParam, LPARAM lParam)
         OnPaint();
         return 0;
     }
+    if (message == WM_TIMER)
+    {
+        // ON_WM_TIMER's route. The QTimer armed by SetTimer sends this with the
+        // timer id in wParam, exactly as Win32 does, so a derived OnTimer
+        // override is reached through the virtual.
+        OnTimer(static_cast<UINT_PTR>(wParam));
+        return 0;
+    }
     LRESULT result = 0;
     if (OnWndMsg(message, wParam, lParam, &result))
         return result;
@@ -398,6 +433,7 @@ CWnd::~CWnd()
             if (child) child->Detach();
         ExtraMap().erase(this);
     }
+    KillAllTimers(this);
     smfc_qt::ReleaseWndSurface(this);
     if (m_hWnd != nullptr) {
         // Only if the handle still maps back to us: a handle can have been
@@ -419,6 +455,7 @@ BOOL CWnd::DestroyWindow()
                 if (child) child->Detach();
             ExtraMap().erase(this);
         }
+        KillAllTimers(this);                // a timer must not outlive its window
         smfc_qt::ReleaseWndSurface(this);   // free the CDC paint buffer, if any
         HandleMap().erase(m_hWnd);
         m_hWnd = nullptr;
@@ -512,6 +549,294 @@ BOOL CWnd::EnableWindow(BOOL bEnable)
         return wasDisabled;   // real MFC returns the previous *disabled* state
     }
     return FALSE;
+}
+
+// ---------------------------------------------------------------------------
+// Dialog-item helpers. Real MFC implements each of these as ::GetDlgItem(m_hWnd,
+// nID) followed by the matching window message; here they route through our own
+// GetDlgItem, which resolves the id through the map the dialog builder filled
+// in. This is eMule's single busiest corner of the GUI API -- SetDlgItemText
+// alone is called 729 times, more than any other method in the library.
+// ---------------------------------------------------------------------------
+void CWnd::SetDlgItemText(int nID, LPCTSTR lpszString)
+{
+    if (CWnd* c = GetDlgItem(nID))
+        c->SetWindowText(lpszString);
+}
+
+int CWnd::GetDlgItemText(int nID, CString& rString) const
+{
+    rString.Empty();
+    if (CWnd* c = GetDlgItem(nID))
+        c->GetWindowText(rString);
+    return rString.GetLength();
+}
+
+int CWnd::GetDlgItemText(int nID, LPTSTR lpStr, int nMaxCount) const
+{
+    // Win32 copies at most nMaxCount-1 characters plus the terminator, and
+    // returns the number of characters actually COPIED -- not the length of the
+    // control's text, which is why a caller cannot use the result to size a
+    // buffer.
+    if (lpStr == nullptr || nMaxCount <= 0)
+        return 0;
+    CString s;
+    GetDlgItemText(nID, s);
+    int n = s.GetLength();
+    if (n > nMaxCount - 1)
+        n = nMaxCount - 1;
+    const LPCTSTR src = s.GetString();
+    for (int i = 0; i < n; ++i)
+        lpStr[i] = src[i];
+    lpStr[n] = L'\0';
+    return n;
+}
+
+void CWnd::SetDlgItemInt(int nID, UINT nValue, BOOL bSigned)
+{
+    const std::wstring s = bSigned
+        ? std::to_wstring(static_cast<int>(nValue))
+        : std::to_wstring(static_cast<unsigned>(nValue));
+    SetDlgItemText(nID, s.c_str());
+}
+
+UINT CWnd::GetDlgItemInt(int nID, BOOL* lpTrans, BOOL bSigned) const
+{
+    // Win32: leading blanks are skipped, the first character that cannot be part
+    // of the number ends the scan and makes the translation FAIL, and a failed
+    // translation returns 0 with *lpTrans set FALSE. An unsigned request that
+    // meets a minus sign fails too.
+    if (lpTrans) *lpTrans = FALSE;
+    CString s;
+    GetDlgItemText(nID, s);
+    const wchar_t* p = s.GetString();
+    while (*p == L' ' || *p == L'\t') ++p;
+    if (*p == L'\0')
+        return 0;
+    if (!bSigned && *p == L'-')
+        return 0;
+
+    errno = 0;
+    wchar_t* end = nullptr;
+    UINT result = 0;
+    if (bSigned) {
+        const long v = std::wcstol(p, &end, 10);
+        if (errno == ERANGE || v < INT_MIN || v > INT_MAX) return 0;
+        result = static_cast<UINT>(static_cast<int>(v));
+    } else {
+        const unsigned long v = std::wcstoul(p, &end, 10);
+        if (errno == ERANGE || v > 0xFFFFFFFFul) return 0;
+        result = static_cast<UINT>(v);
+    }
+    if (end == p || *end != L'\0')   // nothing consumed, or trailing garbage
+        return 0;
+
+    if (lpTrans) *lpTrans = TRUE;
+    return result;
+}
+
+void CWnd::CheckDlgButton(int nIDButton, UINT nCheck)
+{
+    CWnd* c = GetDlgItem(nIDButton);
+    if (!c) return;
+    QWidget* w = smfc_qt::WidgetOf(c);
+    // BST_INDETERMINATE is only meaningful for a tri-state check box; Win32
+    // ignores it on anything else, and so does this.
+    if (auto* cb = qobject_cast<QCheckBox*>(w)) {
+        if (nCheck == BST_INDETERMINATE) {
+            cb->setTristate(true);
+            cb->setCheckState(Qt::PartiallyChecked);
+            return;
+        }
+        cb->setCheckState(nCheck == BST_UNCHECKED ? Qt::Unchecked : Qt::Checked);
+        return;
+    }
+    if (auto* b = qobject_cast<QAbstractButton*>(w))
+        b->setChecked(nCheck != BST_UNCHECKED);
+}
+
+UINT CWnd::IsDlgButtonChecked(int nIDButton) const
+{
+    CWnd* c = GetDlgItem(nIDButton);
+    if (!c) return BST_UNCHECKED;
+    QWidget* w = smfc_qt::WidgetOf(c);
+    if (auto* cb = qobject_cast<QCheckBox*>(w)) {
+        switch (cb->checkState()) {
+        case Qt::Checked:          return BST_CHECKED;
+        case Qt::PartiallyChecked: return BST_INDETERMINATE;
+        default:                   return BST_UNCHECKED;
+        }
+    }
+    if (auto* b = qobject_cast<QAbstractButton*>(w))
+        return b->isChecked() ? BST_CHECKED : BST_UNCHECKED;
+    return BST_UNCHECKED;
+}
+
+void CWnd::CheckRadioButton(int nIDFirstButton, int nIDLastButton, int nIDCheckButton)
+{
+    // Win32 walks the id range and leaves exactly one button checked. Qt's radio
+    // buttons in a shared parent are auto-exclusive, so setting the chosen one
+    // would be enough -- but the range may hold check boxes or span groups, and
+    // clearing explicitly is what Win32 guarantees.
+    for (int id = nIDFirstButton; id <= nIDLastButton; ++id)
+        CheckDlgButton(id, id == nIDCheckButton ? BST_CHECKED : BST_UNCHECKED);
+}
+
+// --- Coordinate mapping ----------------------------------------------------
+void CWnd::ScreenToClient(LPPOINT lpPoint) const
+{
+    if (lpPoint == nullptr) return;
+    if (QWidget* w = smfc_qt::WidgetOf(this)) {
+        const QPoint p = w->mapFromGlobal(QPoint(lpPoint->x, lpPoint->y));
+        lpPoint->x = p.x();
+        lpPoint->y = p.y();
+    }
+}
+
+void CWnd::ScreenToClient(LPRECT lpRect) const
+{
+    if (lpRect == nullptr) return;
+    // Win32 maps both corners independently, which is what keeps the rectangle
+    // right/bottom-exclusive through the conversion.
+    POINT tl = { lpRect->left,  lpRect->top    };
+    POINT br = { lpRect->right, lpRect->bottom };
+    ScreenToClient(&tl);
+    ScreenToClient(&br);
+    lpRect->left = tl.x; lpRect->top    = tl.y;
+    lpRect->right = br.x; lpRect->bottom = br.y;
+}
+
+void CWnd::ClientToScreen(LPPOINT lpPoint) const
+{
+    if (lpPoint == nullptr) return;
+    if (QWidget* w = smfc_qt::WidgetOf(this)) {
+        const QPoint p = w->mapToGlobal(QPoint(lpPoint->x, lpPoint->y));
+        lpPoint->x = p.x();
+        lpPoint->y = p.y();
+    }
+}
+
+void CWnd::ClientToScreen(LPRECT lpRect) const
+{
+    if (lpRect == nullptr) return;
+    POINT tl = { lpRect->left,  lpRect->top    };
+    POINT br = { lpRect->right, lpRect->bottom };
+    ClientToScreen(&tl);
+    ClientToScreen(&br);
+    lpRect->left = tl.x; lpRect->top    = tl.y;
+    lpRect->right = br.x; lpRect->bottom = br.y;
+}
+
+// --- Repaint ---------------------------------------------------------------
+// bErase (whether the background is wiped before WM_PAINT) has no Qt analogue:
+// a Qt widget always repaints its background in paintEvent. Accepted and
+// ignored, which matches what the caller observes -- a repainted window.
+void CWnd::Invalidate(BOOL bErase) { InvalidateRect(nullptr, bErase); }
+
+void CWnd::InvalidateRect(LPCRECT lpRect, BOOL /*bErase*/)
+{
+    QWidget* w = smfc_qt::WidgetOf(this);
+    if (!w) return;
+    if (lpRect)
+        w->update(QRect(lpRect->left, lpRect->top,
+                        lpRect->right - lpRect->left,
+                        lpRect->bottom - lpRect->top));
+    else
+        w->update();   // whole client area
+}
+
+// Win32's UpdateWindow paints the pending invalid region IMMEDIATELY rather
+// than posting WM_PAINT, which is the whole reason callers use it (progress
+// feedback inside a long loop). QWidget::repaint has exactly that meaning;
+// QWidget::update would not.
+void CWnd::UpdateWindow()
+{
+    if (QWidget* w = smfc_qt::WidgetOf(this))
+        w->repaint();
+}
+
+void CWnd::SetRedraw(BOOL bRedraw)
+{
+    if (QWidget* w = smfc_qt::WidgetOf(this))
+        w->setUpdatesEnabled(bRedraw != FALSE);
+}
+
+// --- Focus / parent / state ------------------------------------------------
+CWnd* CWnd::SetFocus()
+{
+    CWnd* prev = GetFocus();          // real MFC returns the previously focused
+    if (QWidget* w = smfc_qt::WidgetOf(this))
+        w->setFocus(Qt::OtherFocusReason);
+    return prev;                      // window, or null if there was none
+}
+
+CWnd* CWnd::GetFocus()
+{
+    QWidget* f = QApplication::focusWidget();
+    return f ? FromHandle(reinterpret_cast<HWND>(f)) : nullptr;
+}
+
+CWnd* CWnd::GetParent() const
+{
+    if (QWidget* w = smfc_qt::WidgetOf(this))
+        if (QWidget* p = w->parentWidget())
+            return FromHandle(reinterpret_cast<HWND>(p));
+    return nullptr;
+}
+
+CWnd* CWnd::GetTopLevelParent() const
+{
+    if (QWidget* w = smfc_qt::WidgetOf(this))
+        if (QWidget* t = w->window())     // Qt's own "the top-level ancestor"
+            return FromHandle(reinterpret_cast<HWND>(t));
+    return nullptr;
+}
+
+BOOL CWnd::IsWindowVisible() const
+{
+    QWidget* w = smfc_qt::WidgetOf(this);
+    return (w && w->isVisible()) ? TRUE : FALSE;
+}
+
+BOOL CWnd::IsWindowEnabled() const
+{
+    QWidget* w = smfc_qt::WidgetOf(this);
+    return (w && w->isEnabled()) ? TRUE : FALSE;
+}
+
+// --- Timers ----------------------------------------------------------------
+UINT_PTR CWnd::SetTimer(UINT_PTR nIDEvent, UINT nElapse,
+                        void(CALLBACK* lpfnTimer)(HWND, UINT, UINT_PTR, DWORD))
+{
+    // The TimerProc form is not supported: eMule always passes null and handles
+    // WM_TIMER through its message map. Refusing loudly (returning 0, Win32's
+    // failure value) beats silently arming a timer whose callback never runs.
+    if (lpfnTimer != nullptr)
+        return 0;
+
+    QTimer*& t = TimerMap()[this][nIDEvent];
+    if (t == nullptr) {
+        t = new QTimer();
+        // The lambda captures the owner and the id, so the timer sends the same
+        // WM_TIMER Win32 would. KillAllTimers deletes it with the window, so the
+        // captured `this` cannot outlive the object.
+        QObject::connect(t, &QTimer::timeout, [this, nIDEvent] {
+            SendMessage(WM_TIMER, static_cast<WPARAM>(nIDEvent), 0);
+        });
+    }
+    t->start(static_cast<int>(nElapse));
+    return nIDEvent;   // Win32 echoes the id back for a window timer
+}
+
+BOOL CWnd::KillTimer(UINT_PTR nIDEvent)
+{
+    auto wit = TimerMap().find(this);
+    if (wit == TimerMap().end()) return FALSE;
+    auto tit = wit->second.find(nIDEvent);
+    if (tit == wit->second.end()) return FALSE;
+    if (tit->second) { tit->second->stop(); delete tit->second; }
+    wit->second.erase(tit);
+    return TRUE;
 }
 
 // UpdateData drives Dialog Data Exchange: it builds a CDataExchange and hands
