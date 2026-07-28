@@ -1,0 +1,91 @@
+name: POSIX build
+
+# The build that actually ships. msvc.yml proves simple_mfc matches real MFC
+# on Windows; this proves the POSIX build matches the recording of that same
+# real MFC (tests/conformance/golden/), which is the only gate covering the
+# binaries the Qt frontend runs on.
+#
+# Until this existed, golden_conformance ran only when someone happened to
+# invoke ctest locally -- so a push that skipped it went unnoticed. That is
+# precisely the hole the CString::Format bug slipped through.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  core:
+    name: core (${{ matrix.compiler }}, ${{ matrix.build_type }})
+    runs-on: ubuntu-latest
+    # Nothing here should take minutes; a run that does is stuck, not slow.
+    # Same layered-timeout reasoning as msvc.yml: golden.cmake caps the probe
+    # at 300s and CTest caps each test, so reaching this cap means the driver
+    # itself hung.
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # Clang is not redundant with GCC here: it is stricter about the
+        # override/shadowing rules this library leans on, and it is the second
+        # opinion on anything that only shows up off MSVC. It cannot build the
+        # bare-name message-map targets (see CMakeLists.txt); CMake skips those
+        # for it rather than failing, and everything else -- including the
+        # whole conformance surface -- still runs.
+        compiler: [gcc, clang]
+        build_type: [Debug, Release]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure
+        env:
+          CC: ${{ matrix.compiler == 'gcc' && 'gcc' || 'clang' }}
+          CXX: ${{ matrix.compiler == 'gcc' && 'g++' || 'clang++' }}
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          -DSIMPLE_MFC_BUILD_GUI_CORE_TEST=ON
+          -DSIMPLE_MFC_BUILD_RC_TESTS=ON
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Test
+        # golden_conformance is the point of this job: it runs cases.cpp
+        # against real MFC's recorded output. golden.cmake pins TZ=UTC0 for
+        # the probe itself, so the runner's zone cannot move a result.
+        run: ctest --test-dir build --output-on-failure
+
+  qt:
+    name: qt driver
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Qt5
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qtbase5-dev
+
+      # GCC, not Clang: the Qt tests use the same bare-name message-map form
+      # as eMule, which Clang cannot compile.
+      - name: Configure
+        run: >
+          cmake -S . -B build-qt
+          -DCMAKE_BUILD_TYPE=Release
+          -DSIMPLE_MFC_GUI=qt
+          -DSIMPLE_MFC_BUILD_RC_TESTS=ON
+
+      - name: Build
+        run: cmake --build build-qt -j
+
+      - name: Test
+        # No display on the runner. Qt's offscreen platform plugin renders to
+        # memory, which is what the pixel assertions read back -- the same way
+        # these tests are run locally.
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --test-dir build-qt --output-on-failure

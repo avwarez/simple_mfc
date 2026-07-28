@@ -102,7 +102,9 @@ void AFXAPI DDX_Text(CDataExchange* pDX, int nIDC, short& v)         { ddxInt(pD
 void AFXAPI DDX_Text(CDataExchange* pDX, int nIDC, int& v)           { ddxInt(pDX, nIDC, v); }
 void AFXAPI DDX_Text(CDataExchange* pDX, int nIDC, UINT& v)          { ddxInt(pDX, nIDC, v); }
 void AFXAPI DDX_Text(CDataExchange* pDX, int nIDC, long& v)          { ddxInt(pDX, nIDC, v); }
+#ifdef _WIN32
 void AFXAPI DDX_Text(CDataExchange* pDX, int nIDC, DWORD& v)         { ddxInt(pDX, nIDC, v); }
+#endif
 void AFXAPI DDX_Text(CDataExchange* pDX, int nIDC, float& v)         { ddxFloat(pDX, nIDC, v); }
 void AFXAPI DDX_Text(CDataExchange* pDX, int nIDC, double& v)        { ddxFloat(pDX, nIDC, v); }
 

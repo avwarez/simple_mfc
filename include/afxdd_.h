@@ -20,7 +20,11 @@ void AFXAPI DDX_Text(CDataExchange* pDX, int nIDC, short& value);
 void AFXAPI DDX_Text(CDataExchange* pDX, int nIDC, int& value);
 void AFXAPI DDX_Text(CDataExchange* pDX, int nIDC, UINT& value);
 void AFXAPI DDX_Text(CDataExchange* pDX, int nIDC, long& value);
+#ifdef _WIN32
+// Off Windows DWORD is `unsigned int`, i.e. the same type as UINT, so this
+// would redeclare the overload above. See the typedef block in afx.h.
 void AFXAPI DDX_Text(CDataExchange* pDX, int nIDC, DWORD& value);
+#endif
 void AFXAPI DDX_Text(CDataExchange* pDX, int nIDC, CString& value);
 void AFXAPI DDX_Text(CDataExchange* pDX, int nIDC, float& value);
 void AFXAPI DDX_Text(CDataExchange* pDX, int nIDC, double& value);

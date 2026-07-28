@@ -150,17 +150,29 @@ endif()
 
 if (SIMPLE_MFC_BUILD_GUI_CORE_TEST)
     enable_testing()
-    add_executable(gui_core_test tests/gui_core_test.cpp)
-    target_link_libraries(gui_core_test PRIVATE simple_mfc::gui_core)
     # eMule (and this test) write message-map handlers in the bare-name
     # pointer-to-member form, ON_COMMAND(ID, OnFoo); real MFC compiles it via
-    # an MSVC extension. GCC/Clang accept the same construct with
-    # -fms-extensions, so the test exercises the exact eMule map form.
-    if (NOT MSVC)
-        target_compile_options(gui_core_test PRIVATE -fms-extensions)
+    # an MSVC extension. GCC accepts the same construct with -fms-extensions.
+    #
+    # CLANG DOES NOT, with any flag combination -- measured: -fms-extensions
+    # alone still rejects it, and adding -fms-compatibility makes it worse by
+    # changing unrelated semantics. An earlier version of this comment claimed
+    # Clang worked here; it does not. So the targets that use the bare-name
+    # form are GCC/MSVC only, and Clang still builds and tests everything
+    # else, including the whole conformance surface.
+    if (MSVC OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        add_executable(gui_core_test tests/gui_core_test.cpp)
+        target_link_libraries(gui_core_test PRIVATE simple_mfc::gui_core)
+        if (NOT MSVC)
+            target_compile_options(gui_core_test PRIVATE -fms-extensions)
+        endif()
+        add_test(NAME gui_core_test COMMAND gui_core_test)
+        set_tests_properties(gui_core_test PROPERTIES TIMEOUT 60)
+    else()
+        message(STATUS
+            "gui_core_test: skipped, ${CMAKE_CXX_COMPILER_ID} does not support "
+            "the bare-name pointer-to-member form eMule's message maps use")
     endif()
-    add_test(NAME gui_core_test COMMAND gui_core_test)
-    set_tests_properties(gui_core_test PROPERTIES TIMEOUT 60)
 endif()
 
 # --- .rc resource compiler (build-time codegen -> neutral dialog IR) --------
