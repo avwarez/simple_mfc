@@ -338,6 +338,70 @@ using LPMSG = MSG*;
 #define BST_CHECKED             0x0001
 #define BST_INDETERMINATE       0x0002
 
+// Menu flags (CMenu's whole vocabulary) and the TrackPopupMenu options.
+// Same POSIX-shim rationale as the WM_* block above. Note how many of these
+// are ZERO -- MF_STRING, MF_ENABLED, MF_UNCHECKED and MF_BYCOMMAND all are,
+// because they are Win32's defaults; code must therefore test for the
+// non-zero flags and treat their absence as the default, never test for
+// MF_STRING by AND.
+#define MF_BYCOMMAND            0x00000000
+#define MF_BYPOSITION           0x00000400
+#define MF_SEPARATOR            0x00000800
+#define MF_ENABLED              0x00000000
+#define MF_GRAYED               0x00000001
+#define MF_DISABLED             0x00000002
+#define MF_UNCHECKED            0x00000000
+#define MF_CHECKED              0x00000008
+#define MF_USECHECKBITMAPS      0x00000200
+#define MF_STRING               0x00000000
+#define MF_BITMAP               0x00000004
+#define MF_OWNERDRAW            0x00000100
+#define MF_POPUP                0x00000010
+#define MF_MENUBARBREAK         0x00000020
+#define MF_MENUBREAK            0x00000040
+#define MF_UNHILITE             0x00000000
+#define MF_HILITE               0x00000080
+#define MF_DEFAULT              0x00001000
+#define MF_SYSMENU              0x00002000
+#define MF_HELP                 0x00004000
+#define MF_RIGHTJUSTIFY         0x00004000
+#define MF_MOUSESELECT          0x00008000
+
+#define TPM_LEFTBUTTON          0x0000
+#define TPM_RIGHTBUTTON         0x0002
+#define TPM_LEFTALIGN           0x0000
+#define TPM_CENTERALIGN         0x0004
+#define TPM_RIGHTALIGN          0x0008
+#define TPM_TOPALIGN            0x0000
+#define TPM_VCENTERALIGN        0x0010
+#define TPM_BOTTOMALIGN         0x0020
+#define TPM_RETURNCMD           0x0100
+
+// MENUITEMINFO's fMask / fType / fState vocabularies.
+#define MIIM_STATE              0x00000001
+#define MIIM_ID                 0x00000002
+#define MIIM_SUBMENU            0x00000004
+#define MIIM_CHECKMARKS         0x00000008
+#define MIIM_TYPE               0x00000010
+#define MIIM_DATA               0x00000020
+#define MIIM_STRING             0x00000040
+#define MIIM_BITMAP             0x00000080
+#define MIIM_FTYPE              0x00000100
+
+#define MFT_STRING              MF_STRING
+#define MFT_BITMAP              MF_BITMAP
+#define MFT_SEPARATOR           MF_SEPARATOR
+#define MFT_OWNERDRAW           MF_OWNERDRAW
+#define MFT_RADIOCHECK          0x00000200
+
+#define MFS_ENABLED             MF_ENABLED
+#define MFS_GRAYED              0x00000003
+#define MFS_DISABLED            MFS_GRAYED
+#define MFS_CHECKED             MF_CHECKED
+#define MFS_UNCHECKED           MF_UNCHECKED
+#define MFS_HILITE              MF_HILITE
+#define MFS_DEFAULT             MF_DEFAULT
+
 // A few kernel32 constants the threading layer needs (real target: from
 // <windows.h>). Same POSIX-shim rationale as the WM_* block above.
 #define CREATE_SUSPENDED        0x00000004

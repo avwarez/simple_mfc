@@ -245,6 +245,7 @@ if (SIMPLE_MFC_GUI STREQUAL "qt")
         gui/qt/cdc.cpp
         gui/qt/imagelist.cpp
         gui/qt/listctrl.cpp
+        gui/qt/menu.cpp
         gui/qt/winapp.cpp
         gui/qt/messagebox.cpp
         gui/qt/afxwinmain.cpp
@@ -293,6 +294,17 @@ if (SIMPLE_MFC_GUI STREQUAL "qt")
     endif()
     add_test(NAME qt_dlgitem_test COMMAND qt_dlgitem_test)
     set_tests_properties(qt_dlgitem_test PROPERTIES
+        TIMEOUT 60
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    # CMenu: eMule builds every context menu through it (691 calls).
+    add_executable(qt_menu_test tests/qt_menu_test.cpp)
+    target_link_libraries(qt_menu_test PRIVATE simple_mfc::gui_qt)
+    if (NOT MSVC)
+        target_compile_options(qt_menu_test PRIVATE -fms-extensions)
+    endif()
+    add_test(NAME qt_menu_test COMMAND qt_menu_test)
+    set_tests_properties(qt_menu_test PROPERTIES
         TIMEOUT 60
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
