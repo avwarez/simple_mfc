@@ -74,8 +74,11 @@ typedef UINT(AFX_CDECL* AFX_THREADPROC)(void*);
                       // from the MFC headers exactly like this.
 #else
 // __stdcall on Windows, where it is part of the callback's type; nothing
-// to express off it.
+// to express off it. (smfc_msvc_compat.h, force-included by the build,
+// defines CALLBACK too -- an identical empty macro redefinition is legal.)
+#ifndef CALLBACK
 #define CALLBACK
+#endif
 using HWND = void*;
 using HINSTANCE = void*;
 using HDC = void*;
@@ -124,6 +127,19 @@ using TEXTMETRIC = tagTEXTMETRIC;
 // the portable stand-ins (void* handle, incomplete struct used by pointer).
 using HIMAGELIST = void*;
 struct IMAGEINFO;
+
+// The non-Windows counterpart of the `#include <windows.h>` at the top of the
+// _WIN32 branch above. Off Windows that name resolves to
+// simple_mfc/platform/windows.h -- a stand-in for the SDK umbrella header,
+// on the include path only on non-Windows builds, and NOT part of the MFC
+// interface (real MFC defines none of it; Windows does).
+//
+// It comes LAST in this block rather than first, because the stand-in builds
+// on the primitives declared just above (ULONG_PTR in COPYDATASTRUCT,
+// COLORREF in RGB, DWORD_PTR in HIWORD) as well as on afx.h's UINT/WORD/BYTE/
+// DWORD and atltypes.h's POINT/RECT. Each of those has exactly one owner, and
+// this is the point at which they all exist.
+#include <windows.h>
 #endif
 
 // ---------------------------------------------------------------------

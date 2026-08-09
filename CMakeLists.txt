@@ -48,6 +48,33 @@ target_include_directories(simple_mfc PUBLIC
     $<INSTALL_INTERFACE:include>
 )
 
+# ---------------------------------------------------------------------------
+# platform/ -- the Win32 PLATFORM shim: stand-ins for the Windows SDK headers
+# an MFC application reaches past MFC to use directly (<winsock2.h>, <io.h>,
+# <commctrl.h>, ...). It is NOT part of the MFC interface that include/
+# defines, which is why it lives in its own directory.
+#
+# Gated by BUILD CONFIGURATION rather than by #ifdef, and that is the whole
+# point: on Windows this directory is never on the include path at all, so the
+# real SDK headers are found and nothing here can affect what MSVC compiles.
+# The interface contract that the eMule compile gate measures is structurally
+# out of reach.
+#
+# PUBLIC, because the shim is needed by anything that includes our headers,
+# not just by our own .cpp files.
+#
+# The forced include is for the Microsoft COMPILER extensions rather than the
+# SDK headers -- `__int64` is a keyword, used before any header could have
+# been included, so it cannot be retrofitted by an #include. See that file.
+if(NOT WIN32)
+    target_include_directories(simple_mfc PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/platform>
+    )
+    target_compile_options(simple_mfc PUBLIC
+        -include "${CMAKE_CURRENT_SOURCE_DIR}/platform/smfc_msvc_compat.h"
+    )
+endif()
+
 # afxmt.cpp uses <thread>/<mutex>/<condition_variable>: on GCC/Clang this
 # needs pthread linked explicitly; on MSVC thread support is already in
 # the runtime and Threads::Threads adds nothing (no-op).
