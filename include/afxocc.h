@@ -13,7 +13,8 @@
 #ifndef _WIN32
 struct IUnknown;
 using LPUNKNOWN = IUnknown*;
-struct GUID;
+// GUID comes from platform/win32_types.h with its real layout; naming it here
+// as a class would conflict with that typedef.
 using CLSID = GUID;
 using REFCLSID = const CLSID&;
 #endif

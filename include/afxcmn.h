@@ -23,13 +23,12 @@ class CToolTipCtrl; // defined below; CToolBarCtrl::GetToolTips returns it
 // PFNLVCOMPARE's real calling convention may differ from ours -- guarded
 // like afxwin.h's HWND-family (see there): real <commctrl.h>, pulled in
 // here on a real Windows/MSVC target, provides all three.
-#ifdef _WIN32
+// No longer split: platform/commctrl.h now provides the same three off
+// Windows, with the SDK's own opaque-handle types instead of the void*
+// aliases this branch used to invent. The aliases were always the weaker
+// choice -- the comment above says so -- and they are what a generated
+// header can finally replace.
 #include <commctrl.h>
-#else
-using HIMAGELIST = void*;
-using HTREEITEM = void*;
-using PFNLVCOMPARE = int (*)(LPARAM, LPARAM, LPARAM);
-#endif
 // LPMSG comes from afxwin.h (included above): a real MSG/LPMSG pair was
 // added there during the FRONTEND/GDI blind-spot pass (needed by
 // CWnd::PreTranslateMessage), so it is no longer aliased to void* here.

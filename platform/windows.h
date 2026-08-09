@@ -259,3 +259,58 @@ struct tagWINDOWPLACEMENT
 #define WPF_SETMINPOSITION       0x0001
 #define WPF_RESTORETOMAXIMIZED   0x0002
 #define WPF_ASYNCWINDOWPLACEMENT 0x0004
+
+// ---------------------------------------------------------------------------
+// Generated from the mingw-w64 SDK headers.
+//
+// These two come LAST because they build on the primitives declared above and
+// on afx.h's UINT/WORD/BYTE/DWORD and atltypes.h's POINT/RECT. Everything in
+// them was produced by clang preprocessing a maintained SDK, not transcribed:
+// constants and struct layouts are exactly the class of thing where a
+// hand-typed value compiles fine and then misbehaves silently at run time.
+//
+// The hand-written parts of this file stay hand-written on purpose -- they are
+// the native Linux mappings, which no SDK header can supply.
+// ---------------------------------------------------------------------------
+#include <win32_types.h>
+#include <win32_constants.h>
+
+// The behavioural half, which no SDK header can supply: kernel32 entry points
+// re-aimed at their native Linux counterparts.
+#include <win32_kernel.h>
+
+// min/max.
+//
+// windef.h really does define these as macros (NOMINMAX suppresses them, and
+// eMule does not define it), but reproducing them as macros here is not an
+// option: the first sweep with them in place produced 417 errors inside
+// libstdc++, because <functional> and <deque> call std::max and the macro
+// rewrites the qualified name into nonsense. An #ifndef guard does not help --
+// the macro is defined before those headers are read.
+//
+// Function templates instead. They satisfy every call site eMule has, they do
+// not touch std::min/std::max, and common_type keeps the mixed-type calls
+// (int against DWORD) that the macro handled by being untyped.
+#include <type_traits>
+
+template <typename A, typename B>
+constexpr typename std::common_type<A, B>::type min(A a, B b)
+{
+    return (b < a) ? static_cast<typename std::common_type<A, B>::type>(b)
+                   : static_cast<typename std::common_type<A, B>::type>(a);
+}
+
+template <typename A, typename B>
+constexpr typename std::common_type<A, B>::type max(A a, B b)
+{
+    return (a < b) ? static_cast<typename std::common_type<A, B>::type>(b)
+                   : static_cast<typename std::common_type<A, B>::type>(a);
+}
+
+// DEFINE_GUID in its DECLARING form -- the default. platform/initguid.h
+// #undefs this and redefines it to allocate storage, which is the SDK's
+// mechanism for having exactly one translation unit own the constants.
+#ifndef DEFINE_GUID
+#define DEFINE_GUID(name, l, w1, w2, b1, b2, b3, b4, b5, b6, b7, b8) \
+    extern "C" const GUID name
+#endif

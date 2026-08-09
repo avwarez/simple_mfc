@@ -111,7 +111,9 @@ using LPCREATESTRUCT = CREATESTRUCT*;
 struct HELPINFO;
 struct TOOLINFO;
 struct WINDOWPLACEMENT;
-struct NCCALCSIZE_PARAMS;
+// NCCALCSIZE_PARAMS is no longer named here: <windows.h> at the end of this
+// block brings in the real SDK layout, and a forward declaration ahead of it
+// would make the name a class-name that then conflicts with the typedef.
 struct tagMENUINFO;
 using MENUINFO = tagMENUINFO;
 using LPMENUINFO = MENUINFO*;

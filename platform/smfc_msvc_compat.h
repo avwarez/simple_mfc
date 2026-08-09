@@ -111,3 +111,23 @@
 #define _Ret_maybenull_
 #define _Printf_format_string_
 #endif
+
+// ---------------------------------------------------------------------
+// _countof.
+//
+// MSVC's CRT provides it with no header, which is why it belongs here rather
+// than in a generated file. The SDK's own definition leans on an
+// __countof_helper template that only exists inside the MSVC/mingw CRT, so
+// that spelling is not usable off Windows -- but the C++ form below is
+// strictly better anyway: it fails to compile on a pointer, where the naive
+// sizeof/sizeof macro silently returns a wrong count.
+//
+// Defined here, ahead of everything, so the #ifndef guard in the generated
+// win32_constants.h leaves it alone.
+// decltype(sizeof(0)) rather than std::size_t: this file is force-included
+// ahead of everything, so it must not depend on a header having been read.
+#if defined(__cplusplus) && !defined(_countof)
+template <typename T, decltype(sizeof(0)) N>
+char (&smfc_countof_helper(T (&)[N]))[N];
+#define _countof(a) (sizeof(smfc_countof_helper(a)))
+#endif

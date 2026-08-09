@@ -22,7 +22,19 @@
 #ifndef _WIN32
 struct IUnknown;
 using LPUNKNOWN = IUnknown*;
-struct GUID;
+// GUID is a COM type, so atlcomcli.h owns it -- single owner per symbol, and
+// this header is reachable without afxwin.h, so it cannot borrow the one in
+// platform/. The layout is the SDK's, with Data1 spelled `unsigned int` rather
+// than the SDK's `unsigned long`: Windows' long is 32 bits and LP64's is 64,
+// which would shift every field after it and double sizeof(GUID).
+struct _GUID
+{
+    unsigned int   Data1;
+    unsigned short Data2;
+    unsigned short Data3;
+    unsigned char  Data4[8];
+};
+using GUID = _GUID;
 using CLSID = GUID;
 using IID = GUID;
 using REFCLSID = const CLSID&;
