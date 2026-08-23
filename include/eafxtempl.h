@@ -315,7 +315,10 @@ public:
     void SetAt(INT_PTR nIndex, TYPE newElement) { BASE_CLASS::SetAt(nIndex, newElement); }
     void SetAtGrow(INT_PTR nIndex, TYPE newElement) { BASE_CLASS::SetAtGrow(nIndex, newElement); }
     void InsertAt(INT_PTR nIndex, TYPE newElement, INT_PTR nCount = 1) { BASE_CLASS::InsertAt(nIndex, newElement, nCount); }
-    TYPE* GetData() { return reinterpret_cast<TYPE*>(BASE_CLASS::GetData()); }
+    // GetData is deliberately NOT redeclared: real MFC's CTypedPtrArray does
+    // not override it either, so it comes from the base and keeps the base's
+    // `void**` return type. Redeclaring it as TYPE* compiled here but not
+    // against real MFC -- the conformance job caught the difference.
     TYPE operator[](INT_PTR nIndex) const { return reinterpret_cast<TYPE>(BASE_CLASS::GetAt(nIndex)); }
     TYPE& operator[](INT_PTR nIndex) { return reinterpret_cast<TYPE&>(BASE_CLASS::ElementAt(nIndex)); }
 };

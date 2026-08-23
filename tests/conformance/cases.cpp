@@ -1364,6 +1364,15 @@ static void TestCMapTemplate()
     LineInt("CMap.PIteration.count", pCount);
     LineInt("CMap.PIteration.sum", pSum);
 
+    // PLookup: eMule uses it as a plain "is this key present" test
+    // (SharedFileList.cpp's m_UnsharedFiles_map / m_mapPseudoDirNames), so
+    // both the hit's contents and the miss's null are contract.
+    const auto* hit = map.PLookup(L"two");
+    LineBool("CMap.PLookup.hit.non_null", hit != nullptr);
+    Line("CMap.PLookup.hit.key", hit ? hit->key : CString());
+    LineInt("CMap.PLookup.hit.value", hit ? hit->value : -1);
+    LineBool("CMap.PLookup.miss.is_null", map.PLookup(L"nosuchkey") == nullptr);
+
     map.RemoveAll();
     LineBool("CMap.IsEmptyAfterRemoveAll", map.IsEmpty() != FALSE);
     LineInt("CMap.CountAfterRemoveAll", map.GetCount());
@@ -2281,14 +2290,6 @@ static void TestCMapStringToPtr()
     m[L"epsilon"] = &g_slots[4];
     LineInt("CMapStringToPtr.GetCount.after_subscript", m.GetCount());
 
-    // The pair type is a NESTED name (CPair here, ECPair on the native
-    // side), which no alias can rewrite -- deduce it instead.
-    auto* pair = m.PLookup(L"beta");
-    LineBool("CMapStringToPtr.PLookup.hit.non_null", pair != nullptr);
-    Line("CMapStringToPtr.PLookup.hit.key", pair ? pair->key : CString());
-    LineInt("CMapStringToPtr.PLookup.hit.value", pair ? *static_cast<int*>(pair->value) : -1);
-    LineBool("CMapStringToPtr.PLookup.miss.is_null", m.PLookup(L"omega") == nullptr);
-
     std::vector<std::string> assoc;
     POSITION pos = m.GetStartPosition();
     while (pos != nullptr)
@@ -2300,10 +2301,11 @@ static void TestCMapStringToPtr()
     }
     Line("CMapStringToPtr.walk.sorted", SortedJoin(assoc));
 
-    std::vector<std::string> pairWalk;
-    for (auto* p = m.PGetFirstAssoc(); p != nullptr; p = m.PGetNextAssoc(p))
-        pairWalk.push_back(Utf8(p->key) + ">" + std::to_string(*static_cast<int*>(p->value)));
-    Line("CMapStringToPtr.pair_walk.sorted", SortedJoin(pairWalk));
+    // No CPair walk here on purpose: real MFC gives PLookup/PGetFirstAssoc/
+    // PGetNextAssoc to CMap and to CMapStringToString, but NOT to
+    // CMapStringToPtr -- and eMule's own CPair walks are all over CMap
+    // typedefs (CKnownFilesMap, CServerSocketMap, CClientVersionMap), which
+    // TestCMapTemplate covers.
 
     LineBool("CMapStringToPtr.RemoveKey.present", m.RemoveKey(L"alpha") != FALSE);
     LineBool("CMapStringToPtr.RemoveKey.absent", m.RemoveKey(L"alpha") != FALSE);
@@ -2455,7 +2457,9 @@ static void TestCTypedPtrArray()
     LineBool("CTypedPtrArray.SetAtGrow.fills_gap_with_null", arr.GetAt(6) == nullptr);
     LineInt("CTypedPtrArray.SetAtGrow.reads_back", *arr.GetAt(7));
 
-    int** data = arr.GetData();
+    // void**, not int**: GetData comes from the untyped base on both sides
+    // (real MFC's CTypedPtrArray does not redeclare it).
+    void** data = arr.GetData();
     LineBool("CTypedPtrArray.GetData.matches_GetAt", data != nullptr && data[0] == arr.GetAt(0));
 
     std::string contents;

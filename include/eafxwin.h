@@ -34,10 +34,16 @@ using LPVOID = void*;
 
 // Forward-declared, never defined: CreateThread takes a pointer to one and
 // the portable implementation ignores it. Real MFC's is a kernel security
-// descriptor, which has no POSIX counterpart. Declared bare-tag so it merges
-// with the real winbase.h definition on a Windows build rather than
-// conflicting with it.
+// descriptor, which has no POSIX counterpart.
+//
+// POSIX only. The Windows SDK spells it `typedef struct _SECURITY_ATTRIBUTES
+// {...} SECURITY_ATTRIBUTES`, i.e. the name is a TYPEDEF, not a struct tag --
+// so declaring a struct by that name here does not merge with the SDK's, it
+// collides with it (C2371, found by the conformance job). On Windows afx.h
+// has already pulled in <windows.h>, which declares the real one.
+#ifndef _WIN32
 struct SECURITY_ATTRIBUTES;
+#endif
 
 // Real MFC's signature: UINT __cdecl f(LPVOID). Both halves matter --
 // eMule's thread functions return UINT and are declared AFX_CDECL, so a
