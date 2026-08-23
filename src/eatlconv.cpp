@@ -79,8 +79,17 @@ int EAtlUnicodeToUTF8(LPCWSTR wszSrc, int nSrc, LPSTR szDest, int nDest) noexcep
 
 UINT E_AtlGetConversionACP() noexcept
 {
+#ifdef _WIN32
+    // Real ATL answers CP_THREAD_ACP unless _CONVERSION_DONT_USE_THREAD_LOCALE
+    // is defined, i.e. "the calling thread's ANSI code page, not the
+    // system's". Returning CP_ACP instead is not a cosmetic difference:
+    // every conversion routed through this would ignore a thread locale the
+    // caller deliberately set.
+    return CP_THREAD_ACP;
+#else
     // There is no portable notion of a Windows "ANSI code page" off
-    // Windows. 0 doubles as CP_ACP's real numeric value, so this reads
-    // the same way on both sides: "the system default ANSI code page."
+    // Windows, and no thread locale to prefer over it either. 0 is CP_ACP's
+    // real numeric value: "the system default ANSI code page".
     return 0;
+#endif
 }

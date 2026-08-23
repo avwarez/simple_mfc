@@ -24,3 +24,17 @@
 CFile.GetFilePath
 CFileFind.Single.GetFilePath
 CFileFind.Single.GetRoot
+
+# --- The DOS/Windows "archive" file attribute ----------------------------
+# Windows sets FILE_ATTRIBUTE_ARCHIVE on any newly written file; POSIX has
+# no such bit and CFileFind::IsArchived answers FALSE there. What differs
+# is the filesystem's own bookkeeping, not the method.
+CFileFind.Attr.IsArchived
+
+# --- The ANSI code page --------------------------------------------------
+# _AtlGetConversionACP answers CP_THREAD_ACP (3) on Windows, where a thread
+# locale exists to prefer over the system one. Off Windows there is neither
+# an ANSI code page nor a thread locale, and it answers CP_ACP (0). The
+# value IS compared side-by-side on Windows, which is where it means
+# something.
+AtlGetConversionACP.value

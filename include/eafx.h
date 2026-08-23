@@ -336,6 +336,13 @@ private:
 // ../README.md. Declared here, before CException, because
 // CFileException::m_strFileName is a CString (matching real MFC).
 // ---------------------------------------------------------------------
+// Declared here, ahead of CStringT, because CStringT::AllocSysString
+// throws it on an allocation failure exactly as real MFC does. The
+// definition (and the matching declaration among the other Afx throwers)
+// is further down; a member of a class template resolves a non-dependent
+// name like this one at definition time, so it has to be visible already.
+[[noreturn]] void EAfxThrowMemoryException();
+
 namespace mfc_detail
 {
 // The handful of operations that differ between the char and wchar_t
@@ -583,15 +590,62 @@ public:
             m_data.clear();
     }
 
-    // Windows-only interop, declaration-only like the rest of the frontend
-    // surface: both hand off to Win32 (LoadStringW / SysAllocString) and
-    // have no portable meaning. eMule loads its UI strings from a language
-    // DLL, hence the explicit-module and explicit-language overloads.
+    // Windows-only interop: both hand off to Win32 (LoadStringW /
+    // SysAllocString) and have no portable meaning, so they exist only on
+    // Windows -- exactly as real MFC does not offer them anywhere else.
+    // eMule loads its UI strings from a language DLL, hence the
+    // explicit-module and explicit-language overloads.
+    //
+    // These were declaration-only until the conformance suite went to
+    // full method coverage and found that eMule names both (LoadString in
+    // the language-DLL path, AllocSysString in the COM interop) against a
+    // library that never defined them: a link error waiting to happen, not
+    // just an untestable method.
 #ifdef _WIN32
-    BOOL LoadString(UINT nID);
-    BOOL LoadString(HINSTANCE hInstance, UINT nID);
-    BOOL LoadString(HINSTANCE hInstance, UINT nID, WORD wLanguageID);
-    BSTR AllocSysString() const;
+    BOOL LoadString(UINT nID)
+    {
+        // Real MFC resolves the module the same way: whatever
+        // AfxGetResourceHandle() currently points at. Without MFC's module
+        // state, the process image is the equivalent default -- and
+        // GetModuleHandle(nullptr) is what MFC itself falls back to.
+        return LoadString(::GetModuleHandleW(nullptr), nID);
+    }
+
+    BOOL LoadString(HINSTANCE hInstance, UINT nID)
+    {
+        return LoadStringForLangId(hInstance, nID, /*useLangId*/ false, 0);
+    }
+
+    BOOL LoadString(HINSTANCE hInstance, UINT nID, WORD wLanguageID)
+    {
+        return LoadStringForLangId(hInstance, nID, /*useLangId*/ true, wLanguageID);
+    }
+
+    // Returns a BSTR the caller owns (SysFreeString), as real MFC does.
+    // A BSTR is always UTF-16, so the char instantiation widens first.
+    BSTR AllocSysString() const
+    {
+        BSTR bstr = nullptr;
+        if constexpr (std::is_same_v<XCHAR, wchar_t>)
+        {
+            bstr = ::SysAllocStringLen(reinterpret_cast<const OLECHAR*>(m_data.data()),
+                                       static_cast<UINT>(m_data.size()));
+        }
+        else
+        {
+            const int nSrc = static_cast<int>(m_data.size());
+            const int nWide = nSrc == 0
+                                  ? 0
+                                  : ::MultiByteToWideChar(CP_ACP, 0, m_data.data(), nSrc, nullptr, 0);
+            bstr = ::SysAllocStringLen(nullptr, static_cast<UINT>(nWide < 0 ? 0 : nWide));
+            if (bstr != nullptr && nWide > 0)
+                ::MultiByteToWideChar(CP_ACP, 0, m_data.data(), nSrc, bstr, nWide);
+        }
+        // Real MFC throws rather than returning a null BSTR on failure.
+        if (bstr == nullptr)
+            EAfxThrowMemoryException();
+        return bstr;
+    }
 #endif
 
     int Compare(PCXSTR psz) const { return m_data.compare(psz); }
@@ -779,6 +833,54 @@ public:
 
 private:
     static constexpr auto npos = std::basic_string<XCHAR>::npos;
+
+#ifdef _WIN32
+    // Shared body of the three LoadString overloads. LoadStringW has no
+    // language-aware form, so the explicit-language overload goes through
+    // FindResourceEx/LoadResource and decodes the string table block by
+    // hand -- which is what MFC's own AfxLoadString does for a language
+    // DLL. A string table resource holds 16 strings per block; block
+    // number is nID/16 + 1 and the entry within it is nID%16, each entry
+    // being a WORD length followed by that many UTF-16 units.
+    BOOL LoadStringForLangId(HINSTANCE hInstance, UINT nID, bool useLangId, WORD wLanguageID)
+    {
+        if (!useLangId)
+        {
+            // The CRT-side loader: returns a pointer INTO the resource, and
+            // the count of characters, without needing a caller buffer.
+            const wchar_t* pStr = nullptr;
+            const int n = ::LoadStringW(hInstance, nID, reinterpret_cast<LPWSTR>(&pStr), 0);
+            if (n <= 0)
+            {
+                Empty();
+                return FALSE;
+            }
+            m_data = Convert(pStr, static_cast<size_t>(n));
+            return TRUE;
+        }
+
+        const HRSRC hRes = ::FindResourceExW(hInstance, RT_STRING,
+                                             MAKEINTRESOURCEW(nID / 16 + 1), wLanguageID);
+        if (hRes == nullptr) { Empty(); return FALSE; }
+        const HGLOBAL hMem = ::LoadResource(hInstance, hRes);
+        if (hMem == nullptr) { Empty(); return FALSE; }
+        const wchar_t* p = static_cast<const wchar_t*>(::LockResource(hMem));
+        if (p == nullptr) { Empty(); return FALSE; }
+
+        const DWORD cbRes = ::SizeofResource(hInstance, hRes);
+        const wchar_t* const end = p + cbRes / sizeof(wchar_t);
+        for (UINT i = 0; i < nID % 16; ++i)
+        {
+            if (p >= end) { Empty(); return FALSE; }
+            p += 1 + static_cast<size_t>(*p); // length prefix, then the text
+        }
+        if (p >= end || *p == 0) { Empty(); return FALSE; }
+        const size_t len = static_cast<size_t>(*p);
+        if (p + 1 + len > end) { Empty(); return FALSE; }
+        m_data = Convert(p + 1, len);
+        return TRUE;
+    }
+#endif
 
     template <class Src>
     static std::basic_string<XCHAR> Convert(const Src* p, size_t n)

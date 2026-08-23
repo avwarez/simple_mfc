@@ -128,6 +128,7 @@ using CRBMap = ECRBMap<KEY, VALUE, KTraits, VTraits>;
 constexpr auto& Base64EncodeGetRequiredLength = EBase64EncodeGetRequiredLength;
 constexpr auto& Base64Encode                  = EBase64Encode;
 constexpr auto& AtlUnicodeToUTF8              = EAtlUnicodeToUTF8;
+constexpr auto& _AtlGetConversionACP          = E_AtlGetConversionACP;
 #define ATL_BASE64_FLAG_NONE   EATL_BASE64_FLAG_NONE
 #define ATL_BASE64_FLAG_NOPAD  EATL_BASE64_FLAG_NOPAD
 #define ATL_BASE64_FLAG_NOCRLF EATL_BASE64_FLAG_NOCRLF

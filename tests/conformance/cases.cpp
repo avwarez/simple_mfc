@@ -131,7 +131,9 @@
 #endif
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <random>
+#include <sys/stat.h> // _wchmod / chmod: the harness makes a file read-only for CFileFind::IsReadOnly
 #include <string>
 #include <thread>
 #include <vector>
@@ -408,6 +410,38 @@ CString TempDir()
     wchar_t buf[MAX_PATH]{};
     GetTempPathW(MAX_PATH, buf);
     return CString(buf);
+}
+
+// Read-only / writable, for CFileFind::IsReadOnly. _wchmod means the same
+// thing on both platforms at the level this test cares about: on Windows
+// it sets and clears FILE_ATTRIBUTE_READONLY, on POSIX it sets and clears
+// the owner write bit — and CFileFind::IsReadOnly reads whichever of the
+// two its platform keeps. Harness scaffolding: the call is made *around*
+// the code under test, never by it.
+void MakeReadOnly(LPCTSTR path)
+{
+#ifdef _WIN32
+    ::_wchmod(path, _S_IREAD);
+#else
+    std::error_code ec;
+    std::filesystem::permissions(std::filesystem::path(path),
+                                 std::filesystem::perms::owner_write
+                                     | std::filesystem::perms::group_write
+                                     | std::filesystem::perms::others_write,
+                                 std::filesystem::perm_options::remove, ec);
+#endif
+}
+
+void MakeWritable(LPCTSTR path)
+{
+#ifdef _WIN32
+    ::_wchmod(path, _S_IREAD | _S_IWRITE);
+#else
+    std::error_code ec;
+    std::filesystem::permissions(std::filesystem::path(path),
+                                 std::filesystem::perms::owner_write,
+                                 std::filesystem::perm_options::add, ec);
+#endif
 }
 
 } // namespace
@@ -2665,20 +2699,974 @@ static void TestCAsyncSocket()
     listener.Close();
 }
 
+// =====================================================================
+// FULL-COVERAGE SECTIONS
+//
+// Everything below was added to close the gap between "the classes eMule
+// leans on are compared" and "every method that CAN be compared IS".
+// Each section drives its subject from a table of varying inputs and
+// prints one record per input, so a difference shows up as a named case
+// rather than as a single pass/fail.
+//
+// The methods still not compared, and why they cannot be:
+//
+//   * CComPtr / CComQIPtr / CComPtrBase / CComBSTR / CComVariant
+//     (atlcomcli.h), CRegKey (atlbase.h), COleDateTime (atlcomtime.h):
+//     declaration-only on this branch, not one member is defined. A case
+//     calling any of them would not link, let alone compare.
+//   * CObject::AssertValid / CObject::Dump and the whole of CDumpContext:
+//     real MFC declares them under #ifdef _DEBUG only. They do not exist
+//     as members in the Release configuration this suite builds.
+//   * CException::ReportError: on real MFC it opens a Win32 MessageBox,
+//     which would hang a non-interactive runner forever.
+//   * CWinThread::Run: real MFC's implementation IS the message pump --
+//     it returns only on WM_QUIT, so calling it deadlocks the probe.
+//   * CAsyncSocket's OnReceive/OnSend/OnAccept/OnConnect/OnClose/
+//     OnOutOfBandData as *notifications*: real MFC delivers them through
+//     WSAAsyncSelect and a hidden window, i.e. only to a thread running a
+//     message pump. Their default implementations are still called
+//     directly and compared below -- that part is comparable.
+//   * CString::c_str / CString::AsStdString: simple_mfc's own additions.
+//     Real MFC has no such members, so there is nothing to compare
+//     against; emitting a native-only case would be reported as EXTRA.
+// =====================================================================
+
+// ---------------------------------------------------------------------
+// CRuntimeClass: IsDerivedFrom / CreateObject, plus DYNAMIC_DOWNCAST
+// (which is AfxDynamicDownCast behind a macro, the only spelling eMule
+// uses).
+// ---------------------------------------------------------------------
+namespace
+{
+class DynBase : public CObject
+{
+    DECLARE_DYNAMIC(DynBase)
+public:
+    int tag = 1;
+};
+IMPLEMENT_DYNAMIC(DynBase, CObject)
+
+class DynMade : public DynBase
+{
+    DECLARE_DYNCREATE(DynMade)
+public:
+    DynMade() { tag = 2; }
+};
+IMPLEMENT_DYNCREATE(DynMade, DynBase)
+} // namespace
+
+static void TestCRuntimeClass()
+{
+    // IsDerivedFrom over the full matrix of the four classes in play, so
+    // both the TRUE and the FALSE half of the relation is compared.
+    struct Pair { const char* label; CRuntimeClass* derived; CRuntimeClass* base; };
+    const Pair pairs[] = {
+        {"made_from_base",    RUNTIME_CLASS(DynMade), RUNTIME_CLASS(DynBase)},
+        {"made_from_object",  RUNTIME_CLASS(DynMade), RUNTIME_CLASS(CObject)},
+        {"made_from_made",    RUNTIME_CLASS(DynMade), RUNTIME_CLASS(DynMade)},
+        {"base_from_made",    RUNTIME_CLASS(DynBase), RUNTIME_CLASS(DynMade)},
+        {"base_from_object",  RUNTIME_CLASS(DynBase), RUNTIME_CLASS(CObject)},
+        {"object_from_base",  RUNTIME_CLASS(CObject), RUNTIME_CLASS(DynBase)},
+        {"fileex_from_except", RUNTIME_CLASS(CFileException), RUNTIME_CLASS(CException)},
+        {"except_from_fileex", RUNTIME_CLASS(CException), RUNTIME_CLASS(CFileException)},
+    };
+    for (const Pair& p : pairs)
+    {
+        std::string name = std::string("CRuntimeClass.IsDerivedFrom.") + p.label;
+        LineBool(name.c_str(), p.derived->IsDerivedFrom(p.base) != FALSE);
+    }
+
+    // CreateObject: DECLARE_DYNCREATE makes a class creatable by name,
+    // DECLARE_DYNAMIC alone does not -- and the difference is observable.
+    CObject* made = RUNTIME_CLASS(DynMade)->CreateObject();
+    LineBool("CRuntimeClass.CreateObject.dyncreate_returns_object", made != nullptr);
+    LineBool("CRuntimeClass.CreateObject.result_is_the_class",
+             made != nullptr && made->IsKindOf(RUNTIME_CLASS(DynMade)) != FALSE);
+    LineInt("CRuntimeClass.CreateObject.constructor_ran",
+            made != nullptr ? static_cast<DynMade*>(made)->tag : -1);
+    delete made;
+
+    CObject* notCreatable = RUNTIME_CLASS(DynBase)->CreateObject();
+    LineBool("CRuntimeClass.CreateObject.dynamic_only_returns_null", notCreatable == nullptr);
+    delete notCreatable;
+
+    // DYNAMIC_DOWNCAST -> AfxDynamicDownCast. Succeeds down the chain,
+    // returns null across it.
+    DynMade concrete;
+    CObject* asObject = &concrete;
+    LineBool("AfxDynamicDownCast.to_own_class", DYNAMIC_DOWNCAST(DynMade, asObject) != nullptr);
+    LineBool("AfxDynamicDownCast.to_base_class", DYNAMIC_DOWNCAST(DynBase, asObject) != nullptr);
+    LineBool("AfxDynamicDownCast.to_unrelated_class",
+             DYNAMIC_DOWNCAST(CFileException, asObject) != nullptr);
+    LineBool("AfxDynamicDownCast.null_input", DYNAMIC_DOWNCAST(DynMade, (CObject*)nullptr) != nullptr);
+}
+
+// ---------------------------------------------------------------------
+// The exception types the earlier sections did not reach, and the
+// buffer contract of GetErrorMessage.
+//
+// The message TEXT is not compared, for the reason TestExceptions()
+// already documents (real MFC builds it from its own string resources,
+// which need a CWinApp this console harness deliberately does not have).
+// What IS compared is the part that is a documented contract regardless
+// of the text: GetErrorMessage must never write past nMaxError.
+// ---------------------------------------------------------------------
+static void TestExceptionGaps()
+{
+    CNotSupportedException nse;
+    LineBool("CNotSupportedException.IsKindOf.CSimpleException",
+             nse.IsKindOf(RUNTIME_CLASS(CSimpleException)) != FALSE);
+    LineBool("CNotSupportedException.IsKindOf.CException",
+             nse.IsKindOf(RUNTIME_CLASS(CException)) != FALSE);
+    LineBool("CNotSupportedException.IsKindOf.CMemoryException",
+             nse.IsKindOf(RUNTIME_CLASS(CMemoryException)) != FALSE);
+
+    CArchiveException ae(CArchiveException::badIndex, L"stream.dat");
+    LineInt("CArchiveException.m_cause", ae.m_cause);
+    LineBool("CArchiveException.IsKindOf.CException",
+             ae.IsKindOf(RUNTIME_CLASS(CException)) != FALSE);
+    LineBool("CArchiveException.IsKindOf.CSimpleException",
+             ae.IsKindOf(RUNTIME_CLASS(CSimpleException)) != FALSE);
+
+    // The buffer contract, over a range of buffer sizes including the
+    // degenerate ones. A sentinel is written one past the limit each
+    // time: whatever text lands in the buffer, that sentinel must survive.
+    {
+        const UINT sizes[] = {1, 2, 8, 64, 255};
+        for (UINT n : sizes)
+        {
+            wchar_t buf[300];
+            for (wchar_t& c : buf) c = L'#';
+            CFileException fe(CFileException::fileNotFound, ERROR_FILE_NOT_FOUND, L"nope.dat");
+            fe.GetErrorMessage(buf, n);
+            std::string name = "CFileException.GetErrorMessage.respects_nMaxError." + std::to_string(n);
+            LineBool(name.c_str(), buf[n] == L'#');
+            std::string term = "CFileException.GetErrorMessage.nul_terminates." + std::to_string(n);
+            bool terminated = false;
+            for (UINT i = 0; i < n; ++i)
+                if (buf[i] == L'\0') { terminated = true; break; }
+            LineBool(term.c_str(), terminated);
+        }
+    }
+
+    // ThrowOsError maps an OS error code onto a CFileException::Cause.
+    // The mapping is the behaviour under test, so drive it with several
+    // codes rather than one.
+    {
+        struct Case { const char* label; LONG osError; };
+        const Case cases[] = {
+            {"file_not_found", ERROR_FILE_NOT_FOUND},
+            {"bad_pathname",   ERROR_BAD_PATHNAME},
+            {"disk_full",      ERROR_DISK_FULL},
+            {"zero",           0},
+        };
+        for (const Case& c : cases)
+        {
+            try
+            {
+                CFileException::ThrowOsError(c.osError, L"probe.dat");
+                Line((std::string("CFileException.ThrowOsError.") + c.label).c_str(),
+                     std::string("NEVER (did not throw)"));
+            }
+            catch (CFileException* e)
+            {
+                LineInt((std::string("CFileException.ThrowOsError.") + c.label + ".m_cause").c_str(),
+                        e->m_cause);
+                LineInt((std::string("CFileException.ThrowOsError.") + c.label + ".m_lOsError").c_str(),
+                        e->m_lOsError);
+                Line((std::string("CFileException.ThrowOsError.") + c.label + ".m_strFileName").c_str(),
+                     e->m_strFileName);
+                e->Delete();
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------
+// CString: the members no earlier section reached.
+// ---------------------------------------------------------------------
+namespace
+{
+// FormatV/AppendFormatV take a va_list, which only a variadic function
+// can produce -- these are the harness's way of building one.
+void CallFormatV(CString& s, LPCTSTR fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    s.FormatV(fmt, args);
+    va_end(args);
+}
+void CallAppendFormatV(CString& s, LPCTSTR fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    s.AppendFormatV(fmt, args);
+    va_end(args);
+}
+} // namespace
+
+static void TestCStringGaps()
+{
+    // --- Collate / CollateNoCase ----------------------------------------
+    // Only the SIGN is compared: Collate goes through the CRT's locale
+    // collation, whose magnitudes are implementation-defined.
+    {
+        struct Case { const char* label; LPCTSTR a; LPCTSTR b; };
+        const Case cases[] = {
+            {"equal",        L"alpha",  L"alpha"},
+            {"less",         L"alpha",  L"beta"},
+            {"greater",      L"beta",   L"alpha"},
+            {"prefix",       L"alph",   L"alpha"},
+            {"case_differs", L"Alpha",  L"alpha"},
+            {"empty_vs_x",   L"",       L"x"},
+            {"both_empty",   L"",       L""},
+            {"digits",       L"file10", L"file9"},
+        };
+        for (const Case& c : cases)
+        {
+            CString s(c.a);
+            LineInt((std::string("CString.Collate.") + c.label).c_str(), Sign(s.Collate(c.b)));
+            LineInt((std::string("CString.CollateNoCase.") + c.label).c_str(),
+                    Sign(s.CollateNoCase(c.b)));
+        }
+    }
+
+    // --- FindOneOf -------------------------------------------------------
+    {
+        struct Case { const char* label; LPCTSTR s; LPCTSTR set; };
+        const Case cases[] = {
+            {"first_char",   L"abcdef",      L"a"},
+            {"middle",       L"abcdef",      L"dc"},
+            {"none",         L"abcdef",      L"xyz"},
+            {"empty_set",    L"abcdef",      L""},
+            {"empty_string", L"",            L"abc"},
+            {"separators",   L"host:8080/p", L"/:"},
+            {"non_ascii",    L"café au lait", L"é"},
+        };
+        for (const Case& c : cases)
+        {
+            CString s(c.s);
+            LineInt((std::string("CString.FindOneOf.") + c.label).c_str(), s.FindOneOf(c.set));
+        }
+    }
+
+    // --- Truncate --------------------------------------------------------
+    // Real ATL asserts on a length above the current one, so every case
+    // here stays within bounds -- what is compared is the resulting
+    // string AND the resulting length, which must agree.
+    {
+        const int lengths[] = {0, 1, 3, 6};
+        for (int n : lengths)
+        {
+            CString s(L"abcdef");
+            s.Truncate(n);
+            Line((std::string("CString.Truncate.") + std::to_string(n)).c_str(), s);
+            LineInt((std::string("CString.Truncate.") + std::to_string(n) + ".GetLength").c_str(),
+                    s.GetLength());
+        }
+    }
+
+    // --- SetString (both overloads) --------------------------------------
+    {
+        struct Case { const char* label; LPCTSTR src; };
+        const Case cases[] = {
+            {"plain",     L"replacement"},
+            {"empty",     L""},
+            {"embedded",  L"a\tb"},
+            {"non_ascii", L"äöü"},
+        };
+        for (const Case& c : cases)
+        {
+            CString s(L"original value");
+            s.SetString(c.src);
+            Line((std::string("CString.SetString.psz.") + c.label).c_str(), s);
+            LineInt((std::string("CString.SetString.psz.") + c.label + ".GetLength").c_str(),
+                    s.GetLength());
+        }
+        const int counts[] = {0, 1, 4, 11};
+        for (int n : counts)
+        {
+            CString s(L"original value");
+            s.SetString(L"replacement", n);
+            Line((std::string("CString.SetString.psz_n.") + std::to_string(n)).c_str(), s);
+            LineInt((std::string("CString.SetString.psz_n.") + std::to_string(n) + ".GetLength").c_str(),
+                    s.GetLength());
+        }
+    }
+
+    // --- GetString -------------------------------------------------------
+    {
+        const wchar_t* inputs[] = {L"", L"x", L"a longer value with spaces", L"éè"};
+        int i = 0;
+        for (const wchar_t* in : inputs)
+        {
+            CString s(in);
+            LPCTSTR p = s.GetString();
+            Line((std::string("CString.GetString.") + std::to_string(i)).c_str(), p);
+            LineBool((std::string("CString.GetString.") + std::to_string(i) + ".nul_terminated").c_str(),
+                     p[s.GetLength()] == L'\0');
+            ++i;
+        }
+    }
+
+    // --- AppendChar ------------------------------------------------------
+    {
+        CString s;
+        const wchar_t chars[] = {L'a', L'B', L'0', L' ', L'é'};
+        for (wchar_t c : chars) s.AppendChar(c);
+        Line("CString.AppendChar.accumulated", s);
+        LineInt("CString.AppendChar.GetLength", s.GetLength());
+    }
+
+    // --- FormatV / AppendFormatV -----------------------------------------
+    {
+        CString s;
+        CallFormatV(s, L"%d/%s/%c", 42, L"mid", L'z');
+        Line("CString.FormatV.mixed", s);
+        CallAppendFormatV(s, L" + %u", 7u);
+        Line("CString.AppendFormatV.appended", s);
+
+        CString empty;
+        CallFormatV(empty, L"%s", L"");
+        LineInt("CString.FormatV.empty_result_length", empty.GetLength());
+
+        CString wide;
+        CallFormatV(wide, L"%08.3f|%X", 3.14159, 48879u);
+        Line("CString.FormatV.numeric_flags", wide);
+    }
+
+    // --- ReleaseBufferSetLength -------------------------------------------
+    // The point of the SetLength form is that it takes the length from the
+    // caller rather than scanning for a NUL, so it keeps text that has one
+    // embedded -- which is exactly what is compared here.
+    {
+        const int lengths[] = {0, 1, 5};
+        for (int n : lengths)
+        {
+            CString s;
+            LPTSTR buf = s.GetBuffer(16);
+            for (int i = 0; i < 8; ++i) buf[i] = static_cast<wchar_t>(L'a' + i);
+            buf[3] = L'\0'; // a NUL a plain ReleaseBuffer would stop at
+            s.ReleaseBufferSetLength(n);
+            LineInt((std::string("CString.ReleaseBufferSetLength.") + std::to_string(n)).c_str(),
+                    s.GetLength());
+        }
+    }
+
+#ifdef _WIN32
+    // --- LoadString (Windows only, as in real MFC) ------------------------
+    // A console probe carries no string table, so every id misses. That
+    // outcome is still a comparable contract: FALSE, and the string left
+    // empty rather than untouched.
+    {
+        const UINT ids[] = {1u, 100u, 61472u};
+        for (UINT id : ids)
+        {
+            CString s(L"previous content");
+            BOOL ok = s.LoadString(id);
+            LineBool(("CString.LoadString.id." + std::to_string(id)).c_str(), ok != FALSE);
+            LineBool(("CString.LoadString.id." + std::to_string(id) + ".empties_on_miss").c_str(),
+                     s.IsEmpty() != FALSE);
+
+            CString h(L"previous content");
+            BOOL okh = h.LoadString(::GetModuleHandleW(nullptr), id);
+            LineBool(("CString.LoadString.hinstance." + std::to_string(id)).c_str(), okh != FALSE);
+
+            CString l(L"previous content");
+            BOOL okl = l.LoadString(::GetModuleHandleW(nullptr), id, 0x0409); // en-US
+            LineBool(("CString.LoadString.langid." + std::to_string(id)).c_str(), okl != FALSE);
+        }
+    }
+
+    // --- AllocSysString ---------------------------------------------------
+    {
+        const wchar_t* inputs[] = {L"", L"x", L"a BSTR value", L"é中"};
+        int i = 0;
+        for (const wchar_t* in : inputs)
+        {
+            CString s(in);
+            BSTR b = s.AllocSysString();
+            LineBool(("CString.AllocSysString." + std::to_string(i) + ".non_null").c_str(), b != nullptr);
+            LineInt(("CString.AllocSysString." + std::to_string(i) + ".SysStringLen").c_str(),
+                    b ? static_cast<long long>(::SysStringLen(b)) : -1);
+            Line(("CString.AllocSysString." + std::to_string(i) + ".content").c_str(),
+                 b ? b : L"(null)");
+            if (b) ::SysFreeString(b);
+            ++i;
+        }
+    }
+#endif
+}
+
+// ---------------------------------------------------------------------
+// CFileFind: the attribute predicates and the three timestamps.
+// ---------------------------------------------------------------------
+static void TestCFileFindAttributes()
+{
+    CString dir = TempDir() + CString(L"simple_mfc_conformance_attr" SMFC_SEP);
+    CreateDirectoryW(dir, nullptr);
+
+    CString plain = dir + CString(L"plain.bin");
+    {
+        CFile f;
+        f.Open(plain, CFile::modeCreate | CFile::modeWrite);
+        const char payload[] = "0123456789";
+        f.Write(payload, sizeof(payload) - 1);
+        SafeClose(f);
+    }
+
+    // Every predicate on an ordinary, freshly written file. All of them
+    // are FALSE on both platforms except IsArchived, which Windows sets on
+    // any newly written file and POSIX has no notion of -- that one case
+    // is listed in platform_dependent.txt.
+    {
+        CFileFind finder;
+        BOOL found = finder.FindFile(plain);
+        BOOL more = SIMPLE_MFC_FIND_NEXT_FILE(finder);
+        (void)more;
+        LineBool("CFileFind.Attr.found", found != FALSE);
+        LineBool("CFileFind.Attr.IsHidden", finder.IsHidden() != FALSE);
+        LineBool("CFileFind.Attr.IsSystem", finder.IsSystem() != FALSE);
+        LineBool("CFileFind.Attr.IsReadOnly", finder.IsReadOnly() != FALSE);
+        LineBool("CFileFind.Attr.IsCompressed", finder.IsCompressed() != FALSE);
+        LineBool("CFileFind.Attr.IsTemporary", finder.IsTemporary() != FALSE);
+        LineBool("CFileFind.Attr.IsArchived", finder.IsArchived() != FALSE);
+        LineBool("CFileFind.Attr.IsDirectory", finder.IsDirectory() != FALSE);
+
+        // The three timestamps, in both the CTime and the FILETIME form.
+        // The instants themselves are non-deterministic, so what is
+        // compared is what IS deterministic: that the call succeeds, that
+        // the two overloads agree with each other, and that the value
+        // lands in a sane range rather than at the epoch.
+        CTime writeTime;
+        LineBool("CFileFind.GetLastWriteTime.CTime.returns_true",
+                 finder.GetLastWriteTime(writeTime) != FALSE);
+        LineBool("CFileFind.GetLastWriteTime.plausible_year",
+                 writeTime.GetYear() >= 2020 && writeTime.GetYear() < 2100);
+
+        CTime createTime;
+        LineBool("CFileFind.GetCreationTime.CTime.returns_true",
+                 finder.GetCreationTime(createTime) != FALSE);
+        LineBool("CFileFind.GetCreationTime.plausible_year",
+                 createTime.GetYear() >= 2020 && createTime.GetYear() < 2100);
+
+        CTime accessTime;
+        LineBool("CFileFind.GetLastAccessTime.CTime.returns_true",
+                 finder.GetLastAccessTime(accessTime) != FALSE);
+        LineBool("CFileFind.GetLastAccessTime.plausible_year",
+                 accessTime.GetYear() >= 2020 && accessTime.GetYear() < 2100);
+
+        // The raw-FILETIME forms only exist where FILETIME does. Off
+        // Windows the type is an incomplete declaration and these three
+        // methods are documented no-ops, so a case here would compare the
+        // platform, not the library. The Windows side-by-side comparison
+        // -- the authoritative one -- still covers them in full; on POSIX
+        // compare.py simply reports them as present in the recording only.
+#ifdef _WIN32
+        FILETIME writeFt{}, createFt{}, accessFt{};
+        LineBool("CFileFind.GetLastWriteTime.FILETIME.returns_true",
+                 finder.GetLastWriteTime(&writeFt) != FALSE);
+        LineBool("CFileFind.GetCreationTime.FILETIME.returns_true",
+                 finder.GetCreationTime(&createFt) != FALSE);
+        LineBool("CFileFind.GetLastAccessTime.FILETIME.returns_true",
+                 finder.GetLastAccessTime(&accessFt) != FALSE);
+        // The two spellings of the same instant must agree: a FILETIME is
+        // 100 ns ticks since 1601, a CTime is seconds since 1970.
+        auto toUnix = [](const FILETIME& ft) {
+            unsigned long long ticks =
+                (static_cast<unsigned long long>(ft.dwHighDateTime) << 32) | ft.dwLowDateTime;
+            return static_cast<long long>(ticks / 10000000ULL) - 11644473600LL;
+        };
+        LineBool("CFileFind.GetLastWriteTime.overloads_agree",
+                 toUnix(writeFt) == static_cast<long long>(writeTime.GetTime()));
+        LineBool("CFileFind.GetCreationTime.overloads_agree",
+                 toUnix(createFt) == static_cast<long long>(createTime.GetTime()));
+        LineBool("CFileFind.GetLastAccessTime.overloads_agree",
+                 toUnix(accessFt) == static_cast<long long>(accessTime.GetTime()));
+#endif
+
+        // Written last, so the write time cannot precede the creation time
+        // by more than the clock's own granularity.
+        LineBool("CFileFind.times.write_not_before_creation",
+                 writeTime.GetTime() + 2 >= createTime.GetTime());
+
+        finder.Close();
+    }
+
+    // A read-only file, so IsReadOnly has a TRUE case too. _wchmod is the
+    // one spelling that means the same thing on both platforms: it sets
+    // FILE_ATTRIBUTE_READONLY on Windows and clears the write bits on
+    // POSIX, and CFileFind::IsReadOnly reads whichever of the two the
+    // platform keeps.
+    {
+        CString ro = dir + CString(L"readonly.bin");
+        {
+            CFile f;
+            f.Open(ro, CFile::modeCreate | CFile::modeWrite);
+            const char payload[] = "ro";
+            f.Write(payload, sizeof(payload) - 1);
+            SafeClose(f);
+        }
+        MakeReadOnly(ro);
+
+        CFileFind finder;
+        BOOL found = finder.FindFile(ro);
+        BOOL more = SIMPLE_MFC_FIND_NEXT_FILE(finder);
+        (void)more;
+        LineBool("CFileFind.ReadOnly.found", found != FALSE);
+        LineBool("CFileFind.ReadOnly.IsReadOnly", finder.IsReadOnly() != FALSE);
+        LineBool("CFileFind.ReadOnly.IsHidden", finder.IsHidden() != FALSE);
+        finder.Close();
+
+        MakeWritable(ro);
+        SafeRemoveFile(ro);
+    }
+
+    // FindNextFile's own return value on a directory with a known number
+    // of matches: TRUE while another entry follows, FALSE on the last one.
+    {
+        const wchar_t* extra[] = {L"one.seq", L"two.seq", L"three.seq"};
+        for (const wchar_t* n : extra)
+        {
+            CFile f;
+            f.Open(dir + CString(n), CFile::modeCreate | CFile::modeWrite);
+            SafeClose(f);
+        }
+        CFileFind finder;
+        BOOL working = finder.FindFile(dir + CString(L"*.seq"));
+        LineBool("CFileFind.FindFile.wildcard_found", working != FALSE);
+        int seen = 0;
+        int lastReturn = -1;
+        while (working)
+        {
+            working = SIMPLE_MFC_FIND_NEXT_FILE(finder);
+            lastReturn = working ? 1 : 0;
+            ++seen;
+            if (seen > 16) break; // never loop unboundedly in CI
+        }
+        LineInt("CFileFind.FindNextFile.iterations", seen);
+        LineInt("CFileFind.FindNextFile.last_return", lastReturn);
+        finder.Close();
+        for (const wchar_t* n : extra) SafeRemoveFile(dir + CString(n));
+    }
+
+    SafeRemoveFile(plain);
+    RemoveDirectoryW(dir);
+}
+
+// ---------------------------------------------------------------------
+// CSyncObject: the abstract base's own surface, reached through a base
+// pointer so it is the base's declarations that are exercised.
+// ---------------------------------------------------------------------
+static void TestCSyncObjectBase()
+{
+    CEvent manualEvent(TRUE, TRUE);
+    CMutex mutex(FALSE);
+    CCriticalSection section;
+
+    struct Subject { const char* label; CSyncObject* obj; };
+    const Subject subjects[] = {
+        {"CEvent", &manualEvent},
+        {"CMutex", &mutex},
+        {"CCriticalSection", &section},
+    };
+    for (const Subject& s : subjects)
+    {
+        std::string base = std::string("CSyncObject.") + s.label;
+        LineBool((base + ".Lock.via_base").c_str(), s.obj->Lock(2000) != FALSE);
+        LineBool((base + ".Unlock.via_base").c_str(), s.obj->Unlock() != FALSE);
+        LineBool((base + ".operator_HANDLE.non_null").c_str(),
+                 static_cast<HANDLE>(*s.obj) != nullptr);
+    }
+}
+
+// ---------------------------------------------------------------------
+// CWinThread: the parts of the lifecycle AfxBeginThread does not reach.
+// ---------------------------------------------------------------------
+namespace
+{
+std::atomic<int> g_lifecycleRan{0};
+
+UINT AFX_CDECL LifecycleWorker(LPVOID pParam)
+{
+    g_lifecycleRan.store(pParam ? *static_cast<int*>(pParam) : -1);
+    return 3;
+}
+} // namespace
+
+static void TestCWinThreadLifecycle()
+{
+    g_lifecycleRan.store(0);
+    static int marker = 99;
+
+    // The constructor + CreateThread path, which is what AfxBeginThread
+    // does internally and what code that wants the object first uses.
+    CWinThread* pThread = new CWinThread(LifecycleWorker, &marker);
+    pThread->m_bAutoDelete = FALSE; // this test owns it, so it can outlive the run
+    LineBool("CWinThread.CreateThread.suspended",
+             pThread->CreateThread(CREATE_SUSPENDED) != FALSE);
+    LineBool("CWinThread.CreateThread.sets_m_hThread", pThread->m_hThread != nullptr);
+    LineBool("CWinThread.CreateThread.has_not_run_yet", g_lifecycleRan.load() == 0);
+
+    // Suspend counts nest. Created suspended the count is 1; suspending
+    // again makes it 2, and each call reports the count BEFORE it acted.
+    LineInt("CWinThread.SuspendThread.from_one",
+            static_cast<long long>(pThread->SuspendThread()));
+    LineInt("CWinThread.ResumeThread.from_two",
+            static_cast<long long>(pThread->ResumeThread()));
+    LineInt("CWinThread.ResumeThread.from_one",
+            static_cast<long long>(pThread->ResumeThread()));
+
+    LineBool("CWinThread.CreateThread.worker_ran",
+             PollUntil([] { return g_lifecycleRan.load() != 0; }));
+    LineInt("CWinThread.CreateThread.worker_param", g_lifecycleRan.load());
+    delete pThread;
+
+    // The three virtuals a worker thread never calls, on an object that
+    // was never started -- the only state in which calling them is safe.
+    // CWinThread::Run is deliberately absent: its real MFC implementation
+    // IS the message pump and would never return.
+    {
+        CWinThread idle;
+        idle.m_bAutoDelete = FALSE;
+        LineBool("CWinThread.InitInstance.default", idle.InitInstance() != FALSE);
+        LineInt("CWinThread.ExitInstance.default", idle.ExitInstance());
+        idle.Delete(); // m_bAutoDelete is FALSE, so this must NOT free it
+        LineBool("CWinThread.Delete.without_autodelete_is_a_noop",
+                 idle.m_bAutoDelete == FALSE);
+    }
+}
+
+// ---------------------------------------------------------------------
+// CAsyncSocket: the datagram surface (Bind / SendTo / both ReceiveFrom
+// overloads), AsyncSelect, and the default notification handlers.
+// ---------------------------------------------------------------------
+static void TestCAsyncSocketDatagram()
+{
+    LineBool("AfxSocketInit.before_datagram", AfxSocketInit(nullptr) != FALSE);
+
+    // Bind wants a socket that Create() has not already bound, so the
+    // handle comes from the platform API and is adopted with Attach --
+    // harness scaffolding, not part of what is compared.
+    SOCKET raw = ::socket(AF_INET, SOCK_DGRAM, 0);
+    LineBool("CAsyncSocket.Bind.raw_socket_available", raw != INVALID_SOCKET);
+
+    CAsyncSocket receiver;
+    LineBool("CAsyncSocket.Bind.Attach", receiver.Attach(raw) != FALSE);
+    LineBool("CAsyncSocket.Bind.to_loopback_ephemeral",
+             receiver.Bind(0, L"127.0.0.1") != FALSE);
+
+    CString boundAddress;
+    UINT boundPort = 0;
+    LineBool("CAsyncSocket.Bind.GetSockName_after_Bind",
+             receiver.GetSockName(boundAddress, boundPort) != FALSE);
+    Line("CAsyncSocket.Bind.address", boundAddress);
+    LineBool("CAsyncSocket.Bind.port_is_assigned", boundPort != 0);
+
+    // Binding a second time must fail: the socket already has a name.
+    LineBool("CAsyncSocket.Bind.second_bind_fails", receiver.Bind(0, L"127.0.0.1") != FALSE);
+
+    CAsyncSocket sender;
+    LineBool("CAsyncSocket.SendTo.sender_created",
+             sender.Create(0, SOCK_DGRAM, FD_READ | FD_WRITE, L"127.0.0.1") != FALSE);
+
+    // Several payload sizes, so the return value is compared against a
+    // varying expectation rather than one.
+    const char* payloads[] = {"a", "datagram", "0123456789012345678901234567890123456789"};
+    int idx = 0;
+    for (const char* payload : payloads)
+    {
+        const int len = static_cast<int>(std::strlen(payload));
+        const int sent = sender.SendTo(payload, len, boundPort, L"127.0.0.1");
+        LineInt(("CAsyncSocket.SendTo." + std::to_string(idx) + ".returns_length").c_str(), sent);
+
+        char buf[128]{};
+        // Non-blocking on both sides: poll to a deadline rather than wait.
+        int got = -1;
+        if (idx == 0)
+        {
+            // The CString/UINT overload.
+            CString fromAddress;
+            UINT fromPort = 0;
+            PollUntil([&] {
+                got = receiver.ReceiveFrom(buf, static_cast<int>(sizeof(buf)), fromAddress, fromPort);
+                return got > 0;
+            });
+            LineInt("CAsyncSocket.ReceiveFrom.CString.returns_length", got);
+            Line("CAsyncSocket.ReceiveFrom.CString.payload",
+                 std::string(buf, got > 0 ? static_cast<size_t>(got) : 0u));
+            Line("CAsyncSocket.ReceiveFrom.CString.from_address", fromAddress);
+            LineBool("CAsyncSocket.ReceiveFrom.CString.from_port_assigned", fromPort != 0);
+        }
+        else
+        {
+            // The raw SOCKADDR overload.
+            sockaddr_in from{};
+            int fromLen = static_cast<int>(sizeof(from));
+            PollUntil([&] {
+                got = receiver.ReceiveFrom(buf, static_cast<int>(sizeof(buf)),
+                                           reinterpret_cast<SOCKADDR*>(&from), &fromLen);
+                return got > 0;
+            });
+            LineInt(("CAsyncSocket.ReceiveFrom.SOCKADDR." + std::to_string(idx) + ".returns_length").c_str(),
+                    got);
+            Line(("CAsyncSocket.ReceiveFrom.SOCKADDR." + std::to_string(idx) + ".payload").c_str(),
+                 std::string(buf, got > 0 ? static_cast<size_t>(got) : 0u));
+            LineBool(("CAsyncSocket.ReceiveFrom.SOCKADDR." + std::to_string(idx) + ".family_is_inet").c_str(),
+                     from.sin_family == AF_INET);
+            LineBool(("CAsyncSocket.ReceiveFrom.SOCKADDR." + std::to_string(idx) + ".length_written").c_str(),
+                     fromLen >= static_cast<int>(sizeof(sockaddr_in)));
+        }
+        ++idx;
+    }
+
+    // AsyncSelect: what is comparable is whether the request is accepted,
+    // not whether a notification arrives (which needs a message pump).
+    {
+        const long masks[] = {FD_READ, FD_READ | FD_WRITE, 0};
+        int i = 0;
+        for (long mask : masks)
+        {
+            LineBool(("CAsyncSocket.AsyncSelect." + std::to_string(i)).c_str(),
+                     receiver.AsyncSelect(mask) != FALSE);
+            ++i;
+        }
+    }
+
+    // The default notification handlers. Real MFC's are empty virtuals and
+    // so are this branch's; calling each one directly compares that -- it
+    // must return, change nothing observable, and accept any error code.
+    {
+        const int codes[] = {0, 10035 /*WSAEWOULDBLOCK*/, -1};
+        for (int code : codes)
+        {
+            const std::string suffix = "." + std::to_string(code);
+            receiver.OnReceive(code);
+            LineBool(("CAsyncSocket.OnReceive.default_returns" + suffix).c_str(), true);
+            receiver.OnSend(code);
+            LineBool(("CAsyncSocket.OnSend.default_returns" + suffix).c_str(), true);
+            receiver.OnAccept(code);
+            LineBool(("CAsyncSocket.OnAccept.default_returns" + suffix).c_str(), true);
+            receiver.OnConnect(code);
+            LineBool(("CAsyncSocket.OnConnect.default_returns" + suffix).c_str(), true);
+            receiver.OnClose(code);
+            LineBool(("CAsyncSocket.OnClose.default_returns" + suffix).c_str(), true);
+            receiver.OnOutOfBandData(code);
+            LineBool(("CAsyncSocket.OnOutOfBandData.default_returns" + suffix).c_str(), true);
+        }
+        // Nothing the handlers did may have disturbed the socket.
+        LineBool("CAsyncSocket.On_handlers.socket_still_valid",
+                 receiver.m_hSocket != INVALID_SOCKET);
+    }
+
+    sender.Close();
+    receiver.Close();
+}
+
+// ---------------------------------------------------------------------
+// The remaining one-off members: CMemFile::GrowFile, CArchive::GetFile,
+// CTempBuffer::Free, CTime::GetLocalTm, the sized map constructors, the
+// HashKey overloads, and AfxSocketTerm.
+// ---------------------------------------------------------------------
+namespace
+{
+// GrowFile is protected in real MFC (public here). A using-declaration in
+// a derived class re-exports it under both, which is how the same source
+// can call it on either side.
+class GrowableMemFile : public CMemFile
+{
+public:
+    using CMemFile::GrowFile;
+};
+} // namespace
+
+static void TestRemainingGaps()
+{
+    // --- CMemFile::GrowFile ------------------------------------------------
+    // Growing must extend the buffer without moving the position or
+    // changing what has already been written.
+    {
+        const ULONGLONG sizes[] = {0, 1, 64, 4096};
+        for (ULONGLONG want : sizes)
+        {
+            GrowableMemFile mf;
+            const char seed[] = "seed";
+            mf.Write(seed, sizeof(seed) - 1);
+            const ULONGLONG posBefore = mf.GetPosition();
+            mf.GrowFile(want);
+            const std::string tag = std::to_string(want);
+            LineBool(("CMemFile.GrowFile." + tag + ".position_unchanged").c_str(),
+                     mf.GetPosition() == posBefore);
+            LineBool(("CMemFile.GrowFile." + tag + ".length_at_least_written").c_str(),
+                     mf.GetLength() >= sizeof(seed) - 1);
+            mf.SeekToBegin();
+            char readBack[8]{};
+            const UINT n = mf.Read(readBack, sizeof(seed) - 1);
+            LineInt(("CMemFile.GrowFile." + tag + ".readback_count").c_str(), n);
+            Line(("CMemFile.GrowFile." + tag + ".readback").c_str(),
+                 std::string(readBack, n));
+            mf.Close();
+        }
+    }
+
+    // --- CArchive::GetFile -------------------------------------------------
+    {
+        CMemFile backing;
+        CArchive ar(&backing, CArchive::store);
+        LineBool("CArchive.GetFile.is_the_backing_file", ar.GetFile() == &backing);
+        LineBool("CArchive.GetFile.non_null", ar.GetFile() != nullptr);
+        ar << static_cast<DWORD>(7);
+        ar.Flush();
+        LineBool("CArchive.GetFile.same_after_write", ar.GetFile() == &backing);
+        ar.Close();
+        backing.Close();
+    }
+
+    // --- CTempBuffer::Free -------------------------------------------------
+    // Free releases whatever Allocate took, and the buffer is reusable
+    // afterwards -- across sizes that straddle the on-stack fixed block.
+    {
+        const size_t counts[] = {1, 16, 512, 4096};
+        for (size_t n : counts)
+        {
+            CTempBuffer<int> buf;
+            int* p = buf.Allocate(n);
+            LineBool(("CTempBuffer.Free." + std::to_string(n) + ".allocated").c_str(), p != nullptr);
+            if (p) for (size_t i = 0; i < n; ++i) p[i] = static_cast<int>(i);
+            LineInt(("CTempBuffer.Free." + std::to_string(n) + ".last_element").c_str(),
+                    p ? p[n - 1] : -1);
+            buf.Free();
+            int* again = buf.Allocate(n);
+            LineBool(("CTempBuffer.Free." + std::to_string(n) + ".reusable_after_free").c_str(),
+                     again != nullptr);
+        }
+    }
+
+    // --- CTime::GetLocalTm --------------------------------------------------
+    // A fixed instant, so every field is a compared constant rather than
+    // whatever the clock happened to say. Real MFC also accepts a null
+    // pointer (returning shared per-thread storage); that form has no
+    // thread-safe equivalent here and is not part of the comparison.
+    {
+        struct Case { const char* label; int y, mo, d, h, mi, s; };
+        const Case cases[] = {
+            {"epoch_plus",  1970, 1,  2,  3, 4, 5},
+            {"leap_day",    2024, 2, 29, 12, 0, 0},
+            {"year_end",    1999, 12, 31, 23, 59, 59},
+            {"recent",      2023, 7, 14,  6, 30, 15},
+        };
+        for (const Case& c : cases)
+        {
+            CTime t(c.y, c.mo, c.d, c.h, c.mi, c.s);
+            std::tm tm{};
+            std::tm* got = t.GetLocalTm(&tm);
+            const std::string base = std::string("CTime.GetLocalTm.") + c.label;
+            LineBool((base + ".returns_the_buffer").c_str(), got == &tm);
+            LineInt((base + ".tm_year").c_str(), tm.tm_year);
+            LineInt((base + ".tm_mon").c_str(), tm.tm_mon);
+            LineInt((base + ".tm_mday").c_str(), tm.tm_mday);
+            LineInt((base + ".tm_hour").c_str(), tm.tm_hour);
+            LineInt((base + ".tm_min").c_str(), tm.tm_min);
+            LineInt((base + ".tm_sec").c_str(), tm.tm_sec);
+            LineInt((base + ".tm_wday").c_str(), tm.tm_wday);
+            LineInt((base + ".tm_yday").c_str(), tm.tm_yday);
+        }
+    }
+
+    // --- the sized map constructors -----------------------------------------
+    // The hint only sizes the hash table; behaviour must not depend on it.
+    {
+        const INT_PTR hints[] = {1, 17, 1024};
+        for (INT_PTR hint : hints)
+        {
+            CMapStringToPtr m(hint);
+            int a = 1, b = 2;
+            m.SetAt(L"first", &a);
+            m.SetAt(L"second", &b);
+            void* found = nullptr;
+            const std::string tag = std::to_string(static_cast<long long>(hint));
+            LineBool(("CMapStringToPtr.sized_ctor." + tag + ".lookup").c_str(),
+                     m.Lookup(L"second", found) != FALSE);
+            LineBool(("CMapStringToPtr.sized_ctor." + tag + ".value").c_str(), found == &b);
+            LineInt(("CMapStringToPtr.sized_ctor." + tag + ".count").c_str(),
+                    static_cast<long long>(m.GetCount()));
+
+            CMapStringToString ms(hint);
+            ms.SetAt(L"key", L"value");
+            CString out;
+            LineBool(("CMapStringToString.sized_ctor." + tag + ".lookup").c_str(),
+                     ms.Lookup(L"key", out) != FALSE);
+            Line(("CMapStringToString.sized_ctor." + tag + ".value").c_str(), out);
+        }
+    }
+
+    // --- _AtlGetConversionACP ------------------------------------------------
+    // The code page ATL's conversion macros convert through. Its VALUE is a
+    // platform fact (Windows answers with a real code-page id, POSIX has no
+    // ANSI code page at all), so the cross-platform comparison skips it --
+    // the Windows side-by-side one does not, and that is where it matters.
+    {
+        LineInt("AtlGetConversionACP.value", static_cast<long long>(_AtlGetConversionACP()));
+        LineBool("AtlGetConversionACP.is_stable",
+                 _AtlGetConversionACP() == _AtlGetConversionACP());
+    }
+
+    // --- HashKey -------------------------------------------------------------
+    // The string specialisation's exact value IS the contract (CMap's
+    // bucket assignment depends on it), so it is compared as a number.
+    {
+        const wchar_t* keys[] = {L"", L"a", L"abc", L"a longer key value", L"éè"};
+        int i = 0;
+        for (const wchar_t* k : keys)
+        {
+            LineInt(("HashKey.LPCTSTR." + std::to_string(i)).c_str(),
+                    static_cast<long long>(HashKey<LPCTSTR>(k)));
+            ++i;
+        }
+        const int ints[] = {0, 1, -1, 65536, 1234567};
+        i = 0;
+        for (int v : ints)
+        {
+            LineInt(("HashKey.int." + std::to_string(i)).c_str(),
+                    static_cast<long long>(HashKey<int>(v)));
+            ++i;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------
+// AfxSocketTerm, in its own section and called LAST: it tears down the
+// thread's socket state, so nothing that uses a socket may follow it.
+// ---------------------------------------------------------------------
+static void TestAfxSocketTerm()
+{
+    AfxSocketTerm();
+    LineBool("AfxSocketTerm.returns", true);
+    // Re-initialising afterwards must work: the pair is reference-counted
+    // per thread, not a one-way door.
+    LineBool("AfxSocketTerm.reinit_after_term", AfxSocketInit(nullptr) != FALSE);
+    AfxSocketTerm();
+    LineBool("AfxSocketTerm.second_term_returns", true);
+}
+
 // ---------------------------------------------------------------------
 int main()
 {
     SilenceWindowsDialogs();
 
     TestRTTI();
+    TestCRuntimeClass();
     TestExceptions();
+    TestExceptionGaps();
     TestCString();
+    TestCStringGaps();
     TestCFile();
     TestCStdioFile();
     TestCMemFile();
     TestCMemFileDetachAttach();
     TestCArchive();
     TestCFileFind();
+    TestCFileFindAttributes();
     TestCObList();
     TestCPtrList();
     TestCStringList();
@@ -2704,13 +3692,20 @@ int main()
     TestEventManualReset();
     TestEventPulseAndUnlock();
     TestMutex();
+    TestCSyncObjectBase();
     TestCWinThread();
+    TestCWinThreadLifecycle();
     TestCAsyncSocket();
+    TestCAsyncSocketDatagram();
 
     TestPatternCString();
     TestPatternCTime();
     TestPatternBase64();
     TestPatternUnicodeToUtf8();
+    TestRemainingGaps();
+
+    // Last: it tears down the thread's socket state.
+    TestAfxSocketTerm();
 
     // Explicit end-of-run marker. A probe that dies partway through still
     // exits with a code compare.py checks, but a truncated run that

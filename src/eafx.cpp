@@ -39,6 +39,18 @@ void ECObject::Dump(ECDumpContext& dc) const
     dc << GetRuntimeClass()->m_lpszClassName;
 }
 
+// The function behind the DYNAMIC_DOWNCAST macro: a checked cast that
+// answers null instead of undefined behaviour when the object is not of
+// the asked-for class. Declared since the first version of this header and
+// never defined until the conformance suite reached full method coverage —
+// eMule's two DYNAMIC_DOWNCAST sites would not have linked.
+ECObject* EAfxDynamicDownCast(ECRuntimeClass* pClass, ECObject* pObject)
+{
+    if (pObject != nullptr && pObject->IsKindOf(pClass))
+        return pObject;
+    return nullptr;
+}
+
 // ---------------------------------------------------------------------
 // CException
 // ---------------------------------------------------------------------

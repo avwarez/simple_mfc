@@ -408,12 +408,21 @@ private:
 };
 } // namespace mfc_detail
 
+// The block-size constructor is inherited explicitly rather than left to
+// the compiler: a base class's constructors are NOT part of a derived
+// class's interface by default, so without this `CMapStringToPtr m(17)`
+// -- which real MFC accepts -- would not compile. Found by the
+// conformance suite when it went to full method coverage.
 class ECMapStringToPtr : public mfc_detail::CStringKeyMapImpl<void*, void*>
 {
+public:
+    using mfc_detail::CStringKeyMapImpl<void*, void*>::CStringKeyMapImpl;
 };
 
 class ECMapStringToString : public mfc_detail::CStringKeyMapImpl<ECString, LPCTSTR>
 {
+public:
+    using mfc_detail::CStringKeyMapImpl<ECString, LPCTSTR>::CStringKeyMapImpl;
 };
 
 class ECStringList : public ECObject

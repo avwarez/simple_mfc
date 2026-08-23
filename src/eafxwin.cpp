@@ -161,7 +161,17 @@ int ECWinThread::GetThreadPriority()
 BOOL ECWinThread::InitInstance() { return TRUE; }
 int  ECWinThread::ExitInstance() { return 0; }
 int  ECWinThread::Run()          { return 0; }
-void ECWinThread::Delete()       { delete this; }
+// Real MFC: `if (m_bAutoDelete) delete this;`. Deleting unconditionally --
+// as this did until the conformance suite reached full method coverage --
+// frees an object the caller still owns, which for the documented
+// m_bAutoDelete = FALSE pattern (a CWinThread the caller keeps and reads
+// m_nThreadID/m_hThread from after the run) is a use-after-free, and for a
+// thread object with automatic storage is an invalid free outright.
+void ECWinThread::Delete()
+{
+    if (m_bAutoDelete)
+        delete this;
+}
 
 ECWinThread* EAfxBeginThread(EAFX_THREADPROC pfnThreadProc, void* pParam,
                            int nPriority, UINT nStackSize, DWORD dwCreateFlags,
