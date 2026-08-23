@@ -15,58 +15,20 @@
 // CComCriticalSection, the conversion macros (USES_CONVERSION/W2A/...),
 // CAtlList/CAtlArray/CAtlMap, and ATL's own string classes.
 //
-// CRegKey and AtlUnicodeToUTF8 were on that list until the first CI round
-// proved otherwise. The lesson: build the list by sweeping eMule for
-// every Atl*/C*-shaped ATL name, not by checking a candidate list.
+// ALSO NOT PROVIDED, and this one is a removal rather than an omission:
+// the COM smart pointers and wrappers (CComPtr, CComQIPtr, CComPtrBase,
+// CComBSTR, CComVariant — formerly atlcomcli.h), the registry wrapper
+// (CRegKey, formerly declared right here) and the OLE automation date
+// (COleDateTime, formerly atlcomtime.h). All three were declaration-only
+// on this branch: 86 declared members and not one defined anywhere, so a
+// call to any of them would not have linked, and the conformance suite
+// could not compare a single one against real ATL. They are Win32 COM and
+// registry surface, which is the opposite of what this branch exists to
+// isolate. If a consumer turns out to need them, they come back as an
+// implementation with tests, not as declarations.
 #pragma once
 
 #include "eatldef.h"      // ATLASSERT & co
-#include "eatlcomcli.h"   // CComPtr, CComQIPtr, CComBSTR, CComVariant
 #include "eatlsimpcoll.h" // CSimpleArray
 #include "eatlconv.h"     // AtlUnicodeToUTF8
 #include "eatlalloc.h"    // CTempBuffer
-
-// Registry key wrapper. Real ATL declares CRegKey in atlbase.h itself.
-// eMule uses it for the shell/file-association settings; signatures
-// verified against the Microsoft Learn CRegKey class page.
-#ifndef _WIN32
-// All 32 bits wide, as in Win32 -- see the typedef block in afx.h for why
-// `unsigned long` is the wrong spelling of that off Windows.
-using HKEY = void*;
-using REGSAM = unsigned int;            // Win32: ACCESS_MASK, i.e. a DWORD
-using LPSECURITY_ATTRIBUTES = void*;
-using LPDWORD = unsigned int*;          // Win32: DWORD*
-using ULONG = unsigned int;
-using LONG = int;
-#define REG_NONE 0
-#define REG_SZ 1
-#define REG_OPTION_NON_VOLATILE 0
-#define KEY_READ 0x20019
-#define KEY_WRITE 0x20006
-#endif
-
-class ECRegKey
-{
-public:
-    ECRegKey() noexcept;
-    ~ECRegKey() noexcept;
-
-    HKEY m_hKey;
-    operator HKEY() const noexcept;
-
-    LONG Create(HKEY hKeyParent, LPCTSTR lpszKeyName, LPTSTR lpszClass = (LPTSTR)REG_NONE,
-                DWORD dwOptions = REG_OPTION_NON_VOLATILE,
-                REGSAM samDesired = KEY_READ | KEY_WRITE,
-                LPSECURITY_ATTRIBUTES lpSecAttr = nullptr,
-                LPDWORD lpdwDisposition = nullptr) noexcept;
-    LONG Open(HKEY hKeyParent, LPCTSTR lpszKeyName,
-              REGSAM samDesired = KEY_READ | KEY_WRITE) noexcept;
-    LONG Close() noexcept;
-
-    LONG QueryStringValue(LPCTSTR pszValueName, LPTSTR pszValue, ULONG* pnChars) noexcept;
-    LONG QueryDWORDValue(LPCTSTR pszValueName, DWORD& dwValue) noexcept;
-    LONG SetStringValue(LPCTSTR pszValueName, LPCTSTR pszValue, DWORD dwType = REG_SZ) noexcept;
-    LONG SetDWORDValue(LPCTSTR pszValueName, DWORD dwValue) noexcept;
-    LONG DeleteValue(LPCTSTR lpszValue) noexcept;
-    LONG RecurseDeleteKey(LPCTSTR lpszKey) noexcept;
-};

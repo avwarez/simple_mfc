@@ -25,10 +25,11 @@
 // WHAT IS NOT HERE, and why. This suite compares behaviour, so a symbol
 // with no behaviour on our side cannot be compared:
 //
-//   * CComPtr / CComQIPtr / CComBSTR / CComVariant (atlcomcli.h),
-//     CRegKey (atlbase.h) and COleDateTime (atlcomtime.h) are
-//     declaration-only stubs on this branch — no .cpp defines a single
-//     member, so a call to one would not even link. Skipped entirely.
+//   * The COM smart pointers and wrappers, the registry wrapper and the
+//     OLE automation date are no longer on this branch at all: they were
+//     declaration-only (86 members declared, none defined), so nothing
+//     here could ever have been compared against real ATL, and they have
+//     been removed rather than left as a permanent gap in this suite.
 //   * CObject::AssertValid/Dump and the ASSERT/VERIFY/TRACE macros are
 //     _DEBUG-only in real MFC and expand to nothing in the Release
 //     configuration this suite builds.
@@ -2711,10 +2712,9 @@ static void TestCAsyncSocket()
 //
 // The methods still not compared, and why they cannot be:
 //
-//   * CComPtr / CComQIPtr / CComPtrBase / CComBSTR / CComVariant
-//     (atlcomcli.h), CRegKey (atlbase.h), COleDateTime (atlcomtime.h):
-//     declaration-only on this branch, not one member is defined. A case
-//     calling any of them would not link, let alone compare.
+//   * Nothing from COM or the registry: those classes have been removed
+//     from this branch (see atlbase.h's banner), so there is no longer a
+//     surface here for this suite to leave uncompared.
 //   * CObject::AssertValid / CObject::Dump and the whole of CDumpContext:
 //     real MFC declares them under #ifdef _DEBUG only. They do not exist
 //     as members in the Release configuration this suite builds.
