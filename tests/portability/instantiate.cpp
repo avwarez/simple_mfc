@@ -76,6 +76,7 @@ template class ECRBMap<UINT, UINT>;
 
 template class ECStringT<char>;
 template class ECStringT<wchar_t>;
+template class ECStringT<char16_t>;
 
 template class mfc_detail::ListImpl<void*>;
 template class mfc_detail::ListImpl<ECString>;
@@ -83,6 +84,45 @@ template class mfc_detail::ArrayImpl<void*>;
 template class mfc_detail::ArrayImpl<ECString>;
 template class mfc_detail::CStringKeyMapImpl<void*, void*>;
 template class mfc_detail::CStringKeyMapImpl<ECString, LPCTSTR>;
+
+namespace {
+int Utf16Checks()
+{
+    using U16 = ECStringT<char16_t>;
+    int bad = 0;
+
+    U16 emoji(u"a\U0001F600b");
+    if (emoji.GetLength() != 4) ++bad;
+    if (emoji.GetAt(1) != 0xD83D) ++bad;
+    if (emoji.GetAt(2) != 0xDE00) ++bad;
+    if (emoji.Find(u'b') != 3) ++bad;
+    if (emoji.ReverseFind(u'b') != 3) ++bad;
+    if (emoji.Mid(1, 1).GetLength() != 1) ++bad;
+    if (emoji.Mid(1, 1).GetAt(0) != 0xD83D) ++bad;
+
+    U16 wrapped;
+    wrapped.Format(u"<%s>", emoji.GetString());
+    if (wrapped.GetLength() != 6) ++bad;
+
+    U16 dialect;
+    dialect.Format(u"%I64u|%Iu|%hs|%08lx", (unsigned long long)1, (size_t)2, "n", 48879UL);
+    if (dialect != U16(u"1|2|n|0000beef")) ++bad;
+
+    U16 padded;
+    padded.Format(u"[%-4s][%5d]", u"ab", 42);
+    if (padded != U16(u"[ab  ][   42]")) ++bad;
+
+    U16 grown;
+    grown.Format(u"%s", std::u16string(600, u'x').c_str());
+    if (grown.GetLength() != 600) ++bad;
+
+    U16 upper(u"a\U0001F600b");
+    upper.MakeUpper();
+    if (upper != U16(u"A\U0001F600B")) ++bad;
+
+    return bad;
+}
+}
 
 int main()
 {
@@ -107,5 +147,8 @@ int main()
 #endif
                 static_cast<int>(sizeof(void*)), rc,
                 state != nullptr ? "resolved" : "null");
-    return state != nullptr ? 0 : 1;
+    const int utf16Bad = Utf16Checks();
+    std::printf("UTF-16 string checks: %d failed\n", utf16Bad);
+
+    return (state != nullptr && utf16Bad == 0) ? 0 : 1;
 }
