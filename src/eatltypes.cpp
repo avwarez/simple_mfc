@@ -108,7 +108,7 @@ void ECRect::DeflateRect(LPCRECT lpRect) noexcept
 void ECRect::DeflateRect(int l, int t, int r, int b) noexcept { InflateRect(-l, -t, -r, -b); }
 
 void ECRect::SetRect(int x1, int y1, int x2, int y2) noexcept { left = x1; top = y1; right = x2; bottom = y2; }
-ECPoint ECRect::CenterPoint() const noexcept { return ECPoint(left + Width() / 2, top + Height() / 2); }
+ECPoint ECRect::CenterPoint() const noexcept { return ECPoint((left + right) / 2, (top + bottom) / 2); }
 ECSize ECRect::Size() const noexcept { return ECSize(Width(), Height()); }
 BOOL ECRect::IsRectEmpty() const noexcept { return (left >= right || top >= bottom) ? TRUE : FALSE; }
 void ECRect::SetRectEmpty() noexcept { left = top = right = bottom = 0; }
