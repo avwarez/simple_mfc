@@ -51,7 +51,9 @@ ECDumpContext& ECDumpContext::operator<<(const char* lpsz)
     return *this;
 }
 ECDumpContext& ECDumpContext::operator<<(LPCTSTR lpsz) { if (lpsz) m_os << lpsz; return *this; }
-ECDumpContext& ECDumpContext::operator<<(const ECObject* pOb) { if (pOb) pOb->Dump(*this); else m_os << L"(null)"; return *this; }
+// Real MFC spells the null case "NULL"; "(null)" was this branch's own
+// wording and nothing but a dump reader would ever have noticed.
+ECDumpContext& ECDumpContext::operator<<(const ECObject* pOb) { if (pOb) pOb->Dump(*this); else m_os << L"NULL"; return *this; }
 ECDumpContext& ECDumpContext::operator<<(int n) { m_os << DumpFormat(L"%d", n); return *this; }
 ECDumpContext& ECDumpContext::operator<<(unsigned int u) { m_os << DumpFormat(L"%u", u); return *this; }
 ECDumpContext& ECDumpContext::operator<<(long l) { m_os << DumpFormat(L"%ld", l); return *this; }
@@ -183,6 +185,17 @@ int OsErrorToCause(LONG lOsError)
         case 38: return ECFileException::endOfFile;             // ERROR_HANDLE_EOF
         case 39: return ECFileException::diskFull;              // ERROR_HANDLE_DISK_FULL
         case 112: return ECFileException::diskFull;             // ERROR_DISK_FULL
+        // The rest of the table was filled in from real MFC's own answers,
+        // read off the conformance run that drives ThrowOsError over every
+        // common Win32 file error. ERROR_BAD_PATHNAME in particular used to
+        // fall through to genericException here while real MFC answers
+        // badPath -- a caller switching on m_cause took the wrong branch.
+        case 15: return ECFileException::badPath;               // ERROR_INVALID_DRIVE
+        case 16: return ECFileException::removeCurrentDir;      // ERROR_CURRENT_DIRECTORY
+        case 123: return ECFileException::badPath;              // ERROR_INVALID_NAME
+        case 131: return ECFileException::badSeek;              // ERROR_NEGATIVE_SEEK
+        case 161: return ECFileException::badPath;              // ERROR_BAD_PATHNAME
+        case 206: return ECFileException::badPath;              // ERROR_FILENAME_EXCED_RANGE
         default: return ECFileException::genericException;
     }
 }

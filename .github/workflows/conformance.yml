@@ -58,6 +58,16 @@ jobs:
       - name: Compare
         run: ctest --test-dir build -C Release --output-on-failure
 
+      # Real MFC declares CObject::AssertValid, CObject::Dump and all of
+      # CDumpContext under #ifdef _DEBUG -- in a Release build they are not
+      # members at all. Comparing them needs a Debug pair, which the
+      # multi-config MSVC generator produces from the same configure step.
+      - name: Build both probes (Debug)
+        run: cmake --build build --config Debug
+
+      - name: Compare (Debug, for the _DEBUG-only surface)
+        run: ctest --test-dir build -C Debug --output-on-failure
+
       # Published even when the comparison fails: the recording is what the
       # POSIX job compares against, and a failing Windows run is exactly when
       # a reviewer most wants to read real MFC's own output.
@@ -66,7 +76,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: real-mfc-reference
-          path: build/tests/conformance/real_mfc.txt
+          path: build/tests/conformance/real_mfc_Release.txt
           if-no-files-found: warn
 
   posix:
@@ -107,8 +117,8 @@ jobs:
           # With no recording (the Windows job never got far enough to make
           # one) the suite still builds and runs the probe end to end — it
           # just has nothing to compare against.
-          if [ -f reference/real_mfc.txt ]; then
-            REFERENCE="-DSIMPLE_MFC_REFERENCE_FILE=$PWD/reference/real_mfc.txt"
+          if [ -f reference/real_mfc_Release.txt ]; then
+            REFERENCE="-DSIMPLE_MFC_REFERENCE_FILE=$PWD/reference/real_mfc_Release.txt"
           else
             echo "::warning::no reference recording — running the probe without comparing"
             REFERENCE=""

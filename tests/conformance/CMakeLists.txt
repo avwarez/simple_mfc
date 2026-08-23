@@ -10,6 +10,13 @@
 # every other difference there is a real difference. The cross-platform one
 # additionally applies platform_dependent.txt.
 #
+# The Windows job runs the comparison in BOTH configurations. Release is
+# the one whose recording travels to the POSIX job; Debug exists because
+# real MFC declares CObject::AssertValid/Dump and the whole of
+# CDumpContext under #ifdef _DEBUG, so a Release build cannot reach them.
+# The recording is therefore named per configuration -- one file per
+# config, so the Debug run cannot overwrite the Release one.
+#
 # With both probes present the comparison is a CTest case. With only the
 # native one, there is nothing on this machine to compare against, so the
 # suite degrades to "the probe builds and runs to completion" — the shape
@@ -68,7 +75,7 @@ if (SIMPLE_MFC_BUILD_REAL_MFC_PROBE)
         COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/compare.py"
                 --native $<TARGET_FILE:smfc_probe>
                 --reference $<TARGET_FILE:real_mfc_probe>
-                --write-reference "${CMAKE_CURRENT_BINARY_DIR}/real_mfc.txt"
+                --write-reference "${CMAKE_CURRENT_BINARY_DIR}/real_mfc_$<CONFIG>.txt"
                 --exclude "${CMAKE_CURRENT_SOURCE_DIR}/renamed_symbols.txt"
     )
     # Outer bound on the whole step: compare.py already gives each probe its

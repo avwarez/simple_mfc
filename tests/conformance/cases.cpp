@@ -133,6 +133,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <random>
+#include <sstream> // the _DEBUG-only CDumpContext cases collect their output here
 #include <sys/stat.h> // _wchmod / chmod: the harness makes a file read-only for CFileFind::IsReadOnly
 #include <string>
 #include <thread>
@@ -2852,13 +2853,36 @@ static void TestExceptionGaps()
     // ThrowOsError maps an OS error code onto a CFileException::Cause.
     // The mapping is the behaviour under test, so drive it with several
     // codes rather than one.
+    //
+    // Zero is NOT among them: it means "no error", and real MFC treats
+    // being handed it as a contract violation -- the probe died on
+    // STATUS_BREAKPOINT there, which is how this list came to be
+    // non-zero-only.
     {
         struct Case { const char* label; LONG osError; };
         const Case cases[] = {
-            {"file_not_found", ERROR_FILE_NOT_FOUND},
-            {"bad_pathname",   ERROR_BAD_PATHNAME},
-            {"disk_full",      ERROR_DISK_FULL},
-            {"zero",           0},
+            {"file_not_found",       2L},
+            {"path_not_found",       3L},
+            {"too_many_open_files",  4L},
+            {"access_denied",        5L},
+            {"invalid_handle",       6L},
+            {"invalid_drive",       15L},
+            {"current_directory",   16L},
+            {"write_protect",       19L},
+            {"sharing_violation",   32L},
+            {"lock_violation",      33L},
+            {"handle_eof",          38L},
+            {"handle_disk_full",    39L},
+            {"file_exists",         80L},
+            {"invalid_parameter",   87L},
+            {"disk_full",          112L},
+            {"invalid_name",       123L},
+            {"negative_seek",      131L},
+            {"dir_not_empty",      145L},
+            {"bad_pathname",       161L},
+            {"already_exists",     183L},
+            {"filename_too_long",  206L},
+            {"unmapped_high",    30000L},
         };
         for (const Case& c : cases)
         {
@@ -3660,6 +3684,236 @@ static void TestAfxSocketTerm()
 }
 
 // ---------------------------------------------------------------------
+// The _DEBUG-only surface: CObject::AssertValid/Dump and CDumpContext.
+//
+// Real MFC declares all three under #ifdef _DEBUG -- in a Release build
+// they are not members at all, which is why the Release comparison cannot
+// reach them. simple_mfc has them unconditionally, so the guard below is
+// what real MFC needs, not what this branch needs. The Windows job builds
+// and compares BOTH configurations; the POSIX job keeps comparing against
+// the Release recording, so these cases simply do not appear there.
+// ---------------------------------------------------------------------
+#ifdef _DEBUG
+namespace
+{
+// CDumpContext's DESTINATION is the one part of it that is genuinely not
+// portable: real MFC writes through a CFile*, simple_mfc through a
+// std::wostream&. Neither is the contract -- the characters are -- so each
+// side gets a sink of its own shape and both hand back the same
+// std::string for comparison. Harness scaffolding, per side, exactly like
+// the POSIX stand-ins at the top of this file.
+class DumpBuffer
+{
+public:
+#if defined(SIMPLE_MFC_USE_REAL_MFC)
+    CDumpContext Context() { return CDumpContext(&m_file); }
+    std::string Take()
+    {
+        m_file.Flush();
+        const ULONGLONG bytes = m_file.GetLength();
+        if (bytes == 0) return {};
+        std::wstring text(static_cast<size_t>(bytes / sizeof(wchar_t)), L'\0');
+        m_file.SeekToBegin();
+        m_file.Read(&text[0], static_cast<UINT>(bytes));
+        return Utf8(text.c_str());
+    }
+
+private:
+    CMemFile m_file;
+#else
+    CDumpContext Context() { return CDumpContext(m_stream); }
+    std::string Take() { return Utf8(m_stream.str().c_str()); }
+
+private:
+    std::wostringstream m_stream;
+#endif
+};
+
+class DumpSubject : public CObject
+{
+    DECLARE_DYNAMIC(DumpSubject)
+public:
+    int value = 5;
+};
+IMPLEMENT_DYNAMIC(DumpSubject, CObject)
+} // namespace
+
+static void TestDebugOnly()
+{
+    // --- CObject::AssertValid --------------------------------------------
+    // A valid object passes silently; that the call returns at all is the
+    // whole observable contract, since the failing path breaks into the
+    // debugger and is not something a probe may provoke.
+    {
+        DumpSubject subject;
+        subject.AssertValid();
+        LineBool("CObject.AssertValid.plain_object_returns", true);
+
+        CFileException fe(CFileException::none, 0, L"x");
+        fe.AssertValid();
+        LineBool("CObject.AssertValid.library_object_returns", true);
+
+        CString s(L"value");
+        CFile file;
+        file.AssertValid();
+        LineBool("CObject.AssertValid.CFile_returns", true);
+    }
+
+    // --- CObject::Dump ----------------------------------------------------
+    // The default implementation prints the runtime class name, so the
+    // text is compared for the classes whose name this branch did NOT
+    // rename... which is none of them: every one carries the E prefix, and
+    // RTTI.CFileException.ClassName already covers that in
+    // renamed_symbols.txt. What is compared here is that Dump wrote
+    // something and that two objects of different classes wrote different
+    // things.
+    {
+        DumpBuffer a;
+        CDumpContext dca = a.Context();
+        DumpSubject subject;
+        subject.Dump(dca);
+        const std::string dumpedSubject = a.Take();
+
+        DumpBuffer b;
+        CDumpContext dcb = b.Context();
+        CFileException fe(CFileException::none, 0, L"x");
+        fe.Dump(dcb);
+        const std::string dumpedException = b.Take();
+
+        // DumpSubject is declared in THIS file, so its runtime class name
+        // is the same string on both sides -- unlike every library class,
+        // which carries the E prefix. That makes the default Dump's exact
+        // text comparable rather than merely non-empty.
+        Line("CObject.Dump.default_text", dumpedSubject);
+        LineBool("CObject.Dump.names_the_class",
+                 dumpedSubject.find("DumpSubject") != std::string::npos);
+        LineBool("CObject.Dump.differs_by_class", dumpedSubject != dumpedException);
+    }
+
+    // --- CDumpContext::SetDepth / GetDepth ---------------------------------
+    {
+        const int depths[] = {0, 1, 7, -1};
+        int i = 0;
+        for (int d : depths)
+        {
+            DumpBuffer buf;
+            CDumpContext dc = buf.Context();
+            dc.SetDepth(d);
+            LineInt(("CDumpContext.SetDepth." + std::to_string(i)).c_str(), dc.GetDepth());
+            ++i;
+        }
+    }
+
+    // --- every operator<< overload, over several values each ---------------
+    // The TEXT is the contract here: MFC formats each type through a
+    // printf conversion, and a stream default that merely looks similar is
+    // not the same thing (an iostream renders 1.5 as "1.5", "%f" renders
+    // it as "1.500000").
+    {
+        const wchar_t* wides[] = {L"", L"wide", L"with spaces", L"éè"};
+        int i = 0;
+        for (const wchar_t* w : wides)
+        {
+            DumpBuffer buf;
+            CDumpContext dc = buf.Context();
+            dc << w;
+            Line(("CDumpContext.insert.LPCTSTR." + std::to_string(i)).c_str(), buf.Take());
+            ++i;
+        }
+    }
+    {
+        const char* narrows[] = {"", "narrow", "0123456789"};
+        int i = 0;
+        for (const char* n : narrows)
+        {
+            DumpBuffer buf;
+            CDumpContext dc = buf.Context();
+            dc << n;
+            Line(("CDumpContext.insert.LPCSTR." + std::to_string(i)).c_str(), buf.Take());
+            ++i;
+        }
+    }
+    {
+        const int ints[] = {0, 1, -1, 2147483647, -2147483647};
+        int i = 0;
+        for (int v : ints)
+        {
+            DumpBuffer buf;
+            CDumpContext dc = buf.Context();
+            dc << v;
+            Line(("CDumpContext.insert.int." + std::to_string(i)).c_str(), buf.Take());
+            ++i;
+        }
+    }
+    {
+        const unsigned int uints[] = {0u, 7u, 4294967295u};
+        int i = 0;
+        for (unsigned int v : uints)
+        {
+            DumpBuffer buf;
+            CDumpContext dc = buf.Context();
+            dc << v;
+            Line(("CDumpContext.insert.uint." + std::to_string(i)).c_str(), buf.Take());
+            ++i;
+        }
+    }
+    {
+        const long longs[] = {0L, -12345L, 2147483647L};
+        int i = 0;
+        for (long v : longs)
+        {
+            DumpBuffer buf;
+            CDumpContext dc = buf.Context();
+            dc << v;
+            Line(("CDumpContext.insert.long." + std::to_string(i)).c_str(), buf.Take());
+            ++i;
+        }
+    }
+    {
+        const double doubles[] = {0.0, 1.5, -0.25, 1234.5};
+        int i = 0;
+        for (double v : doubles)
+        {
+            DumpBuffer buf;
+            CDumpContext dc = buf.Context();
+            dc << v;
+            Line(("CDumpContext.insert.double." + std::to_string(i)).c_str(), buf.Take());
+            ++i;
+        }
+    }
+    {
+        // A pointer's VALUE is an address, which cannot be compared. That
+        // the insertion produced non-empty text can be.
+        DumpBuffer buf;
+        CDumpContext dc = buf.Context();
+        int local = 0;
+        dc << static_cast<const void*>(&local);
+        LineBool("CDumpContext.insert.void_pointer.non_empty", !buf.Take().empty());
+    }
+    {
+        DumpSubject subject;
+
+        DumpBuffer byRef;
+        CDumpContext dcRef = byRef.Context();
+        dcRef << subject;
+        LineBool("CDumpContext.insert.CObject_ref.non_empty", !byRef.Take().empty());
+
+        DumpBuffer byPtr;
+        CDumpContext dcPtr = byPtr.Context();
+        dcPtr << &subject;
+        LineBool("CDumpContext.insert.CObject_ptr.non_empty", !byPtr.Take().empty());
+
+        // The null case has a fixed spelling with no address in it, so
+        // unlike the two above it can be compared as text.
+        DumpBuffer nul;
+        CDumpContext dcNul = nul.Context();
+        dcNul << static_cast<const CObject*>(nullptr);
+        Line("CDumpContext.insert.CObject_null.text", nul.Take());
+    }
+}
+#endif // _DEBUG
+
+// ---------------------------------------------------------------------
 int main()
 {
     SilenceWindowsDialogs();
@@ -3713,6 +3967,12 @@ int main()
     TestPatternBase64();
     TestPatternUnicodeToUtf8();
     TestRemainingGaps();
+
+    // Only real MFC's Release build lacks these; this branch has them
+    // either way, so the guard is real MFC's, not ours.
+#ifdef _DEBUG
+    TestDebugOnly();
+#endif
 
     // Last: it tears down the thread's socket state.
     TestAfxSocketTerm();
