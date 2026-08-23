@@ -10,11 +10,13 @@
 // CWinThread::Impl pimpl (an internal mechanism, not part of the MFC
 // contract, so its shape/name are our own).
 //
-// Deliberate deviations, documented: SuspendThread after start is a no-op
-// (eMule almost only uses create-suspended-then-ResumeThread, which IS
-// honoured via a condition_variable gate); m_hThread holds an opaque
-// non-null token rather than a real waitable OS HANDLE (a runnable port
-// would map it to std::thread::native_handle()).
+// Deliberate deviations, documented: suspending a thread that is already
+// RUNNING moves Win32's suspend count but cannot actually freeze the
+// thread (std::thread has no portable way to); the create-suspended path,
+// which is the one eMule uses, is honoured in full through a
+// condition_variable gate. m_hThread holds an opaque non-null token rather
+// than a real waitable OS HANDLE (a runnable port would map it to
+// std::thread::native_handle()).
 #include "eafxwin.h"
 
 #include <thread>
@@ -176,7 +178,11 @@ int ECWinThread::GetThreadPriority()
     return (m_pImpl != nullptr) ? m_pImpl->priority : 0;
 }
 
-BOOL ECWinThread::InitInstance() { return TRUE; }
+// Real MFC's base returns FALSE: "this thread has no message loop to
+// start", which is what makes a worker thread run its proc and stop
+// instead of pumping messages. Returning TRUE here was wrong in exactly
+// the way that matters -- it is the value the thread entry switches on.
+BOOL ECWinThread::InitInstance() { return FALSE; }
 int  ECWinThread::ExitInstance() { return 0; }
 int  ECWinThread::Run()          { return 0; }
 // Real MFC: `if (m_bAutoDelete) delete this;`. Deleting unconditionally --

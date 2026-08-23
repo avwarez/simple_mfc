@@ -6,6 +6,9 @@
 #include <cwctype>
 #include <cstdlib>
 #include <cstring>
+#ifndef _WIN32
+#include <sys/stat.h> // st_atime, for CFileFind::GetLastAccessTime
+#endif
 
 // ---------------------------------------------------------------------
 // RTTI
@@ -178,7 +181,7 @@ int OsErrorToCause(LONG lOsError)
         case 3: return ECFileException::badPath;               // ERROR_PATH_NOT_FOUND
         case 4: return ECFileException::tooManyOpenFiles;      // ERROR_TOO_MANY_OPEN_FILES
         case 5: return ECFileException::accessDenied;          // ERROR_ACCESS_DENIED
-        case 6: return ECFileException::invalidFile;           // ERROR_INVALID_HANDLE
+        case 6: return ECFileException::fileNotFound;          // ERROR_INVALID_HANDLE (real MFC's answer, verified)
         case 19: return ECFileException::accessDenied;         // ERROR_WRITE_PROTECT
         case 32: return ECFileException::sharingViolation;     // ERROR_SHARING_VIOLATION
         case 33: return ECFileException::lockViolation;        // ERROR_LOCK_VIOLATION
@@ -196,6 +199,9 @@ int OsErrorToCause(LONG lOsError)
         case 131: return ECFileException::badSeek;              // ERROR_NEGATIVE_SEEK
         case 161: return ECFileException::badPath;              // ERROR_BAD_PATHNAME
         case 206: return ECFileException::badPath;              // ERROR_FILENAME_EXCED_RANGE
+        case 80: return ECFileException::accessDenied;          // ERROR_FILE_EXISTS
+        case 145: return ECFileException::removeCurrentDir;     // ERROR_DIR_NOT_EMPTY
+        case 183: return ECFileException::accessDenied;         // ERROR_ALREADY_EXISTS
         default: return ECFileException::genericException;
     }
 }
@@ -535,7 +541,38 @@ BOOL ECFileFind::GetLastWriteTime(ECTime& refTime) const
     return TRUE;
 }
 
+// On Windows both of these have a real source (the same
+// WIN32_FILE_ATTRIBUTE_DATA the FILETIME overloads below read), and real
+// MFC answers TRUE for both. They returned a flat FALSE on every platform
+// until the conformance suite compared them: on Windows that was simply
+// wrong, not a portability limit.
+#ifdef _WIN32
+namespace
+{
+// A FILETIME is 100 ns ticks since 1601-01-01; a CTime is seconds since
+// 1970-01-01. 11644473600 is the gap between the two epochs.
+ECTime TimeFromFileTime(const FILETIME& ft)
+{
+    const unsigned long long ticks =
+        (static_cast<unsigned long long>(ft.dwHighDateTime) << 32) | ft.dwLowDateTime;
+    return ECTime(static_cast<__time64_t>(ticks / 10000000ULL) - 11644473600LL);
+}
+} // namespace
+
+BOOL ECFileFind::GetCreationTime(ECTime& refTime) const
+{
+    FILETIME ft{};
+    if (!GetCreationTime(&ft))
+        return FALSE;
+    refTime = TimeFromFileTime(ft);
+    return TRUE;
+}
+#else
+// POSIX has no portable creation ("birth") time: statx/STATX_BTIME exists
+// on recent Linux but is not answered by every filesystem, so reporting
+// failure is the honest answer rather than substituting another stamp.
 BOOL ECFileFind::GetCreationTime(ECTime& /*refTime*/) const { return FALSE; }
+#endif
 
 // The FILETIME forms. FILETIME is a Windows type, so off Windows these
 // have nothing to fill in and report failure, exactly like the creation/
@@ -576,7 +613,28 @@ BOOL ECFileFind::GetLastWriteTime(FILETIME*) const { return FALSE; }
 BOOL ECFileFind::GetCreationTime(FILETIME*) const { return FALSE; }
 BOOL ECFileFind::GetLastAccessTime(FILETIME*) const { return FALSE; }
 #endif
-BOOL ECFileFind::GetLastAccessTime(ECTime& /*refTime*/) const { return FALSE; }
+#ifdef _WIN32
+BOOL ECFileFind::GetLastAccessTime(ECTime& refTime) const
+{
+    FILETIME ft{};
+    if (!GetLastAccessTime(&ft))
+        return FALSE;
+    refTime = TimeFromFileTime(ft);
+    return TRUE;
+}
+#else
+// Unlike the creation time, the last-access time IS universally available
+// off Windows -- st_atime has been in stat(2) since the beginning. It is
+// only std::filesystem that does not surface it.
+BOOL ECFileFind::GetLastAccessTime(ECTime& refTime) const
+{
+    struct stat st{};
+    if (::stat(m_current.path().c_str(), &st) != 0)
+        return FALSE;
+    refTime = ECTime(static_cast<__time64_t>(st.st_atime));
+    return TRUE;
+}
+#endif
 
 BOOL ECFileFind::IsTemporary() const
 {

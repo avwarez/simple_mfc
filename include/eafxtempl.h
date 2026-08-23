@@ -133,8 +133,20 @@ private:
 template <class ARG_KEY>
 UINT EAFXAPI EHashKey(ARG_KEY key)
 {
-    return static_cast<UINT>(reinterpret_cast<std::uintptr_t>(
-                                 (void*)(std::uintptr_t)key) >> 4);
+    // The Park-Miller "minimal standard" generator step, evaluated with
+    // Schrage's trick so the intermediate never overflows 32 bits:
+    //
+    //     h(k) = (k * 16807) mod (2^31 - 1)
+    //
+    // This is what current MFC's primary HashKey template does -- NOT the
+    // historical `((DWORD_PTR)key) >> 4` identity hash, which is what this
+    // branch had until the conformance suite compared the numbers against
+    // real MFC and every one of them differed.
+    const long k = static_cast<long>(static_cast<std::intptr_t>((std::intptr_t)key));
+    const long hi = k / 127773;
+    const long lo = k - hi * 127773;
+    const long test = 16807 * lo - 2836 * hi;
+    return static_cast<UINT>(test >= 0 ? test : test + 2147483647L);
 }
 
 // Real MFC's OWN built-in override for LPCTSTR keys: hashes the string's
@@ -155,10 +167,22 @@ UINT EAFXAPI EHashKey(ARG_KEY key)
 template <>
 inline UINT EAFXAPI EHashKey<LPCTSTR>(LPCTSTR key)
 {
-    UINT nHash = 0;
-    if (key)
-        for (; *key; ++key)
-            nHash = (nHash << 5) + nHash + static_cast<UINT>(*key);
+    // FNV-1 (multiply THEN xor, not FNV-1a) over TCHAR units, sampling at
+    // most about ten characters: the stride is 1 + length/10, so short keys
+    // are hashed whole and long ones are sampled. That is precisely what
+    // current MFC's HashKey<LPCWSTR> does; the classic
+    // `(h << 5) + h + c` shift-add this branch used is the *old* MFC one and
+    // produced a different number for every string the suite tried.
+    if (key == nullptr)
+        return 2166136261u;
+
+    std::size_t n = 0;
+    while (key[n] != 0) ++n;
+    const std::size_t stride = 1 + n / 10;
+
+    UINT nHash = 2166136261u; // the FNV 32-bit offset basis
+    for (std::size_t i = 0; i < n; i += stride)
+        nHash = (nHash * 16777619u) ^ static_cast<UINT>(key[i]);
     return nHash;
 }
 

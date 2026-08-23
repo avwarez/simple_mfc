@@ -24,9 +24,12 @@ public:
     virtual BOOL Unlock() = 0;
     // Real MFC exposes the underlying Win32 handle by implicit conversion
     // (used e.g. by eMule's UploadBandwidthThrottler::GetSocketAvailableEvent,
-    // which returns a CEvent where a HANDLE is expected). This portable
-    // implementation has no real OS handle, so m_hObject stays null -- the
-    // operator exists to satisfy those call sites at compile time.
+    // which returns a CEvent where a HANDLE is expected). There is no real
+    // OS handle here, but the kernel-object subclasses (CEvent, CMutex)
+    // still fill this with a unique non-null token, because real MFC's is
+    // never null for them and a caller may well test it. CCriticalSection
+    // leaves it null -- so does real MFC, a critical section not being a
+    // kernel object.
     HANDLE m_hObject = nullptr;
     operator HANDLE() const { return m_hObject; }
 };

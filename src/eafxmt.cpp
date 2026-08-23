@@ -14,6 +14,15 @@ BOOL ECCriticalSection::Lock(DWORD dwTimeout)
 ECEvent::ECEvent(BOOL bInitiallyOwn, BOOL bManualReset, LPCTSTR /*lpszName*/, void* /*lpsaAttribute*/)
     : m_manualReset(bManualReset != FALSE), m_signaled(bInitiallyOwn != FALSE)
 {
+    // Real MFC's CEvent and CMutex ARE kernel objects, so m_hObject is a
+    // live handle and every `if (event)` / `WaitForSingleObject(event)`
+    // sees something non-null. This implementation has no kernel object,
+    // but leaving the member null made the conversion answer the opposite
+    // of what real MFC answers -- so it carries an opaque, unique,
+    // non-null token instead. It is NOT waitable: code that needs a real
+    // waitable handle needs a real port, and the token makes that a
+    // deliberate decision rather than a silent null.
+    m_hObject = static_cast<HANDLE>(this);
 }
 
 BOOL ECEvent::Lock(DWORD dwTimeout)
@@ -64,6 +73,7 @@ BOOL ECEvent::ResetEvent()
 
 ECMutex::ECMutex(BOOL bInitiallyOwn, LPCTSTR /*lpszName*/, void* /*lpsaAttribute*/)
 {
+    m_hObject = static_cast<HANDLE>(this); // see the note in CEvent's constructor
     if (bInitiallyOwn) m_mutex.lock();
 }
 

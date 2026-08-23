@@ -38,3 +38,12 @@ CFileFind.Attr.IsArchived
 # value IS compared side-by-side on Windows, which is where it means
 # something.
 AtlGetConversionACP.value
+
+# --- File creation ("birth") time ----------------------------------------
+# Windows records a creation time for every file and CFileFind reports it.
+# POSIX has no portable equivalent: statx/STATX_BTIME exists on recent
+# Linux but is not answered by every filesystem, so CFileFind reports
+# failure there rather than substituting another stamp. The last-write and
+# last-access times, which POSIX does keep, are compared normally.
+CFileFind.GetCreationTime.CTime.returns_true
+CFileFind.GetCreationTime.plausible_year

@@ -850,33 +850,33 @@ private:
             // the count of characters, without needing a caller buffer.
             const wchar_t* pStr = nullptr;
             const int n = ::LoadStringW(hInstance, nID, reinterpret_cast<LPWSTR>(&pStr), 0);
+            // A failed load leaves the string ALONE -- real MFC does not
+            // clear it, and a caller that pre-seeded a default relies on
+            // that. Emptying it was this branch's invention.
             if (n <= 0)
-            {
-                Empty();
                 return FALSE;
-            }
             m_data = Convert(pStr, static_cast<size_t>(n));
             return TRUE;
         }
 
         const HRSRC hRes = ::FindResourceExW(hInstance, RT_STRING,
                                              MAKEINTRESOURCEW(nID / 16 + 1), wLanguageID);
-        if (hRes == nullptr) { Empty(); return FALSE; }
+        if (hRes == nullptr) { return FALSE; }
         const HGLOBAL hMem = ::LoadResource(hInstance, hRes);
-        if (hMem == nullptr) { Empty(); return FALSE; }
+        if (hMem == nullptr) { return FALSE; }
         const wchar_t* p = static_cast<const wchar_t*>(::LockResource(hMem));
-        if (p == nullptr) { Empty(); return FALSE; }
+        if (p == nullptr) { return FALSE; }
 
         const DWORD cbRes = ::SizeofResource(hInstance, hRes);
         const wchar_t* const end = p + cbRes / sizeof(wchar_t);
         for (UINT i = 0; i < nID % 16; ++i)
         {
-            if (p >= end) { Empty(); return FALSE; }
+            if (p >= end) { return FALSE; }
             p += 1 + static_cast<size_t>(*p); // length prefix, then the text
         }
-        if (p >= end || *p == 0) { Empty(); return FALSE; }
+        if (p >= end || *p == 0) { return FALSE; }
         const size_t len = static_cast<size_t>(*p);
-        if (p + 1 + len > end) { Empty(); return FALSE; }
+        if (p + 1 + len > end) { return FALSE; }
         m_data = Convert(p + 1, len);
         return TRUE;
     }
