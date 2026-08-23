@@ -120,6 +120,20 @@ int Utf16Checks()
     upper.MakeUpper();
     if (upper != U16(u"A\U0001F600B")) ++bad;
 
+    const wchar_t* wide = L"a\U0001F600b";
+    const size_t wideLen = std::char_traits<wchar_t>::length(wide);
+    const std::u16string asUtf16 = mfc_detail::WideToWide<char16_t>(wide, wideLen);
+    if (asUtf16.size() != 4) ++bad;
+    if (asUtf16[1] != 0xD83D || asUtf16[2] != 0xDE00) ++bad;
+
+    const std::wstring backAgain =
+        mfc_detail::WideToWide<wchar_t>(asUtf16.data(), asUtf16.size());
+    if (backAgain.size() != wideLen) ++bad;
+    if (backAgain != std::wstring(wide)) ++bad;
+
+    const U16 fromNarrow("abc", 3);
+    if (fromNarrow.GetLength() != 3 || fromNarrow.GetAt(2) != u'c') ++bad;
+
     return bad;
 }
 }

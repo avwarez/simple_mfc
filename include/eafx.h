@@ -485,6 +485,67 @@ std::basic_string<Ch> TranslateFormat(const Ch* fmt)
 }
 
 template <class Ch>
+inline unsigned long CodeUnitValue(Ch c) noexcept
+{
+    if constexpr (sizeof(Ch) == 2)
+        return static_cast<unsigned long>(static_cast<std::uint16_t>(c));
+    else
+        return static_cast<unsigned long>(static_cast<std::uint32_t>(c));
+}
+
+template <class Dst, class Src>
+inline std::basic_string<Dst> WideToWide(const Src* p, size_t n)
+{
+    std::basic_string<Dst> out;
+    if (!p) return out;
+    out.reserve(n);
+    if constexpr (sizeof(Dst) == sizeof(Src))
+    {
+        for (size_t i = 0; i < n; ++i)
+            out.push_back(static_cast<Dst>(CodeUnitValue(p[i])));
+    }
+    else if constexpr (sizeof(Dst) > sizeof(Src))
+    {
+        for (size_t i = 0; i < n; ++i)
+        {
+            unsigned long cp = CodeUnitValue(p[i]);
+            if (cp >= 0xD800 && cp <= 0xDBFF && i + 1 < n)
+            {
+                const unsigned long lo = CodeUnitValue(p[i + 1]);
+                if (lo >= 0xDC00 && lo <= 0xDFFF)
+                {
+                    cp = 0x10000u + ((cp - 0xD800u) << 10) + (lo - 0xDC00u);
+                    ++i;
+                }
+            }
+            out.push_back(static_cast<Dst>(cp));
+        }
+    }
+    else
+    {
+        for (size_t i = 0; i < n; ++i)
+        {
+            const unsigned long cp = CodeUnitValue(p[i]);
+            if (cp < 0x10000u)
+            {
+                out.push_back(static_cast<Dst>(cp));
+            }
+            else if (cp <= 0x10FFFFu)
+            {
+                const unsigned long v = cp - 0x10000u;
+                out.push_back(static_cast<Dst>(0xD800u + (v >> 10)));
+                out.push_back(static_cast<Dst>(0xDC00u + (v & 0x3FFu)));
+            }
+            else
+            {
+                out.push_back(static_cast<Dst>(0xFFFDu));
+            }
+        }
+    }
+    return out;
+}
+
+template <class Ch>
 inline std::basic_string<Ch> Widen(const char* p, size_t n)
 {
     std::basic_string<Ch> w;
@@ -588,7 +649,7 @@ public:
     BSTR AllocSysString() const
     {
         BSTR bstr = nullptr;
-        if constexpr (std::is_same_v<XCHAR, wchar_t>)
+        if constexpr (!std::is_same_v<XCHAR, char>)
         {
             bstr = ::SysAllocStringLen(reinterpret_cast<const OLECHAR*>(m_data.data()),
                                        static_cast<UINT>(m_data.size()));
@@ -829,10 +890,12 @@ private:
         if (!p) return {};
         if constexpr (std::is_same_v<Src, XCHAR>)
             return std::basic_string<XCHAR>(p, n);
-        else if constexpr (!std::is_same_v<XCHAR, char>)
+        else if constexpr (std::is_same_v<Src, char>)
             return mfc_detail::Widen<XCHAR>(p, n);
-        else
+        else if constexpr (std::is_same_v<XCHAR, char>)
             return mfc_detail::Narrow(p, n);
+        else
+            return mfc_detail::WideToWide<XCHAR>(p, n);
     }
 
     static std::basic_string<XCHAR> VFormat(PCXSTR fmt, va_list args)
