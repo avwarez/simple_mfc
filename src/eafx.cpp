@@ -5,6 +5,7 @@
 #include <cctype>
 #include <cwctype>
 #include <cstdlib>
+#include <cstdint>
 #include <cstring>
 #ifndef _WIN32
 #include <sys/stat.h> // st_atime, for CFileFind::GetLastAccessTime
@@ -60,12 +61,42 @@ ECDumpContext& ECDumpContext::operator<<(const ECObject* pOb) { if (pOb) pOb->Du
 ECDumpContext& ECDumpContext::operator<<(int n) { m_os << DumpFormat(L"%d", n); return *this; }
 ECDumpContext& ECDumpContext::operator<<(unsigned int u) { m_os << DumpFormat(L"%u", u); return *this; }
 ECDumpContext& ECDumpContext::operator<<(long l) { m_os << DumpFormat(L"%ld", l); return *this; }
-ECDumpContext& ECDumpContext::operator<<(double d) { m_os << DumpFormat(L"%f", d); return *this; }
-ECDumpContext& ECDumpContext::operator<<(const void* lp) { m_os << lp; return *this; }
+// Real MFC renders a double the way _gcvt does -- shortest form at 15
+// significant digits, with a bare trailing '.' when there is no fractional
+// part ("0.", "1.5", "1234.5"). Not "%f", which would print 0.000000.
+ECDumpContext& ECDumpContext::operator<<(double d)
+{
+    std::wstring text = DumpFormat(L"%.15g", d);
+    if (text.find_first_of(L".eEnN") == std::wstring::npos)
+        text += L'.';
+    m_os << text;
+    return *this;
+}
 
+// Pointer-width uppercase hex, zero padded -- MSVC's "%p", which is the
+// form real MFC's dump carries ("at $000000220F7DE5A8"). Formatted by hand
+// rather than through %p so the SHAPE is the same off Windows too, where
+// the CRT's %p writes "0x55f8...".
+ECDumpContext& ECDumpContext::operator<<(const void* lp)
+{
+    static const wchar_t kDigits[] = L"0123456789ABCDEF";
+    const std::uintptr_t v = reinterpret_cast<std::uintptr_t>(lp);
+    std::wstring text(sizeof(void*) * 2, L'0');
+    for (size_t i = 0; i < sizeof(void*) * 2; ++i)
+        text[sizeof(void*) * 2 - 1 - i] = kDigits[(v >> (i * 4)) & 0xF];
+    m_os << text;
+    return *this;
+}
+
+// Real MFC's format, verified against it: "a <class> at $<address>\n".
+// Printing the bare class name was this branch's own shorter wording -- and
+// since every eMule Dump override starts by calling this one, every dump
+// line eMule produces was missing both the object's address and its
+// terminating newline.
 void ECObject::Dump(ECDumpContext& dc) const
 {
-    dc << GetRuntimeClass()->m_lpszClassName;
+    dc << "a " << GetRuntimeClass()->m_lpszClassName << " at $"
+       << static_cast<const void*>(this) << "\n";
 }
 
 // The function behind the DYNAMIC_DOWNCAST macro: a checked cast that

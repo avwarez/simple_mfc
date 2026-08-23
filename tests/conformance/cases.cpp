@@ -2889,8 +2889,13 @@ static void TestExceptionGaps()
             try
             {
                 CFileException::ThrowOsError(c.osError, L"probe.dat");
+#if defined(SIMPLE_MFC_USE_REAL_MFC)
+                // Only reachable on the real-MFC side: this branch marks
+                // ThrowOsError [[noreturn]], so the compiler knows the line
+                // below cannot run (and warns C4702 if it is left in).
                 Line((std::string("CFileException.ThrowOsError.") + c.label).c_str(),
                      std::string("NEVER (did not throw)"));
+#endif
             }
             catch (CFileException* e)
             {
@@ -3784,9 +3789,17 @@ static void TestDebugOnly()
         // is the same string on both sides -- unlike every library class,
         // which carries the E prefix. That makes the default Dump's exact
         // text comparable rather than merely non-empty.
-        Line("CObject.Dump.default_text", dumpedSubject);
-        LineBool("CObject.Dump.names_the_class",
-                 dumpedSubject.find("DumpSubject") != std::string::npos);
+        // The text carries the object's own address, which is not a
+        // comparable value -- so what is compared is everything around it:
+        // the exact prefix, the exact terminator, and the total shape.
+        const std::string prefix = "a DumpSubject at $";
+        LineBool("CObject.Dump.prefix",
+                 dumpedSubject.compare(0, prefix.size(), prefix) == 0);
+        LineBool("CObject.Dump.ends_with_newline",
+                 !dumpedSubject.empty() && dumpedSubject.back() == '\n');
+        LineInt("CObject.Dump.address_digits",
+                static_cast<long long>(dumpedSubject.size()) -
+                    static_cast<long long>(prefix.size()) - 1);
         LineBool("CObject.Dump.differs_by_class", dumpedSubject != dumpedException);
     }
 
