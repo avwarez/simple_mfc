@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cctype>
 #include <cstdarg>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cwchar>
@@ -227,12 +228,196 @@ struct StrTraits<char>
     static int FormatV(char* buf, size_t n, const char* fmt, va_list a) { return std::vsnprintf(buf, n, fmt, a); }
 };
 
+inline void Utf16AppendNarrow(std::u16string& out, const char* p, size_t n)
+{
+    for (size_t i = 0; i < n; ++i)
+        out.push_back(static_cast<char16_t>(static_cast<unsigned char>(p[i])));
+}
+
+inline void Utf16AppendPadded(std::u16string& out, const std::u16string& s,
+                              int width, bool leftAlign)
+{
+    const int pad = width > static_cast<int>(s.size())
+                        ? width - static_cast<int>(s.size())
+                        : 0;
+    if (!leftAlign) out.append(static_cast<size_t>(pad), u' ');
+    out += s;
+    if (leftAlign) out.append(static_cast<size_t>(pad), u' ');
+}
+
+inline std::u16string Utf16FormatBuild(const char16_t* fmt, va_list ap)
+{
+    std::u16string out;
+    if (!fmt) return out;
+
+    for (const char16_t* p = fmt; *p; ++p)
+    {
+        if (*p != u'%') { out.push_back(*p); continue; }
+        ++p;
+        if (!*p) break;
+        if (*p == u'%') { out.push_back(u'%'); continue; }
+
+        std::string spec("%");
+        bool leftAlign = false;
+        while (*p == u'-' || *p == u'+' || *p == u' ' || *p == u'#' || *p == u'0')
+        {
+            if (*p == u'-') leftAlign = true;
+            spec.push_back(static_cast<char>(*p));
+            ++p;
+        }
+
+        int width = -1;
+        if (*p == u'*')
+        {
+            ++p;
+            int w = va_arg(ap, int);
+            if (w < 0) { leftAlign = true; w = -w; spec.push_back('-'); }
+            width = w;
+            spec += std::to_string(w);
+        }
+        else
+        {
+            std::string digits;
+            while (*p >= u'0' && *p <= u'9') digits.push_back(static_cast<char>(*p++));
+            if (!digits.empty())
+            {
+                width = 0;
+                for (char c : digits) width = width * 10 + (c - '0');
+                spec += digits;
+            }
+        }
+
+        int prec = -1;
+        if (*p == u'.')
+        {
+            ++p;
+            std::string digits;
+            if (*p == u'*')
+            {
+                ++p;
+                const int pr = va_arg(ap, int);
+                if (pr >= 0) { prec = pr; digits = std::to_string(pr); }
+            }
+            else
+            {
+                while (*p >= u'0' && *p <= u'9') digits.push_back(static_cast<char>(*p++));
+                prec = 0;
+                for (char c : digits) prec = prec * 10 + (c - '0');
+            }
+            if (prec >= 0) { spec.push_back('.'); spec += digits; }
+        }
+
+        std::string mods;
+        while (*p == u'h' || *p == u'l' || *p == u'L'
+               || *p == u'j' || *p == u'z' || *p == u't')
+            mods.push_back(static_cast<char>(*p++));
+        if (!*p) break;
+
+        const char conv = static_cast<char>(*p);
+        const bool wideArg = mods.find('l') != std::string::npos;
+
+        if (conv == 's')
+        {
+            std::u16string arg;
+            if (wideArg)
+            {
+                const char16_t* v = va_arg(ap, const char16_t*);
+                if (v) arg.assign(v);
+                else Utf16AppendNarrow(arg, "(null)", 6);
+            }
+            else
+            {
+                const char* v = va_arg(ap, const char*);
+                if (!v) v = "(null)";
+                Utf16AppendNarrow(arg, v, std::char_traits<char>::length(v));
+            }
+            if (prec >= 0 && static_cast<size_t>(prec) < arg.size())
+                arg.resize(static_cast<size_t>(prec));
+            Utf16AppendPadded(out, arg, width, leftAlign);
+            continue;
+        }
+
+        if (conv == 'c')
+        {
+            const int v = va_arg(ap, int);
+            const std::u16string arg(1, wideArg
+                ? static_cast<char16_t>(v)
+                : static_cast<char16_t>(static_cast<unsigned char>(v)));
+            Utf16AppendPadded(out, arg, width, leftAlign);
+            continue;
+        }
+
+        spec += mods;
+        spec.push_back(conv);
+
+        auto emit = [&out, &spec](auto value) {
+            char small[256];
+            const int n = std::snprintf(small, sizeof small, spec.c_str(), value);
+            if (n < 0) return;
+            if (static_cast<size_t>(n) < sizeof small)
+            {
+                Utf16AppendNarrow(out, small, static_cast<size_t>(n));
+                return;
+            }
+            std::vector<char> big(static_cast<size_t>(n) + 1);
+            std::snprintf(big.data(), big.size(), spec.c_str(), value);
+            Utf16AppendNarrow(out, big.data(), static_cast<size_t>(n));
+        };
+
+        switch (conv)
+        {
+        case 'd': case 'i':
+            if (mods == "ll" || mods == "j")   emit(va_arg(ap, long long));
+            else if (mods == "l")              emit(va_arg(ap, long));
+            else if (mods == "z" || mods == "t") emit(va_arg(ap, std::ptrdiff_t));
+            else                               emit(va_arg(ap, int));
+            break;
+        case 'u': case 'o': case 'x': case 'X':
+            if (mods == "ll" || mods == "j")   emit(va_arg(ap, unsigned long long));
+            else if (mods == "l")              emit(va_arg(ap, unsigned long));
+            else if (mods == "z" || mods == "t") emit(va_arg(ap, std::size_t));
+            else                               emit(va_arg(ap, unsigned int));
+            break;
+        case 'f': case 'F': case 'e': case 'E':
+        case 'g': case 'G': case 'a': case 'A':
+            if (mods == "L") emit(va_arg(ap, long double));
+            else             emit(va_arg(ap, double));
+            break;
+        case 'p':
+            emit(va_arg(ap, void*));
+            break;
+        default:
+            break;
+        }
+    }
+    return out;
+}
+
+template <>
+struct StrTraits<char16_t>
+{
+    static const char16_t* WS() noexcept { return u" \t\r\n"; }
+    static char16_t Lower(char16_t c) noexcept { return static_cast<char16_t>(std::towlower(static_cast<std::wint_t>(c))); }
+    static char16_t Upper(char16_t c) noexcept { return static_cast<char16_t>(std::towupper(static_cast<std::wint_t>(c))); }
+    static int FormatV(char16_t* buf, size_t n, const char16_t* fmt, va_list a)
+    {
+        const std::u16string s = Utf16FormatBuild(fmt, a);
+        if (buf && n)
+        {
+            const size_t copy = s.size() < n - 1 ? s.size() : n - 1;
+            std::char_traits<char16_t>::copy(buf, s.data(), copy);
+            buf[copy] = 0;
+        }
+        return static_cast<int>(s.size());
+    }
+};
+
 template <class Ch>
 std::basic_string<Ch> TranslateFormat(const Ch* fmt)
 {
     std::basic_string<Ch> out;
     if (!fmt) return out;
-    constexpr bool wideFormat = std::is_same_v<Ch, wchar_t>;
+    constexpr bool wideFormat = !std::is_same_v<Ch, char>;
     auto C = [](char c) { return static_cast<Ch>(c); };
 
     for (const Ch* p = fmt; *p; ++p)
@@ -299,15 +484,17 @@ std::basic_string<Ch> TranslateFormat(const Ch* fmt)
     return out;
 }
 
-inline std::wstring Widen(const char* p, size_t n)
+template <class Ch>
+inline std::basic_string<Ch> Widen(const char* p, size_t n)
 {
-    std::wstring w;
+    std::basic_string<Ch> w;
     w.reserve(n);
     for (size_t i = 0; i < n; ++i)
-        w.push_back(static_cast<wchar_t>(static_cast<unsigned char>(p[i])));
+        w.push_back(static_cast<Ch>(static_cast<unsigned char>(p[i])));
     return w;
 }
-inline std::string Narrow(const wchar_t* p, size_t n)
+template <class Ch>
+inline std::string Narrow(const Ch* p, size_t n)
 {
     std::string s;
     s.reserve(n);
@@ -642,8 +829,8 @@ private:
         if (!p) return {};
         if constexpr (std::is_same_v<Src, XCHAR>)
             return std::basic_string<XCHAR>(p, n);
-        else if constexpr (std::is_same_v<XCHAR, wchar_t>)
-            return mfc_detail::Widen(p, n);
+        else if constexpr (!std::is_same_v<XCHAR, char>)
+            return mfc_detail::Widen<XCHAR>(p, n);
         else
             return mfc_detail::Narrow(p, n);
     }

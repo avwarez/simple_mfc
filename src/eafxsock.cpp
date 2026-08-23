@@ -239,7 +239,7 @@ void FormatV4(const sockaddr_in& sa, ECString& addr, UINT& port)
 {
     char ip[INET_ADDRSTRLEN] = {0};
     ::inet_ntop(AF_INET, &sa.sin_addr, ip, sizeof(ip));
-    addr = ECString(mfc_detail::Widen(ip, std::strlen(ip)).c_str());
+    addr = ECString(mfc_detail::Widen<wchar_t>(ip, std::strlen(ip)).c_str());
     port = ntohs(sa.sin_port);
 }
 

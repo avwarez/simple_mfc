@@ -36,7 +36,7 @@ std::wstring DumpFormat(const wchar_t* conversion, T value)
 
 ECDumpContext& ECDumpContext::operator<<(const char* lpsz)
 {
-    if (lpsz) m_os << mfc_detail::Widen(lpsz, std::strlen(lpsz));
+    if (lpsz) m_os << mfc_detail::Widen<wchar_t>(lpsz, std::strlen(lpsz));
     return *this;
 }
 ECDumpContext& ECDumpContext::operator<<(LPCTSTR lpsz) { if (lpsz) m_os << lpsz; return *this; }
