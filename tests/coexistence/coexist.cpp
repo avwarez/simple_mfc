@@ -1,32 +1,3 @@
-// coexist.cpp — does simple_mfc survive in a translation unit that also
-// contains the real ATL/MFC, and does its presence change what real MFC
-// means there?
-//
-// eMule's migration replaces one symbol occurrence at a time, so the two
-// libraries share every translation unit for the whole length of the
-// migration. That makes two properties load-bearing, neither of which the
-// conformance suite can see (it compiles the two sides into two separate
-// binaries, by construction):
-//
-//   COMPILES   both header sets in one TU, in either include order.
-//   INERT      real MFC answers exactly the same questions whether or not
-//              simple_mfc's headers are in the TU with it.
-//
-// One source, three configurations:
-//
-//   SMFC_COEXIST_MFC_ONLY     real MFC alone -- the baseline recording
-//   SMFC_COEXIST_MFC_FIRST    real MFC, then simple_mfc
-//   SMFC_COEXIST_SMFC_FIRST   simple_mfc, then real MFC
-//
-// Every configuration prints the same `mfc.*` records; the two coexisting
-// ones additionally print `smfc.*`. nonperturbation.py compares the `mfc.*`
-// half of a coexisting run against the baseline and requires it to match
-// name for name and value for value. A difference there is the library
-// reaching out of its own headers and changing someone else's.
-//
-// Windows/MSVC only: real MFC exists nowhere else. See
-// ../../.github/workflows/coexistence.yml.
-
 #if defined(SMFC_COEXIST_MFC_ONLY)
     #include <afx.h>
     #include <afxcoll.h>
@@ -79,12 +50,6 @@
 #include <cstring>
 #include <type_traits>
 
-// --- what the preprocessor looks like at the point of use -------------------
-// Sampled HERE, after every include, because that is where a consumer's own
-// code sits. windows.h substitutes both of these names; whether they are
-// still substituted at this point is a property of what the headers above
-// left behind, and it is the first thing that can differ between the three
-// configurations.
 #ifdef FindNextFile
     #define SMFC_MACRO_FIND_NEXT_FILE 1
 #else
@@ -106,11 +71,6 @@
     #define SMFC_MACRO_WINSOCKAPI 0
 #endif
 
-// --- the plain Win32 spellings, while any substitution is still live -------
-// eMule calls ::FindNextFile and the winuser GetCurrentTime shim directly,
-// under those names. Guarded rather than written straight, so that a header
-// that dropped the macro produces a RECORD saying so instead of a compile
-// error that hides every other answer in this file.
 static unsigned long Win32TickCount()
 {
 #if SMFC_MACRO_GET_CURRENT_TIME
@@ -135,11 +95,6 @@ static int Win32FindNextFileSpelling()
 #endif
 }
 
-// The members that the substitution renames, actually CALLED. The detection
-// idiom below asks the compiler which name a member carries; only a real
-// call odr-uses it, and a member declared under a name the library was not
-// built with is a link error, not a compile one -- which nothing that only
-// inspects the type would ever notice.
 static int MfcEnumerate()
 {
     CFileFind finder;
@@ -180,12 +135,6 @@ static int SmfcCurrentYear()
 }
 #endif
 
-// --- which name does each member actually carry? ---------------------------
-// The substitution above rewrites member declarations too, so real MFC's
-// CFileFind::FindNextFile is compiled under whichever name was live when
-// afx.h was parsed -- and a header that dropped the macro first gets the
-// other one. Asked of the type rather than read off the header text, so the
-// answer is the one the compiler acts on.
 #ifdef FindNextFile
     #undef FindNextFile
 #endif
@@ -225,8 +174,6 @@ void LineBool(const char* name, bool value)
 
 int g_records = 0;
 
-// Every emitter goes through here so the count in the #END marker cannot
-// drift away from the number of lines actually printed.
 struct Counted
 {
     Counted(const char* n, const char* v)  { Line(n, v);     ++g_records; }
@@ -236,8 +183,6 @@ struct Counted
 
 #define REC(name, value) Counted(name, value)
 
-// A scratch directory of our own, so the file cases do not depend on
-// anything already on the runner.
 CStringW ScratchDir()
 {
     wchar_t temp[MAX_PATH] = {0};
@@ -247,9 +192,8 @@ CStringW ScratchDir()
     ::CreateDirectoryW(dir, nullptr);
     return dir;
 }
-} // namespace
+}
 
-// --- real MFC, as seen from inside this translation unit -------------------
 static void ProbeRealMfc()
 {
     REC("mfc.macro.FindNextFile.live",   SMFC_MACRO_FIND_NEXT_FILE != 0);
@@ -303,8 +247,6 @@ static void ProbeRealMfc()
     REC("mfc.CFile.roundtrip", memcmp(payload, readback, sizeof payload) == 0);
     file.Close();
 
-    // The exception hierarchy, exercised on real MFC's own terms. What it
-    // must NOT do is intercept simple_mfc's, which the smfc half checks.
     int caught = 0;
     try
     {
@@ -336,7 +278,6 @@ static void ProbeRealMfc()
     ::DeleteFileW(path);
 }
 
-// --- simple_mfc, in the same translation unit ------------------------------
 #if SMFC_HAVE_SIMPLE_MFC
 static void ProbeSimpleMfc()
 {
@@ -386,9 +327,6 @@ static void ProbeSimpleMfc()
     }
     REC("smfc.CFileException.caught_cause", (long long)caught);
 
-    // The consequence of decision (a): the two hierarchies are unrelated, so
-    // neither catch intercepts the other's throw. Asserted, not assumed --
-    // this is the property the whole migration order rests on.
     bool mfcCatchSawOurs = false;
     try
     {
@@ -421,18 +359,10 @@ static void ProbeSimpleMfc()
     }
     REC("smfc.mfc_exception.caught_by_our_handler", ourCatchSawMfc);
 
-    // Value-level interop, the only kind decision (a) leaves in scope.
     CString fromOurs((LPCTSTR)s);
     ECString fromTheirs((LPCTSTR)fromOurs);
     REC("smfc.interop.CString_roundtrip", fromTheirs == s);
 
-    // Archive interop. eMule's file cluster is where the two libraries meet
-    // over BYTES rather than over types: a .met written by code that has
-    // already been converted has to stay readable by code that has not.
-    // Scalars are the whole of what eMule serializes; CString is NOT
-    // byte-compatible (simple_mfc uses a self-consistent 32-bit length
-    // prefix, real MFC a narrow/wide flag plus a variable-length count), so
-    // it is recorded as its own case rather than folded in with them.
     {
         ECString path = dir + _T("\\interop_mfc_to_smfc.bin");
         CFile out;

@@ -1,22 +1,3 @@
-// afxwin.cpp — native implementation of CWinThread / AfxBeginThread over
-// std::thread. On `main` this file is gui/core/winthread.cpp, part of the
-// toolkit-agnostic GUI runtime; on the `backend` branch the threading half is
-// all that remains of afxwin.h, so it comes back to src/ next to the other
-// implementations. The body is unchanged apart from the two members the
-// header no longer has (see its banner).
-//
-// This is implementation, NOT interface: the interface (afxwin.h) only
-// declares the public methods; the thread state lives in the private
-// CWinThread::Impl pimpl (an internal mechanism, not part of the MFC
-// contract, so its shape/name are our own).
-//
-// Deliberate deviations, documented: suspending a thread that is already
-// RUNNING moves Win32's suspend count but cannot actually freeze the
-// thread (std::thread has no portable way to); the create-suspended path,
-// which is the one eMule uses, is honoured in full through a
-// condition_variable gate. m_hThread holds an opaque non-null token rather
-// than a real waitable OS HANDLE (a runnable port would map it to
-// std::thread::native_handle()).
 #include "eafxwin.h"
 
 #include <thread>
@@ -27,23 +8,19 @@
 
 struct ECWinThread::Impl
 {
-    EAFX_THREADPROC pfn = nullptr;   // worker procedure (proc-form threads)
-    void* param = nullptr;          // its argument (mirror of m_pThreadParams)
-    int priority = 0;               // last SetThreadPriority value
+    EAFX_THREADPROC pfn = nullptr;
+    void* param = nullptr;
+    int priority = 0;
     std::thread th;
     std::mutex m;
     std::condition_variable cv;
-    bool resumed = false;           // the create-suspended gate
-    // Win32's suspend count, which ResumeThread returns the PREVIOUS value
-    // of. A thread created suspended starts at 1, so the first resume
-    // reports 1 and every later one 0 -- the conformance suite compares
-    // this number against real MFC's, which is a straight ::ResumeThread.
+    bool resumed = false;
     unsigned long suspendCount = 0;
 };
 
 namespace {
 std::atomic<unsigned long> g_threadIdCounter{ 1 };
-} // namespace
+}
 
 ECWinThread::ECWinThread()
 {
@@ -59,16 +36,13 @@ ECWinThread::ECWinThread(EAFX_THREADPROC pfnThreadProc, LPVOID pParam)
 {
     m_pImpl->pfn = pfnThreadProc;
     m_pImpl->param = pParam;
-    m_pThreadParams = pParam;       // public member eMule reads/clears directly
+    m_pThreadParams = pParam;
 }
 
 ECWinThread::~ECWinThread()
 {
     if (m_pImpl != nullptr)
     {
-        // Never block a destructor on the worker; an auto-delete thread runs
-        // this from within itself (detaching its own std::thread is legal,
-        // and the OS thread finishes on its own afterwards).
         if (m_pImpl->th.joinable())
             m_pImpl->th.detach();
         delete m_pImpl;
@@ -76,8 +50,8 @@ ECWinThread::~ECWinThread()
     }
 }
 
-BOOL ECWinThread::CreateThread(DWORD dwCreateFlags, UINT /*nStackSize*/,
-                              SECURITY_ATTRIBUTES* /*lpSecurityAttrs*/)
+BOOL ECWinThread::CreateThread(DWORD dwCreateFlags, UINT  ,
+                              SECURITY_ATTRIBUTES*  )
 {
     if (m_pImpl == nullptr)
         m_pImpl = new Impl();
@@ -86,35 +60,31 @@ BOOL ECWinThread::CreateThread(DWORD dwCreateFlags, UINT /*nStackSize*/,
     m_pImpl->resumed = !suspended;
     m_pImpl->suspendCount = suspended ? 1u : 0u;
     m_nThreadID = g_threadIdCounter.fetch_add(1);
-    m_hThread = reinterpret_cast<void*>(m_pImpl); // opaque, non-null token
+    m_hThread = reinterpret_cast<void*>(m_pImpl);
 
     m_pImpl->th = std::thread([this]()
     {
-        // Honour create-suspended: block until ResumeThread() opens the gate.
         {
             std::unique_lock<std::mutex> lk(m_pImpl->m);
             m_pImpl->cv.wait(lk, [this]() { return m_pImpl->resumed; });
         }
-        // Snapshot everything BEFORE running: an auto-delete thread frees its
-        // own CWinThread at the very end, after which no member (nor m_pImpl)
-        // may be touched again.
         EAFX_THREADPROC pfn = m_pImpl->pfn;
         void* param = m_pImpl->param;
         const BOOL autoDelete = m_bAutoDelete;
 
         if (pfn != nullptr)
         {
-            pfn(param);                 // worker-proc thread
+            pfn(param);
         }
         else
         {
-            if (InitInstance())         // CRuntimeClass (GUI/worker) thread
+            if (InitInstance())
                 Run();
             ExitInstance();
         }
 
         if (autoDelete)
-            Delete();                   // default Delete() == "delete this"
+            Delete();
     });
     return TRUE;
 }
@@ -133,10 +103,6 @@ DWORD ECWinThread::ResumeThread()
         m_pImpl->resumed = (m_pImpl->suspendCount == 0);
     }
     m_pImpl->cv.notify_all();
-    // Win32 returns the suspend count as it was BEFORE this call: 1 for the
-    // first resume of a thread created suspended, 0 for a thread that was
-    // already running. Returning a flat 0 was this branch's own invention
-    // and the conformance suite caught it.
     return previous;
 }
 
@@ -152,17 +118,6 @@ DWORD ECWinThread::SuspendThread()
         ++m_pImpl->suspendCount;
         m_pImpl->resumed = false;
     }
-    // Win32 returns the count as it was BEFORE this call, and the counts
-    // nest: a thread created suspended is at 1, so suspending it again
-    // reports 1 and it then takes two resumes to release. That bookkeeping
-    // is honoured exactly here, and for a thread still waiting on the
-    // create-suspended gate below it is also *enforced* -- the gate stays
-    // shut until the count returns to zero.
-    //
-    // What remains a documented deviation is suspending a thread that is
-    // already running: std::thread has no portable way to freeze one
-    // mid-execution, so the count moves but the thread does not stop. The
-    // create-suspended path is the only one eMule uses.
     return previous;
 }
 
@@ -178,19 +133,9 @@ int ECWinThread::GetThreadPriority()
     return (m_pImpl != nullptr) ? m_pImpl->priority : 0;
 }
 
-// Real MFC's base returns FALSE: "this thread has no message loop to
-// start", which is what makes a worker thread run its proc and stop
-// instead of pumping messages. Returning TRUE here was wrong in exactly
-// the way that matters -- it is the value the thread entry switches on.
 BOOL ECWinThread::InitInstance() { return FALSE; }
 int  ECWinThread::ExitInstance() { return 0; }
 int  ECWinThread::Run()          { return 0; }
-// Real MFC: `if (m_bAutoDelete) delete this;`. Deleting unconditionally --
-// as this did until the conformance suite reached full method coverage --
-// frees an object the caller still owns, which for the documented
-// m_bAutoDelete = FALSE pattern (a CWinThread the caller keeps and reads
-// m_nThreadID/m_hThread from after the run) is a use-after-free, and for a
-// thread object with automatic storage is an invalid free outright.
 void ECWinThread::Delete()
 {
     if (m_bAutoDelete)
@@ -203,8 +148,6 @@ ECWinThread* EAfxBeginThread(EAFX_THREADPROC pfnThreadProc, void* pParam,
 {
     ECWinThread* pThread = new ECWinThread(pfnThreadProc, pParam);
     pThread->m_bAutoDelete = TRUE;
-    // Real MFC always creates suspended, sets priority, then resumes unless
-    // the caller asked for CREATE_SUSPENDED.
     if (!pThread->CreateThread(CREATE_SUSPENDED, nStackSize, lpSecurityAttrs))
     {
         delete pThread;
@@ -237,7 +180,3 @@ ECWinThread* EAfxBeginThread(ECRuntimeClass* pThreadClass, int nPriority,
         pThread->ResumeThread();
     return pThread;
 }
-
-// AfxGetApp/AfxGetMainWnd/AfxGetAppName are NOT here: they read CWinApp's
-// application state, and CWinApp is a CWinThread that owns a main window --
-// frontend, and on `main`, not on this branch.

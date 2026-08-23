@@ -1,6 +1,3 @@
-// atlconv.cpp — AtlUnicodeToUTF8/_AtlGetConversionACP. UTF-16 -> UTF-8 is
-// pure bit manipulation on code points (no iconv/MultiByteToWideChar
-// dependency), so it needs nothing beyond standard C++.
 #include "eatlconv.h"
 
 #include <cstdint>
@@ -10,9 +7,6 @@ int EAtlUnicodeToUTF8(LPCWSTR wszSrc, int nSrc, LPSTR szDest, int nDest) noexcep
     if (wszSrc == nullptr)
         return 0;
 
-    // nSrc == -1 means "null-terminated, measure it myself", matching
-    // WideCharToMultiByte's convention (which real ATL forwards to) --
-    // the terminator itself is included in the count, same as there.
     int nChars = nSrc;
     if (nChars < 0)
     {
@@ -26,8 +20,6 @@ int EAtlUnicodeToUTF8(LPCWSTR wszSrc, int nSrc, LPSTR szDest, int nDest) noexcep
     for (int i = 0; i < nChars; ++i)
     {
         uint32_t cp = static_cast<uint16_t>(wszSrc[i]);
-        // A leading surrogate followed by a trailing one decodes to a
-        // single astral code point (this is UTF-16, not UCS-2).
         if (cp >= 0xD800 && cp <= 0xDBFF && i + 1 < nChars)
         {
             uint32_t lo = static_cast<uint16_t>(wszSrc[i + 1]);
@@ -65,8 +57,6 @@ int EAtlUnicodeToUTF8(LPCWSTR wszSrc, int nSrc, LPSTR szDest, int nDest) noexcep
 
         if (szDest != nullptr)
         {
-            // Matches WideCharToMultiByte's "insufficient buffer" failure
-            // (it returns 0 rather than a partial conversion).
             if (nOut + n > nDest)
                 return 0;
             for (int k = 0; k < n; ++k)
@@ -80,16 +70,8 @@ int EAtlUnicodeToUTF8(LPCWSTR wszSrc, int nSrc, LPSTR szDest, int nDest) noexcep
 UINT E_AtlGetConversionACP() noexcept
 {
 #ifdef _WIN32
-    // Real ATL answers CP_THREAD_ACP unless _CONVERSION_DONT_USE_THREAD_LOCALE
-    // is defined, i.e. "the calling thread's ANSI code page, not the
-    // system's". Returning CP_ACP instead is not a cosmetic difference:
-    // every conversion routed through this would ignore a thread locale the
-    // caller deliberately set.
     return CP_THREAD_ACP;
 #else
-    // There is no portable notion of a Windows "ANSI code page" off
-    // Windows, and no thread locale to prefer over it either. 0 is CP_ACP's
-    // real numeric value: "the system default ANSI code page".
     return 0;
 #endif
 }

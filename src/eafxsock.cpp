@@ -1,19 +1,3 @@
-// afxsock.cpp — NATIVE, cross-platform CAsyncSocket.
-//
-// Synchronous surface: a thin, faithful wrapper over the platform's
-// Berkeley-sockets API (WinSock2 on Windows, POSIX everywhere else).
-// Asynchronous surface: AsyncSelect registers the socket with a single
-// background select()-based reactor (CAsyncSocketReactor below) that fires
-// the OnReceive/OnSend/OnAccept/OnConnect/OnClose/OnOutOfBandData virtuals
-// with WSAAsyncSelect-like edge semantics -- FD_READ/FD_WRITE fire once and
-// re-arm after a send/recv reports "would block", so a socket that is
-// simply writable does not spin OnSend every poll.
-//
-// Deliberate deviation from real MFC: callbacks run on the reactor thread,
-// not the socket's owning thread. Real MFC marshals them onto the thread
-// that pumps the hidden notification window; there is no message pump in a
-// portable console build, so a derived class whose handlers touch shared
-// state must synchronise it itself.
 #include "eafxsock.h"
 
 #include <atomic>
@@ -54,11 +38,6 @@ static void smfc_nonblock(SOCKET s, bool nb)
 }
 #endif
 
-// ---------------------------------------------------------------------
-// CAsyncSocketReactor — one background thread, select() over every socket
-// that has a non-zero AsyncSelect mask. Meyers singleton: created on first
-// use, its destructor stops and joins the thread at process exit.
-// ---------------------------------------------------------------------
 class ECAsyncSocketReactor
 {
 public:
@@ -135,17 +114,14 @@ private:
                 }
             }
 
-            // 100 ms cap so newly registered sockets / mask changes are
-            // picked up promptly and shutdown never waits longer than that.
             timeval tv;
             tv.tv_sec = 0;
             tv.tv_usec = 100 * 1000;
             const int n = ::select(maxfd + 1, &rd, &wr, &ex, &tv);
             if (n <= 0)
-                continue; // 0 = timeout, <0 = interrupted/error
+                continue;
 
             std::lock_guard<std::recursive_mutex> lk(m_mtx);
-            // Snapshot: a handler may Close()/delete sockets mid-dispatch.
             std::set<ECAsyncSocket*> snapshot = m_sockets;
             for (ECAsyncSocket* s : snapshot)
             {
@@ -161,14 +137,10 @@ private:
         }
     }
 
-    // Called with m_mtx held. Re-checks Alive() after every callback so a
-    // handler that closes/deletes its own socket cannot cause a use-after
-    // -free on the next callback for the same socket.
     void Dispatch(ECAsyncSocket* s, bool r, bool w, bool e)
     {
         const long ev = s->m_lEvent;
 
-        // Completion of a non-blocking connect(): writable (or error).
         if (s->m_bConnecting && (w || e))
         {
             s->m_bConnecting = false;
@@ -182,7 +154,6 @@ private:
                 return;
         }
 
-        // Peer close on a stream socket: readable but a 1-byte peek sees 0.
         bool closed = false;
         if (r && s->m_bStream && !s->m_bListening)
         {
@@ -234,9 +205,6 @@ private:
     bool                   m_started = false;
 };
 
-// ---------------------------------------------------------------------
-// Small helpers shared by the socket methods.
-// ---------------------------------------------------------------------
 namespace {
 
 std::string ToNarrow(LPCTSTR s)
@@ -246,7 +214,6 @@ std::string ToNarrow(LPCTSTR s)
     return mfc_detail::Narrow(s, std::char_traits<wchar_t>::length(s));
 }
 
-// Fill an IPv4 sockaddr_in from a dotted-quad or a host name.
 bool ResolveV4(const std::string& host, unsigned short port, int socktype,
                sockaddr_in& out)
 {
@@ -276,11 +243,8 @@ void FormatV4(const sockaddr_in& sa, ECString& addr, UINT& port)
     port = ntohs(sa.sin_port);
 }
 
-} // namespace
+}
 
-// ---------------------------------------------------------------------
-// CAsyncSocket
-// ---------------------------------------------------------------------
 ECAsyncSocket::ECAsyncSocket() noexcept
     : m_hSocket(INVALID_SOCKET), m_lEvent(0), m_bConnecting(false),
       m_bListening(false), m_bStream(false), m_bReadArmed(true),
@@ -303,7 +267,6 @@ BOOL ECAsyncSocket::Create(UINT nSocketPort, int nSocketType, long lEvent,
     if (h == INVALID_SOCKET)
         return FALSE;
     m_hSocket = h;
-    // Real MFC's Create always binds (port 0 == an ephemeral port).
     if (!Bind(nSocketPort, lpszSocketAddress))
     {
         Close();
@@ -396,9 +359,6 @@ BOOL ECAsyncSocket::Connect(const SOCKADDR* lpSockAddr, int nSockAddrLen)
     if (::connect(m_hSocket, lpSockAddr,
                   static_cast<smfc_socklen_t>(nSockAddrLen)) == 0)
         return TRUE;
-    // A non-blocking connect reports "in progress"; the reactor delivers
-    // OnConnect when it completes. Match real MFC and return FALSE here
-    // (GetLastError() == WSAEWOULDBLOCK), but remember the pending connect.
     if (smfc_inprogress(smfc_lasterr()))
         m_bConnecting = true;
     return FALSE;
@@ -424,7 +384,7 @@ BOOL ECAsyncSocket::Accept(ECAsyncSocket& rConnectedSocket, SOCKADDR* lpSockAddr
     if (lpSockAddrLen)
         *lpSockAddrLen = static_cast<int>(len);
     rConnectedSocket.m_hSocket = h;
-    rConnectedSocket.m_bStream = true; // an accepted socket is stream-oriented
+    rConnectedSocket.m_bStream = true;
     return TRUE;
 }
 
@@ -458,13 +418,13 @@ int ECAsyncSocket::Send(const void* lpBuf, int nBufLen, int nFlags)
         return SOCKET_ERROR;
     int f = nFlags;
 #ifdef MSG_NOSIGNAL
-    f |= MSG_NOSIGNAL; // never raise SIGPIPE on a peer-closed stream socket
+    f |= MSG_NOSIGNAL;
 #endif
     const int n = static_cast<int>(
         ::send(m_hSocket, static_cast<const char*>(lpBuf),
                static_cast<size_t>(nBufLen), f));
     if (n == SOCKET_ERROR && smfc_wouldblock(smfc_lasterr()))
-        m_bWriteArmed = true; // re-arm FD_WRITE, as WSAAsyncSelect does
+        m_bWriteArmed = true;
     return n;
 }
 
@@ -476,7 +436,7 @@ int ECAsyncSocket::Receive(void* lpBuf, int nBufLen, int nFlags)
         ::recv(m_hSocket, static_cast<char*>(lpBuf),
                static_cast<size_t>(nBufLen), nFlags));
     if (n == SOCKET_ERROR && smfc_wouldblock(smfc_lasterr()))
-        m_bReadArmed = true; // re-arm FD_READ
+        m_bReadArmed = true;
     return n;
 }
 
@@ -546,7 +506,7 @@ BOOL ECAsyncSocket::ShutDown(int nHow)
     if (m_hSocket == INVALID_SOCKET)
         return FALSE;
 #ifdef _WIN32
-    const int how = nHow; // SD_RECEIVE/SD_SEND/SD_BOTH == receives/sends/both
+    const int how = nHow;
 #else
     const int how = (nHow == receives) ? SHUT_RD
                     : (nHow == sends)   ? SHUT_WR
@@ -621,17 +581,13 @@ ECAsyncSocket* ECAsyncSocket::FromHandle(SOCKET hSocket)
     return ECAsyncSocketReactor::Instance().Find(hSocket);
 }
 
-// Default no-op handlers; a derived class overrides the ones it cares about.
-void ECAsyncSocket::OnReceive(int /*nErrorCode*/) {}
-void ECAsyncSocket::OnSend(int /*nErrorCode*/) {}
-void ECAsyncSocket::OnOutOfBandData(int /*nErrorCode*/) {}
-void ECAsyncSocket::OnAccept(int /*nErrorCode*/) {}
-void ECAsyncSocket::OnConnect(int /*nErrorCode*/) {}
-void ECAsyncSocket::OnClose(int /*nErrorCode*/) {}
+void ECAsyncSocket::OnReceive(int  ) {}
+void ECAsyncSocket::OnSend(int  ) {}
+void ECAsyncSocket::OnOutOfBandData(int  ) {}
+void ECAsyncSocket::OnAccept(int  ) {}
+void ECAsyncSocket::OnConnect(int  ) {}
+void ECAsyncSocket::OnClose(int  ) {}
 
-// ---------------------------------------------------------------------
-// Process-wide sockets init / teardown.
-// ---------------------------------------------------------------------
 BOOL EAfxSocketInit(void* lpwsaData)
 {
 #ifdef _WIN32
@@ -639,7 +595,7 @@ BOOL EAfxSocketInit(void* lpwsaData)
     WSADATA* p = lpwsaData ? static_cast<WSADATA*>(lpwsaData) : &local;
     return ::WSAStartup(MAKEWORD(2, 2), p) == 0 ? TRUE : FALSE;
 #else
-    (void)lpwsaData; // POSIX has no per-process sockets initialisation
+    (void)lpwsaData;
     return TRUE;
 #endif
 }

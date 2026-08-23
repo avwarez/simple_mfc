@@ -1,48 +1,3 @@
-// cases.cpp — conformance test cases, compiled TWICE into two separate
-// executables from this one file:
-//
-//   smfc_probe      (-DSIMPLE_MFC_USE_NATIVE)   this branch's E-prefixed
-//                                               headers (../../include/e*.h)
-//   real_mfc_probe  (-DSIMPLE_MFC_USE_REAL_MFC) the real MFC/ATL headers
-//                                               shipped with Visual Studio
-//
-// Both probes run the exact same sequence of calls (this file is shared
-// verbatim — only the #include block below differs) and print one
-// canonical record per checked value to stdout, as "<case name>\t<value>"
-// (see Line()). compare.py runs both and matches those records BY NAME, so
-// any behavioural or result difference shows up as a named failing case,
-// and a case only one side emits is reported as missing rather than as a
-// positional shift.
-//
-// WRITTEN IN MFC VOCABULARY ON PURPOSE. The cases below say CString,
-// CFile, CObList — never ECString, ECFile, ECObList — because the file has
-// to compile unchanged against the real headers, where those are the only
-// spellings that exist. On the native side mfc_names.h maps each MFC name
-// onto this branch's E-prefixed one; that alias layer is the ONLY place
-// the two vocabularies meet, which keeps the cases themselves free of
-// per-side #ifdefs.
-//
-// WHAT IS NOT HERE, and why. This suite compares behaviour, so a symbol
-// with no behaviour on our side cannot be compared:
-//
-//   * The COM smart pointers and wrappers, the registry wrapper and the
-//     OLE automation date are no longer on this branch at all: they were
-//     declaration-only (86 members declared, none defined), so nothing
-//     here could ever have been compared against real ATL, and they have
-//     been removed rather than left as a permanent gap in this suite.
-//   * CObject::AssertValid/Dump and the ASSERT/VERIFY/TRACE macros are
-//     _DEBUG-only in real MFC and expand to nothing in the Release
-//     configuration this suite builds.
-//   * CAsyncSocket's OnReceive/OnSend/OnAccept/OnConnect/OnClose
-//     callbacks: real MFC delivers them through WSAAsyncSelect and a
-//     hidden window, i.e. only to a thread running a message pump, which
-//     a console probe has not got. The synchronous surface underneath
-//     them is compared in full; see TestCAsyncSocket.
-//
-// The real-MFC half only ever builds on MSVC with the "MFC and ATL"
-// Visual Studio component installed — see ../../.github/workflows/
-// conformance.yml.
-
 #if defined(SIMPLE_MFC_USE_NATIVE)
     #include "eafx.h"
     #include "eafxcoll.h"
@@ -57,7 +12,6 @@
     #include "eatlsimpcoll.h"
     #include "eatlcoll.h"
     #include "eafxinet.h"
-    // Must come last: it aliases the MFC spellings onto everything above.
     #include "mfc_names.h"
 #elif defined(SIMPLE_MFC_USE_REAL_MFC)
     #include <afx.h>
@@ -77,22 +31,9 @@
     #error "Define either SIMPLE_MFC_USE_NATIVE or SIMPLE_MFC_USE_REAL_MFC"
 #endif
 
-// Only Windows has windows.h, and only the real-MFC probe genuinely needs
-// it. The native probe is also built on POSIX (the `posix` job in
-// ../../.github/workflows/conformance.yml): there it runs against no MFC at
-// all, and its output is compared against the recording the Windows job
-// made of the real-MFC probe.
 #ifdef _WIN32
     #include <windows.h>
 #endif
-
-// windows.h #defines FindNextFile to FindNextFileW, and the zero-argument
-// GetCurrentTime() to GetTickCount(), under UNICODE builds. Both members
-// below are therefore compiled under the substituted name on Windows -- on
-// BOTH sides, since neither real MFC's headers nor this branch's undefine
-// those macros any more. So the call sites are written plainly and the
-// preprocessor rewrites them identically for both probes; off Windows there
-// is no macro and the literal names stand.
 
 #include <algorithm>
 #include <atomic>
@@ -104,29 +45,18 @@
 #include <cstdlib>
 #include <cstring>
 #include <random>
-#include <sstream> // the _DEBUG-only CDumpContext cases collect their output here
-#include <sys/stat.h> // _wchmod / chmod: the harness makes a file read-only for CFileFind::IsReadOnly
+#include <sstream>
+#include <sys/stat.h>
 #include <string>
 #include <thread>
 #include <vector>
 
-// ---------------------------------------------------------------------
-// POSIX stand-ins for the handful of Win32 calls this harness itself uses.
-//
-// These are the TEST HARNESS's own scaffolding — creating a scratch
-// directory, converting to UTF-8 for printing — not part of what is under
-// test. Nothing here touches simple_mfc's own behaviour: every one of
-// these is a call the harness makes *around* the MFC code, never a call
-// the MFC code makes. The Win32 error constants keep their real numeric
-// values, because those ARE compared (CFileException::m_lOsError).
-// ---------------------------------------------------------------------
 #ifndef _WIN32
     #include <filesystem>
-    #include <sys/ioctl.h> // FIONREAD (winsock2.h on Windows)
+    #include <sys/ioctl.h>
 
     #define MAX_PATH 260
 
-    // Real winerror.h values — these get printed and compared.
     #define ERROR_FILE_NOT_FOUND 2L
     #define ERROR_DISK_FULL      112L
     #define ERROR_BAD_PATHNAME   161L
@@ -157,10 +87,6 @@
     }
 #endif
 
-// The native path separator, used by the harness when it builds a scratch
-// path by hand. A literal '\\' is not a separator on POSIX — it is an
-// ordinary character in a file name, so hard-coding it would silently
-// create one weirdly-named file instead of a directory tree.
 #ifdef _WIN32
     #define SMFC_SEP L"\\"
 #else
@@ -169,25 +95,6 @@
 
 namespace
 {
-// Nothing in this harness may ever wait for a human. A probe that stops
-// on a modal dialog does not fail -- it HANGS, and compare.py (which
-// runs both probes as subprocesses) would hang with it, taking the
-// whole CI job to the runner's multi-hour limit. Windows has three
-// separate dialogs that can appear without anyone asking for one:
-//
-//   * the debug CRT's assertion box (_CrtDbgReport's default
-//     _CRTDBG_MODE_WNDW destination for _CRT_ASSERT/_CRT_ERROR),
-//   * the abort() "This application has requested the Runtime to
-//     terminate it in an unusual way" box,
-//   * the OS's own crash / critical-error box (Windows Error Reporting).
-//
-// Real MFC's ASSERT macros feed the first of those, and this suite runs
-// real MFC code by construction, so it is not hypothetical here. Redirect
-// all three to stderr / immediate exit.
-//
-// None of these exist off Windows, and none of them have a POSIX analogue
-// worth writing: a POSIX process that aborts just dies, which is exactly
-// the outcome this function works to obtain on Windows.
 void SilenceWindowsDialogs()
 {
 #ifdef _WIN32
@@ -200,18 +107,11 @@ void SilenceWindowsDialogs()
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
 #endif
 }
-} // namespace
+}
 
 namespace
 {
 
-// ---------------------------------------------------------------------
-// Canonical output helpers. Every printed value goes through one of
-// these, so both probes emit an identical text format when behavior
-// matches. Wide strings are converted to UTF-8 explicitly (never printed
-// via wprintf) so console code-page/locale quirks cannot introduce a
-// spurious mismatch between the two probes.
-// ---------------------------------------------------------------------
 int g_index = 0;
 
 std::string Utf8(const wchar_t* w)
@@ -224,13 +124,6 @@ std::string Utf8(const wchar_t* w)
     WideCharToMultiByte(CP_UTF8, 0, w, -1, out.data(), n, nullptr, nullptr);
     return out;
 #else
-    // Encoded by hand rather than through the locale: the whole point of
-    // this function is that the two probes' bytes must be comparable, and
-    // a locale-dependent conversion is exactly the kind of thing that
-    // would make them differ for reasons that have nothing to do with MFC.
-    // wchar_t is UTF-32 here; surrogate pairs (which a UTF-16 Windows
-    // wchar_t would carry) are recombined so both sides encode the same
-    // code point to the same bytes.
     std::string out;
     for (const wchar_t* p = w; *p; ++p)
     {
@@ -265,13 +158,6 @@ std::string Utf8(const wchar_t* w)
 #endif
 }
 
-// A handful of values under test (CStdioFile::ReadString results in
-// particular) legitimately contain a raw '\r' — that's the exact behavior
-// being verified. Escape control characters rather than printing them
-// literally: the canonical output line must always end in exactly one
-// real '\n', so nothing about the *value* can ever interact with the
-// pipe/CRT text-mode translation of the line terminator itself. The
-// escaped form still lets a byte-for-byte diff catch any real difference.
 std::string Escape(const std::string& s)
 {
     std::string out;
@@ -280,9 +166,7 @@ std::string Escape(const std::string& s)
     {
         switch (c)
         {
-        case '\\': out += "\\\\"; break; // paths contain backslashes; escaping
-                                         // them keeps a trailing '\' from
-                                         // corrupting the line-based diff
+        case '\\': out += "\\\\"; break;
         case '\r': out += "\\r"; break;
         case '\n': out += "\\n"; break;
         case '\t': out += "\\t"; break;
@@ -292,25 +176,10 @@ std::string Escape(const std::string& s)
     return out;
 }
 
-// One record per checked value, as exactly two tab-separated fields:
-//
-//     <case name>\t<escaped value>
-//
-// The case NAME is the key compare.py matches on -- deliberately not
-// the line number. The previous format led with a running counter and was
-// diffed positionally, which meant a single genuine divergence that
-// changed how many lines a section emits (CFileFind.MatchCount is the
-// obvious one: it drives a print loop) renumbered and shifted every
-// record after it, so one real difference was reported as hundreds. Keyed
-// on the name, an extra or missing case is reported as exactly that, and
-// the surrounding cases still compare normally.
 void Line(const char* name, const std::string& value)
 {
     ++g_index;
     std::printf("%s\t%s\n", name, Escape(value).c_str());
-    // Flush immediately: if the process later ends earlier than expected
-    // (crash, or anything else), every line printed so far must already
-    // be visible to whoever captured stdout, not stuck in a buffer.
     std::fflush(stdout);
 }
 void Line(const char* name, const wchar_t* value) { Line(name, Utf8(value)); }
@@ -318,11 +187,6 @@ void Line(const char* name, const CString& value) { Line(name, Utf8((LPCTSTR)val
 void LineBool(const char* name, bool value) { Line(name, std::string(value ? "TRUE" : "FALSE")); }
 void LineInt(const char* name, long long value) { Line(name, std::to_string(value)); }
 
-// Renders raw bytes as uppercase hex. Used where the BYTES themselves are
-// the contract, not just the values round-tripped through them: CArchive
-// writes a format that outlives the process that produced it, so "reads
-// back correctly" is a weaker claim than "produces the same stream real
-// MFC produces".
 std::string Hex(const void* data, size_t n)
 {
     static const char kDigits[] = "0123456789ABCDEF";
@@ -337,21 +201,8 @@ std::string Hex(const void* data, size_t n)
     return out;
 }
 
-// Normalizes comparator return values to {-1,0,1}: the exact magnitude of
-// Compare()/CompareNoCase() is implementation-defined (different CRT
-// comparison routines legitimately return different magnitudes for the
-// same relative ordering), only the sign is a meaningful, portable result.
 int Sign(int v) { return (v > 0) - (v < 0); }
 
-// Best-effort cleanup: CFile::Remove and CFile::Close are both documented
-// to be able to throw CFileException on failure. On a shared CI runner,
-// this suite found real MFC's process ending early right around a
-// CStdioFile close/cleanup sequence — plausibly a transient Windows
-// file-lock race (antivirus/indexing on the runner) rather than a real
-// conformance difference. None of these administrative calls are
-// themselves the subject of an assertion (Close() returns void; the one
-// Remove() call whose outcome IS checked, via a follow-up GetStatus, is
-// left calling CFile::Remove directly so a genuine failure still shows).
 template <class TFile>
 void SafeClose(TFile& file)
 {
@@ -384,12 +235,6 @@ CString TempDir()
     return CString(buf);
 }
 
-// Read-only / writable, for CFileFind::IsReadOnly. _wchmod means the same
-// thing on both platforms at the level this test cares about: on Windows
-// it sets and clears FILE_ATTRIBUTE_READONLY, on POSIX it sets and clears
-// the owner write bit — and CFileFind::IsReadOnly reads whichever of the
-// two its platform keeps. Harness scaffolding: the call is made *around*
-// the code under test, never by it.
 void MakeReadOnly(LPCTSTR path)
 {
 #ifdef _WIN32
@@ -416,11 +261,8 @@ void MakeWritable(LPCTSTR path)
 #endif
 }
 
-} // namespace
+}
 
-// ---------------------------------------------------------------------
-// RTTI (CObject / DECLARE_DYNAMIC / IsKindOf / RUNTIME_CLASS)
-// ---------------------------------------------------------------------
 static void TestRTTI()
 {
     CObject* fileEx = new CFileException();
@@ -428,10 +270,6 @@ static void TestRTTI()
     LineBool("RTTI.CFileException.IsKindOf.CObject", fileEx->IsKindOf(RUNTIME_CLASS(CObject)) != FALSE);
     LineBool("RTTI.CFileException.IsKindOf.CMemoryException", fileEx->IsKindOf(RUNTIME_CLASS(CMemoryException)) != FALSE);
     Line("RTTI.CFileException.ClassName", std::string(fileEx->GetRuntimeClass()->m_lpszClassName));
-    // CObject::AssertValid() is intentionally NOT exercised: real MFC
-    // compiles it (like Dump()) only under #ifdef _DEBUG — it doesn't
-    // exist at all as a member in a Release build, which is what this
-    // conformance job builds (found by this very suite).
     LineBool("RTTI.CFileException.IsSerializable", fileEx->IsSerializable() != FALSE);
     delete fileEx;
 
@@ -446,31 +284,8 @@ static void TestRTTI()
     LineBool("RTTI.CFile.IsKindOf.CFileException", file.IsKindOf(RUNTIME_CLASS(CFileException)) != FALSE);
 }
 
-// ---------------------------------------------------------------------
-// CException / CFileException / CMemoryException
-// ---------------------------------------------------------------------
 static void TestExceptions()
 {
-    // GetErrorMessage's exact TEXT is intentionally NOT compared: real MFC
-    // builds it from MFC's own string resources (via AfxLoadString) plus
-    // the OS's localized FormatMessage output for m_lOsError, while
-    // simple_mfc uses fixed English text — legitimately different
-    // strings, not a conformance bug.
-    //
-    // The message's non-emptiness ALSO isn't compared: this suite found
-    // that real MFC's resource lookup requires a live CWinApp (it loads
-    // strings through AfxGetResourceHandle(), which is only wired up once
-    // an application object exists). In this bare console harness — with
-    // no CWinApp, by design, since these are the non-GUI classes — real
-    // MFC's CFileException::GetErrorMessage still returns TRUE but with
-    // an EMPTY message, regardless of the error code; for
-    // CMemoryException — whose message comes ONLY from a string
-    // resource, with no FormatMessage fallback — the missing resource
-    // makes GetErrorMessage() itself return FALSE. Both are properties of
-    // running without a GUI app object, not simple_mfc bugs, so for
-    // CMemoryException we don't compare GetErrorMessage's outcome at all;
-    // for CFileException, only the boolean return value (which does
-    // match) is compared.
     CFileException fe(CFileException::fileNotFound, ERROR_FILE_NOT_FOUND, L"missing_file.dat");
     wchar_t buf[256]{};
     BOOL ok = fe.GetErrorMessage(buf, 256);
@@ -481,19 +296,12 @@ static void TestExceptions()
 
     CMemoryException me;
     wchar_t mbuf[256]{};
-    me.GetErrorMessage(mbuf, 256); // outcome not compared, see comment above
+    me.GetErrorMessage(mbuf, 256);
 
-    // CException::Delete(): the real MFC pointer+Delete() pattern. Safe to
-    // call (no UI). CFileException's constructor always passes
-    // bAutoDelete=TRUE to CException, so Delete() actually frees *this —
-    // read m_cause before calling it.
     CFileException* heapEx = new CFileException(CFileException::badPath, ERROR_BAD_PATHNAME, L"x");
     LineInt("CFileException.Delete.m_cause_before", heapEx->m_cause);
     heapEx->Delete();
 
-    // AfxThrowFileException / AfxThrowMemoryException: throw by pointer,
-    // caught the same way real MFC code does (catch (CFileException* e),
-    // then e->Delete()).
     try
     {
         AfxThrowFileException(CFileException::diskFull, ERROR_DISK_FULL, L"y.dat");
@@ -507,12 +315,6 @@ static void TestExceptions()
 
     try
     {
-        // Both branches emit the SAME case name on purpose, and exactly
-        // one of them ever runs. compare.py keys on the name and would
-        // reject a genuine duplicate, so this stays legal — and it means a
-        // side that failed to throw shows up as a value difference
-        // ("NEVER (did not throw)" against "TRUE") rather than as a case
-        // one probe simply omitted.
         AfxThrowMemoryException();
         Line("AfxThrowMemoryException.caught", std::string("NEVER (did not throw)"));
     }
@@ -522,9 +324,6 @@ static void TestExceptions()
     }
 }
 
-// ---------------------------------------------------------------------
-// CString
-// ---------------------------------------------------------------------
 static void TestCString()
 {
     CString s = L"  Hello, World!  ";
@@ -578,7 +377,7 @@ static void TestCString()
     LineInt("CString.CompareNoCase.less", Sign(CString(L"ABC").CompareNoCase(L"abd")));
 
     CString del = trimmed;
-    del.Delete(0, 6); // remove "Hello,"
+    del.Delete(0, 6);
     Line("CString.Delete.result", del);
     LineInt("CString.Delete.returned_length", del.GetLength());
 
@@ -626,7 +425,6 @@ static void TestCString()
     LineBool("CString.operatorEq.false", CString(L"x") == CString(L"y"));
     LineBool("CString.operatorNe", CString(L"x") != CString(L"y"));
 
-    // GetBuffer/ReleaseBuffer round trip (never reads uninitialized memory).
     CString buf;
     wchar_t* p = buf.GetBuffer(32);
     wcscpy_s(p, 32, L"buffered");
@@ -638,25 +436,20 @@ static void TestCString()
     emptied.Empty();
     LineBool("CString.Empty.IsEmptyAfter", emptied.IsEmpty() != FALSE);
 
-    // Char-repeat constructor
     CString repeated(L'x', 5);
     Line("CString.CharRepeatCtor", repeated);
 
-    // GetBuffer() with no argument
     CString noarg = L"abc";
     wchar_t* pna = noarg.GetBuffer();
     Line("CString.GetBuffer_NoArg", CString(pna));
 
-    // TrimRight with a multi-character set (not a single char)
     CString trimRightSet = L"hello##--";
     trimRightSet.TrimRight(L"#-");
     Line("CString.TrimRight.set", trimRightSet);
 
-    // operator[]
     CString idx = L"index";
     LineInt("CString.operatorIndex2", idx[2]);
 
-    // operator+= (CString and single wchar_t)
     CString plusEqStr = L"foo";
     plusEqStr += CString(L"bar");
     Line("CString.operatorPlusEqString", plusEqStr);
@@ -664,12 +457,9 @@ static void TestCString()
     plusEqChar += L'!';
     Line("CString.operatorPlusEqChar", plusEqChar);
 
-    // operator<
     LineBool("CString.operatorLess.true", CString(L"a") < CString(L"b"));
     LineBool("CString.operatorLess.false", CString(L"b") < CString(L"a"));
 
-    // --- Higher-variability inputs -------------------------------------
-    // Format: more conversions/flags than the single "%d-%s-%02d" above.
     CString fmtHex; fmtHex.Format(L"%08X", 0xDEADu);
     Line("CString.Format.hex", fmtHex);
     CString fmtChar; fmtChar.Format(L"%c|%c", L'Z', L'9');
@@ -681,31 +471,25 @@ static void TestCString()
     CString fmtPercent; fmtPercent.Format(L"100%% done");
     Line("CString.Format.percent", fmtPercent);
 
-    // Empty-string edge cases.
     CString empty;
     empty.Trim();
     LineBool("CString.Empty.TrimStaysEmpty", empty.IsEmpty() != FALSE);
     LineInt("CString.Empty.FindMissing", empty.Find(L"x"));
     LineInt("CString.Empty.Length", empty.GetLength());
 
-    // Left/Right/Mid boundary values (all in valid, non-UB range).
     CString abc = L"abc";
     Line("CString.Left0", abc.Left(0));
-    Line("CString.LeftBeyond", abc.Left(100));   // clamps to whole string
+    Line("CString.LeftBeyond", abc.Left(100));
     Line("CString.Right0", abc.Right(0));
     Line("CString.RightBeyond", abc.Right(100));
-    Line("CString.MidAtEnd", abc.Mid(3));         // iFirst == length -> empty
+    Line("CString.MidAtEnd", abc.Mid(3));
     Line("CString.MidBeyondCount", abc.Mid(1, 100));
 
-    // Find with a non-zero start index, and ReverseFind of a missing char.
     CString haystack = L"abcabcabc";
     LineInt("CString.Find.fromIndex", haystack.Find(L"abc", 1));
     LineInt("CString.ReverseFind.missing", haystack.ReverseFind(L'z'));
 }
 
-// ---------------------------------------------------------------------
-// CFile / CStdioFile / CMemFile
-// ---------------------------------------------------------------------
 static void TestCFile()
 {
     CString path = TempDir() + CString(L"simple_mfc_conformance_file.bin");
@@ -732,8 +516,6 @@ static void TestCFile()
     f2.Read(seekBuf, 5);
     Line("CFile.ReadAfterSeek", std::string(seekBuf, 5));
 
-    // Seek relative to the current position (origin=current), which the
-    // rest of the suite never exercises (only begin/end).
     f2.SeekToBegin();
     f2.Seek(3, CFile::current);
     LineInt("CFile.Seek.current.after3", static_cast<long long>(f2.GetPosition()));
@@ -768,8 +550,6 @@ static void TestCFile()
     CFileStatus statusAfterRemove{};
     LineBool("CFile.Remove.thenGetStatus.fails", CFile::GetStatus(renamedPath, statusAfterRemove) == FALSE);
 
-    // Combined constructor (path + flags) + SetLength + Flush + Abort, on
-    // a fresh dedicated path so it doesn't disturb the read-back checks above.
     CString path2 = TempDir() + CString(L"simple_mfc_conformance_file2.bin");
     {
         CFile ctorFile(path2, CFile::modeCreate | CFile::modeWrite);
@@ -799,7 +579,7 @@ static void TestCStdioFile()
     CString line1, line2, line3;
     BOOL got1 = rf.ReadString(line1);
     BOOL got2 = rf.ReadString(line2);
-    BOOL got3 = rf.ReadString(line3); // past EOF: expected to fail
+    BOOL got3 = rf.ReadString(line3);
     SafeClose(rf);
 
     LineBool("CStdioFile.ReadString.line1.ok", got1 != FALSE);
@@ -810,10 +590,6 @@ static void TestCStdioFile()
 
     SafeRemoveFile(path);
 
-    // Combined constructor (path + flags) — write mode only — plus the
-    // LPTSTR/UINT ReadString overload (the buffer-based one; CString& is
-    // already covered above). The read side uses the two-step default-ctor
-    // + Open() pattern, matching every other read in this suite.
     CString path2 = TempDir() + CString(L"simple_mfc_conformance_stdio2.txt");
     {
         CStdioFile ctorWrite(path2, CFile::modeCreate | CFile::modeWrite);
@@ -847,23 +623,18 @@ static void TestCMemFile()
     mf.Seek(3, CFile::begin);
     LineInt("CMemFile.Seek.position", static_cast<long long>(mf.GetPosition()));
 
-    // Seek relative to current and to end (never exercised elsewhere).
     mf.Seek(0, CFile::begin);
     mf.Seek(5, CFile::current);
     LineInt("CMemFile.Seek.current", static_cast<long long>(mf.GetPosition()));
     mf.Seek(-3, CFile::end);
     LineInt("CMemFile.Seek.end.minus3", static_cast<long long>(mf.GetPosition()));
 
-    // SetLength grows/shrinks the in-memory buffer.
     mf.SetLength(4);
     LineInt("CMemFile.SetLength4.GetLength", static_cast<long long>(mf.GetLength()));
     mf.SetLength(10);
     LineInt("CMemFile.SetLength10.GetLength", static_cast<long long>(mf.GetLength()));
 }
 
-// ---------------------------------------------------------------------
-// CFileFind
-// ---------------------------------------------------------------------
 static void TestCFileFind()
 {
     CString dir = TempDir() + CString(L"simple_mfc_conformance_find" SMFC_SEP);
@@ -874,7 +645,7 @@ static void TestCFileFind()
     {
         CFile f;
         f.Open(dir + CString(name), CFile::modeCreate | CFile::modeWrite);
-        const char payload[] = "x"; // non-empty, so CFileFind::GetLength() is meaningfully non-zero
+        const char payload[] = "x";
         f.Write(payload, sizeof(payload) - 1);
         SafeClose(f);
     }
@@ -889,8 +660,6 @@ static void TestCFileFind()
         if (finder.IsDots()) continue;
         if (matchCount < 8) matched[matchCount++] = finder.GetFileName();
     }
-    // Sort the results before printing: filesystem enumeration order is
-    // not part of the documented contract, only the *set* of matches is.
     for (int i = 0; i < matchCount; ++i)
         for (int j = i + 1; j < matchCount; ++j)
             if (matched[j].Compare(matched[i]) < 0)
@@ -907,8 +676,6 @@ static void TestCFileFind()
         Line(label.c_str(), matched[i]);
     }
 
-    // A find on a single, known file (not a wildcard) to exercise
-    // GetFilePath/GetLength/IsDirectory/GetRoot/Close deterministically.
     {
         CFileFind single;
         BOOL foundOne = single.FindFile(dir + CString(L"alpha.txt"));
@@ -927,9 +694,6 @@ static void TestCFileFind()
     RemoveDirectoryW(dir);
 }
 
-// ---------------------------------------------------------------------
-// CObList / CPtrList / CStringList
-// ---------------------------------------------------------------------
 namespace
 {
 class IntBox : public CObject
@@ -938,7 +702,7 @@ public:
     int v;
     explicit IntBox(int x) : v(x) {}
 };
-} // namespace
+}
 
 static void TestCObList()
 {
@@ -946,7 +710,7 @@ static void TestCObList()
     IntBox a(1), b(2), c(3);
     list.AddTail(&a);
     list.AddTail(&b);
-    list.AddHead(&c); // order: c(3), a(1), b(2)
+    list.AddHead(&c);
 
     LineInt("CObList.GetCount", list.GetCount());
     LineBool("CObList.IsEmpty", list.IsEmpty() != FALSE);
@@ -973,23 +737,22 @@ static void TestCObList()
     CObject* removedHead = list.RemoveHead();
     LineInt("CObList.RemoveHead.value", static_cast<IntBox*>(removedHead)->v);
     LineInt("CObList.CountAfterRemoveHead", list.GetCount());
-    // list is now [a(1), b(2)]
 
     POSITION tailPos = list.GetTailPosition();
     LineInt("CObList.GetTailPosition.value", static_cast<IntBox*>(list.GetAt(tailPos))->v);
-    CObject* prevVal = list.GetPrev(tailPos); // returns the tail's own value, then moves position backward
+    CObject* prevVal = list.GetPrev(tailPos);
     LineInt("CObList.GetPrev.value", static_cast<IntBox*>(prevVal)->v);
 
     IntBox d(999);
     POSITION headPos2 = list.GetHeadPosition();
-    list.SetAt(headPos2, &d); // [d(999), b(2)]
+    list.SetAt(headPos2, &d);
     LineInt("CObList.SetAt.value", static_cast<IntBox*>(list.GetHead())->v);
 
     IntBox e(111), g(222);
     POSITION afterHead = list.GetHeadPosition();
-    list.InsertAfter(afterHead, &e); // [d(999), e(111), b(2)]
+    list.InsertAfter(afterHead, &e);
     POSITION beforeTail = list.FindIndex(2);
-    list.InsertBefore(beforeTail, &g); // [d(999), e(111), g(222), b(2)]
+    list.InsertBefore(beforeTail, &g);
     LineInt("CObList.CountAfterInserts", list.GetCount());
     std::string order2;
     POSITION p2 = list.GetHeadPosition();
@@ -1001,7 +764,7 @@ static void TestCObList()
     }
     Line("CObList.IterationOrderAfterInserts", order2);
 
-    list.RemoveAt(list.FindIndex(0)); // removes d(999): [e(111), g(222), b(2)]
+    list.RemoveAt(list.FindIndex(0));
     LineInt("CObList.CountAfterRemoveAt", list.GetCount());
     LineInt("CObList.RemoveTail.value", static_cast<IntBox*>(list.RemoveTail())->v);
     LineInt("CObList.CountAfterRemoveTail", list.GetCount());
@@ -1018,7 +781,7 @@ static void TestCPtrList()
     void* p3 = reinterpret_cast<void*>(static_cast<intptr_t>(33));
     list.AddTail(p1);
     list.AddTail(p2);
-    list.AddHead(p3); // order: 33, 11, 22
+    list.AddHead(p3);
 
     LineInt("CPtrList.GetCount", list.GetCount());
     LineBool("CPtrList.IsEmpty", list.IsEmpty() != FALSE);
@@ -1038,18 +801,15 @@ static void TestCPtrList()
     void* p4 = reinterpret_cast<void*>(static_cast<intptr_t>(44));
     LineBool("CPtrList.Find.found", list.Find(p2) != nullptr);
     LineBool("CPtrList.Find.notFound", list.Find(p4) != nullptr);
-    // CPtrList has no GetAt (matching real MFC: only CObList does), so read
-    // the found index via GetNext, which returns the current element before
-    // advancing the position.
     POSITION idxPos = list.FindIndex(1);
     LineInt("CPtrList.FindIndex1", reinterpret_cast<intptr_t>(list.GetNext(idxPos)));
 
     POSITION tailPos = list.GetTailPosition();
     LineInt("CPtrList.GetTailPosition", reinterpret_cast<intptr_t>(list.GetPrev(tailPos)));
 
-    list.InsertAfter(list.GetHeadPosition(), p4); // [33, 44, 11, 22]
+    list.InsertAfter(list.GetHeadPosition(), p4);
     LineInt("CPtrList.CountAfterInsertAfter", list.GetCount());
-    list.InsertBefore(list.FindIndex(3), p1); // insert 11 again before index 3 (22): [33, 44, 11, 11, 22]
+    list.InsertBefore(list.FindIndex(3), p1);
     LineInt("CPtrList.CountAfterInsertBefore", list.GetCount());
 
     LineInt("CPtrList.RemoveHead.value", reinterpret_cast<intptr_t>(list.RemoveHead()));
@@ -1066,7 +826,7 @@ static void TestCStringList()
     CStringList list;
     list.AddTail(L"one");
     list.AddTail(L"two");
-    list.AddHead(L"zero"); // order: zero, one, two
+    list.AddHead(L"zero");
 
     LineInt("CStringList.GetCount", list.GetCount());
     LineBool("CStringList.IsEmpty", list.IsEmpty() != FALSE);
@@ -1095,9 +855,6 @@ static void TestCStringList()
     LineBool("CStringList.IsEmptyAfterRemoveAll", list.IsEmpty() != FALSE);
 }
 
-// ---------------------------------------------------------------------
-// CPtrArray / CStringArray / CByteArray / CUIntArray
-// ---------------------------------------------------------------------
 static void TestCPtrArray()
 {
     CPtrArray arr;
@@ -1187,9 +944,6 @@ static void TestCUIntArray()
     LineInt("CUIntArray.GetAt1", arr.GetAt(1));
 }
 
-// ---------------------------------------------------------------------
-// CArray<> / CList<> / CMap<> (afxtempl.h)
-// ---------------------------------------------------------------------
 static void TestCArrayTemplate()
 {
     CArray<int> arr;
@@ -1209,7 +963,7 @@ static void TestCArrayTemplate()
     LineInt("CArray_int.GetUpperBound", static_cast<long long>(arr.GetUpperBound()));
     const int* data = arr.GetData();
     LineInt("CArray_int.GetData.first", data[0]);
-    arr.FreeExtra(); // no printable effect beyond exercising the call
+    arr.FreeExtra();
     LineInt("CArray_int.CountAfterFreeExtra", arr.GetCount());
 
     arr.SetAt(0, 999);
@@ -1241,7 +995,7 @@ static void TestCListTemplate()
     CList<CString, const CString&> list;
     list.AddTail(L"x");
     list.AddTail(L"y");
-    list.AddHead(L"w"); // order: w, x, y
+    list.AddHead(L"w");
     LineInt("CList_CString.GetCount", list.GetCount());
     LineBool("CList_CString.IsEmpty", list.IsEmpty() != FALSE);
     Line("CList_CString.GetHead", list.GetHead());
@@ -1299,12 +1053,6 @@ static void TestCListTemplate()
 
 static void TestCMapTemplate()
 {
-    // ARG_KEY must be LPCTSTR, not "const CString&": real MFC only
-    // provides a HashKey(LPCTSTR) overload, and with ARG_KEY=const
-    // CString& the generic fallback template (which casts the key to
-    // `long`) is an exact match and gets picked instead, which doesn't
-    // compile for a class type. CMap<CString, LPCTSTR, ...> is the
-    // standard, documented MFC idiom for CString-keyed maps.
     CMap<CString, LPCTSTR, int, int> map;
     map.SetAt(L"one", 1);
     map.SetAt(L"two", 2);
@@ -1321,7 +1069,6 @@ static void TestCMapTemplate()
     LineBool("CMap.RemoveKey.missing", map.RemoveKey(L"one") != FALSE);
     LineInt("CMap.CountAfterRemoveKey", map.GetCount());
 
-    // Sum via GetStartPosition/GetNextAssoc (order-independent check).
     int sum = 0;
     int count = 0;
     POSITION pos = map.GetStartPosition();
@@ -1343,20 +1090,12 @@ static void TestCMapTemplate()
     LineInt("CMap.GetSize", static_cast<long long>(map.GetSize()));
     LineBool("CMap.IsEmpty", map.IsEmpty() != FALSE);
 
-    // InitHashTable is conventionally called right after construction,
-    // before any entries are added (some implementations may not
-    // guarantee preserving existing entries otherwise) — exercised here
-    // on a fresh map, not the already-populated one above.
     CMap<CString, LPCTSTR, int, int> freshMap;
     freshMap.InitHashTable(64);
     LineBool("CMap.GetHashTableSize.nonZero", freshMap.GetHashTableSize() > 0);
     freshMap.SetAt(L"k", 1);
     LineInt("CMap.CountAfterInitHashTableThenSetAt", freshMap.GetCount());
 
-    // PGetFirstAssoc/PGetNextAssoc: like GetStartPosition/GetNextAssoc
-    // above, hash-table iteration order is unspecified and WILL differ
-    // between std::unordered_map and real MFC's own hash table, so only
-    // the aggregate (count/sum) is compared, never per-position order.
     int pCount = 0;
     int pSum = 0;
     for (const auto* p = map.PGetFirstAssoc(); p; p = map.PGetNextAssoc(p))
@@ -1367,9 +1106,6 @@ static void TestCMapTemplate()
     LineInt("CMap.PIteration.count", pCount);
     LineInt("CMap.PIteration.sum", pSum);
 
-    // PLookup: eMule uses it as a plain "is this key present" test
-    // (SharedFileList.cpp's m_UnsharedFiles_map / m_mapPseudoDirNames), so
-    // both the hit's contents and the miss's null are contract.
     const auto* hit = map.PLookup(L"two");
     LineBool("CMap.PLookup.hit.non_null", hit != nullptr);
     Line("CMap.PLookup.hit.key", hit ? hit->key : CString());
@@ -1380,14 +1116,10 @@ static void TestCMapTemplate()
     LineBool("CMap.IsEmptyAfterRemoveAll", map.IsEmpty() != FALSE);
     LineInt("CMap.CountAfterRemoveAll", map.GetCount());
 
-    // Constructor with an explicit nBlockSize argument (vs. the default
-    // used by `map` above).
     CMap<CString, LPCTSTR, int, int> map2(20);
     map2.SetAt(L"only", 1);
     LineInt("CMap.ExplicitBlockSizeCtor.GetCount", map2.GetCount());
 
-    // SetAt on an already-present key must overwrite (not insert a
-    // duplicate): count stays 1, value updates.
     CMap<CString, LPCTSTR, int, int> ov;
     ov.SetAt(L"k", 1);
     ov.SetAt(L"k", 99);
@@ -1397,9 +1129,6 @@ static void TestCMapTemplate()
     LineInt("CMap.SetAt.overwrite.value", ovv);
 }
 
-// ---------------------------------------------------------------------
-// CTime / CTimeSpan
-// ---------------------------------------------------------------------
 static void TestTime()
 {
     CTime t1(2026, 7, 19, 14, 30, 45);
@@ -1436,38 +1165,27 @@ static void TestTime()
     Line("CTime.Format", t1.Format(L"%Y-%m-%d %H:%M:%S"));
     LineInt("CTime.GetTime", static_cast<long long>(t1.GetTime()));
 
-    // Default and explicit(__time64_t) constructors.
     CTime defaultTime;
     LineInt("CTime.defaultCtor.GetTime", static_cast<long long>(defaultTime.GetTime()));
     CTime fromEpoch(static_cast<__time64_t>(t1.GetTime()));
     LineBool("CTime.explicitEpochCtor.equalsT1", fromEpoch == t1);
 
-    // GetCurrentTime(): the exact instant is inherently non-deterministic
-    // (the two probes run moments apart, not simultaneously), so only a
-    // structural property is compared, never the raw value.
     CTime now = CTime::GetCurrentTime();
     LineBool("CTime.GetCurrentTime.plausibleYear", now.GetYear() >= 2020);
 
-    // Default and explicit(long long) CTimeSpan constructors, plus
-    // operator+/operator- between two spans.
     CTimeSpan defaultSpan;
     LineInt("CTimeSpan.defaultCtor.GetTotalSeconds", static_cast<long long>(defaultSpan.GetTotalSeconds()));
-    CTimeSpan fromSeconds(3661); // 1h 1m 1s
+    CTimeSpan fromSeconds(3661);
     LineInt("CTimeSpan.explicitSecondsCtor.GetHours", fromSeconds.GetHours());
     LineInt("CTimeSpan.explicitSecondsCtor.GetTotalSeconds", static_cast<long long>(fromSeconds.GetTotalSeconds()));
 
-    CTimeSpan spanA(0, 1, 0, 0);  // 1 hour
-    CTimeSpan spanB(0, 0, 30, 0); // 30 minutes
+    CTimeSpan spanA(0, 1, 0, 0);
+    CTimeSpan spanB(0, 0, 30, 0);
     CTimeSpan spanSum = spanA + spanB;
     LineInt("CTimeSpan.operatorPlus.GetTotalMinutes", static_cast<long long>(spanSum.GetTotalMinutes()));
     CTimeSpan spanDiff = spanA - spanB;
     LineInt("CTimeSpan.operatorMinus.GetTotalMinutes", static_cast<long long>(spanDiff.GetTotalMinutes()));
 
-    // --- Higher-variability dates -------------------------------------
-    // A second, structurally different date (leap year, midnight, first of
-    // the year) plus additional numeric-only Format patterns. Weekday/month
-    // *names* (%A/%B/%p) are deliberately avoided: they are locale-dependent
-    // and not the subject of this comparison.
     CTime t2000(2000, 1, 1, 0, 0, 0);
     LineInt("CTime.2000.GetYear", t2000.GetYear());
     LineInt("CTime.2000.GetMonth", t2000.GetMonth());
@@ -1475,22 +1193,17 @@ static void TestTime()
     LineInt("CTime.2000.GetDayOfWeek", t2000.GetDayOfWeek());
     Line("CTime.2000.Format", t2000.Format(L"%Y/%m/%d %H:%M:%S day%j"));
 
-    CTime tLeap(2024, 2, 29, 23, 59, 59); // valid only in a leap year
+    CTime tLeap(2024, 2, 29, 23, 59, 59);
     LineInt("CTime.Leap.GetMonth", tLeap.GetMonth());
     LineInt("CTime.Leap.GetDay", tLeap.GetDay());
     LineInt("CTime.Leap.GetDayOfWeek", tLeap.GetDayOfWeek());
     Line("CTime.Leap.Format", tLeap.Format(L"%y-%m-%dT%H:%M:%S"));
 
-    // A negative span (earlier minus later) exercises the sign handling of
-    // every accessor.
-    CTimeSpan neg = t1 - t2; // t1 < t2, so this is negative
+    CTimeSpan neg = t1 - t2;
     LineInt("CTimeSpan.negative.GetTotalSeconds", static_cast<long long>(neg.GetTotalSeconds()));
     LineInt("CTimeSpan.negative.GetDays", neg.GetDays());
 }
 
-// ---------------------------------------------------------------------
-// CCriticalSection / CEvent / CMutex / CSingleLock (behavioral)
-// ---------------------------------------------------------------------
 static void TestCriticalSection()
 {
     CCriticalSection cs;
@@ -1510,8 +1223,6 @@ static void TestCriticalSection()
     t4.join();
     LineInt("CCriticalSection.counter_after_4x5000", counter);
 
-    // Direct (uncontended) Lock()/Unlock() calls, not just through
-    // CSingleLock, plus the Lock(DWORD) overload with an explicit timeout.
     BOOL directLocked = cs.Lock();
     LineBool("CCriticalSection.Lock.direct", directLocked != FALSE);
     BOOL directUnlocked = cs.Unlock();
@@ -1523,7 +1234,7 @@ static void TestCriticalSection()
 
 static void TestEventAutoReset()
 {
-    CEvent ev(FALSE, FALSE); // not signaled, auto-reset
+    CEvent ev(FALSE, FALSE);
     std::atomic<int> woken{0};
     std::thread waiter([&] { if (ev.Lock(3000)) ++woken; });
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -1535,12 +1246,12 @@ static void TestEventAutoReset()
 
 static void TestEventManualReset()
 {
-    CEvent ev(FALSE, TRUE); // not signaled, manual-reset
+    CEvent ev(FALSE, TRUE);
     ev.SetEvent();
     BOOL first = ev.Lock(1000);
-    BOOL second = ev.Lock(1000); // still signaled: must also succeed
+    BOOL second = ev.Lock(1000);
     ev.ResetEvent();
-    BOOL third = ev.Lock(200); // now times out
+    BOOL third = ev.Lock(200);
     LineBool("CEvent.ManualReset.firstLock", first != FALSE);
     LineBool("CEvent.ManualReset.secondLock", second != FALSE);
     LineBool("CEvent.ManualReset.thirdLockTimesOut", third == FALSE);
@@ -1548,26 +1259,14 @@ static void TestEventManualReset()
 
 static void TestEventPulseAndUnlock()
 {
-    CEvent ev(FALSE, FALSE); // not signaled, auto-reset
+    CEvent ev(FALSE, FALSE);
 
-    // CEvent::Unlock(): a documented no-op on real MFC (events have no
-    // true "unlock" concept) — just verify it returns TRUE, matching.
     LineBool("CEvent.Unlock.noop", ev.Unlock() != FALSE);
 
-    // PulseEvent: signals waiters then immediately un-signals again,
-    // unlike SetEvent (which stays signaled until consumed/reset). Real
-    // Win32 PulseEvent has a well-known, documented race: a waiter only
-    // catches the pulse if it is already blocked in the wait *and* gets
-    // scheduled before the un-signal happens right after — this is
-    // exactly why Microsoft deprecated it. Since that race exists on real
-    // MFC too (not just here), whether a given waiter catches a given
-    // pulse is not a fair byte-for-byte comparison; only PulseEvent's
-    // deterministic return value and its guaranteed after-effect (not
-    // left signaled) are compared.
     BOOL pulseResult = ev.PulseEvent();
     LineBool("CEvent.PulseEvent.returns_true", pulseResult != FALSE);
 
-    BOOL afterPulse = ev.Lock(200); // must time out: not left signaled
+    BOOL afterPulse = ev.Lock(200);
     LineBool("CEvent.AfterPulse.timesOut", afterPulse == FALSE);
 }
 
@@ -1579,27 +1278,12 @@ static void TestMutex()
     lk.Unlock();
     LineBool("CMutex.SingleLock.unlockedAfterUnlock", lk.IsLocked() == FALSE);
 
-    // CSingleLock::Unlock(LONG, LONG*): the release-count overload.
     CSingleLock lk2(&mtx, TRUE);
     LONG prevCount = -1;
     BOOL unlockedWithCount = lk2.Unlock(1, &prevCount);
     LineBool("CSingleLock.Unlock2Arg", unlockedWithCount != FALSE);
 }
 
-// ---------------------------------------------------------------------
-// CArchive (afx.h). The one class here whose output outlives the process:
-// eMule stores part-file metadata through it, so a divergence in the byte
-// stream silently corrupts real user data rather than merely returning a
-// wrong value. The raw bytes are therefore compared, not just the values
-// read back out of them.
-//
-// CString is deliberately excluded from the byte-level comparison: afx.h
-// documents simple_mfc's CString serialization as a plain 32-bit length
-// prefix plus raw wchar_t payload, which is NOT real MFC's format (MFC
-// uses a variable-width length prefix inherited from its 16-bit past).
-// That is a known, recorded divergence, not something this suite should
-// re-discover on every run -- so only the round trip is checked for it.
-// ---------------------------------------------------------------------
 static void TestCArchive()
 {
     CMemFile mf;
@@ -1620,7 +1304,6 @@ static void TestCArchive()
         ar.Close();
     }
 
-    // The stream itself, byte for byte.
     ULONGLONG len = mf.GetLength();
     LineInt("CArchive.store.byteCount", static_cast<long long>(len));
     mf.SeekToBegin();
@@ -1629,7 +1312,6 @@ static void TestCArchive()
         mf.Read(raw.data(), static_cast<UINT>(raw.size()));
     Line("CArchive.store.bytes", Hex(raw.data(), raw.size()));
 
-    // ...and the values it reads back.
     mf.SeekToBegin();
     {
         CArchive ar(&mf, CArchive::load);
@@ -1654,14 +1336,11 @@ static void TestCArchive()
         LineInt("CArchive.roundTrip.UINT", u);
         LineInt("CArchive.roundTrip.long", l);
         LineInt("CArchive.roundTrip.DWORD", static_cast<long long>(dw));
-        // Printed as bytes rather than as text: a decimal rendering would
-        // compare the CRT's float formatting, not the archived value.
         Line("CArchive.roundTrip.float", Hex(&f, sizeof(f)));
         Line("CArchive.roundTrip.double", Hex(&d, sizeof(d)));
         LineInt("CArchive.roundTrip.ULONGLONG", static_cast<long long>(q));
     }
 
-    // CString round trip only (format divergence documented above).
     CMemFile mfs;
     {
         CArchive ar(&mfs, CArchive::store);
@@ -1678,12 +1357,6 @@ static void TestCArchive()
     }
 }
 
-// ---------------------------------------------------------------------
-// CMemFile::Detach / Attach (afx.h). simple_mfc's storage is a vector, so
-// it cannot literally hand over a malloc'd block the way real MFC does --
-// it copies instead. That is an ownership difference, not a behavioral
-// one, and only the observable behavior is compared here.
-// ---------------------------------------------------------------------
 static void TestCMemFileDetachAttach()
 {
     CMemFile mf;
@@ -1706,26 +1379,8 @@ static void TestCMemFileDetachAttach()
     Line("CMemFile.Attach.content", std::string(buf, n));
 }
 
-// ---------------------------------------------------------------------
-// CTempBuffer (atlalloc.h): the fixed/stack path, the heap path, and the
-// grow-and-preserve path across the boundary between them.
-// ---------------------------------------------------------------------
 static void TestCTempBuffer()
 {
-    // Every index below is a size_t, deliberately, and an `int` would not
-    // compile on a 32-bit target. CTempBuffer offers both an
-    // `operator[](size_t)` and an implicit `operator T*()`, so indexing it
-    // with an int makes the member (exact object, int -> size_t on the
-    // index) and the built-in pointer subscript (user conversion on the
-    // object, int -> ptrdiff_t on the index) tie: on LP64/LLP64 the index
-    // needs a conversion either way, so the exact object match settles it,
-    // while on ILP32 ptrdiff_t IS int, the built-in's index becomes an
-    // exact match, and neither candidate is better in both positions --
-    // C2666 / "ambiguous overload for operator[]". The shape is real ATL's
-    // own, so this is a property of the interface being reproduced, not of
-    // the reproduction; what belongs here is an index type that is right
-    // on every target.
-    // 64 fixed bytes == 16 ints: this stays on the stack throughout.
     CTempBuffer<int, 64> fixedBuf;
     fixedBuf.Allocate(8);
     for (size_t i = 0; i < 8; ++i)
@@ -1735,7 +1390,6 @@ static void TestCTempBuffer()
         fixedVals += std::to_string(fixedBuf[i]) + (i == 7 ? "" : ",");
     Line("CTempBuffer.fixed.values", fixedVals);
 
-    // 16 fixed bytes == 4 ints: asking for 100 forces the heap path.
     CTempBuffer<int, 16> heapBuf;
     heapBuf.Allocate(100);
     for (size_t i = 0; i < 100; ++i)
@@ -1743,18 +1397,6 @@ static void TestCTempBuffer()
     LineInt("CTempBuffer.heap.first", heapBuf[size_t(0)]);
     LineInt("CTempBuffer.heap.last", heapBuf[size_t(99)]);
 
-    // Reallocate across the fixed->heap boundary, reading back values
-    // written BEFORE the move. atlalloc.h's own comment claims real ATL
-    // preserves the contents here; this case is what turns that claim
-    // from an assertion into something CI verifies, and it does hold.
-    //
-    // It is worth knowing that ATL documents no contract either way (there
-    // is no CTempBuffer reference page, and the memory-management overview
-    // says nothing about Reallocate and existing contents). So if this
-    // case ever starts failing, read it as "Microsoft changed an
-    // undocumented implementation detail", not as a simple_mfc regression
-    // -- and expect the real-MFC side to print garbage rather than a clean
-    // difference, since not preserving means reading uninitialized memory.
     CTempBuffer<int, 16> growBuf;
     growBuf.Allocate(4);
     for (size_t i = 0; i < 4; ++i)
@@ -1773,12 +1415,6 @@ static void TestCTempBuffer()
          std::string(1, byteBuf[size_t(0)]) + std::string(1, byteBuf[size_t(199)]));
 }
 
-// ---------------------------------------------------------------------
-// CSimpleArray (atlsimpcoll.h). ATL's lightweight vector. Only the subset
-// eMule uses is exercised (Add/GetSize/operator[]/GetData/Find/Remove/
-// RemoveAt/RemoveAll) -- the same methods simple_mfc declares. int
-// elements keep every result fully comparable.
-// ---------------------------------------------------------------------
 static void TestCSimpleArray()
 {
     CSimpleArray<int> arr;
@@ -1788,19 +1424,16 @@ static void TestCSimpleArray()
     LineInt("CSimpleArray.index0", arr[0]);
     LineInt("CSimpleArray.index4", arr[4]);
 
-    // GetData() returns the raw block; read it back element by element.
     const int* data = arr.GetData();
     std::string contents;
     for (int i = 0; i < arr.GetSize(); ++i)
         contents += std::to_string(data[i]) + (i + 1 < arr.GetSize() ? "," : "");
     Line("CSimpleArray.GetData.contents", contents);
 
-    // Find returns the index of the FIRST match, or -1.
     LineInt("CSimpleArray.Find.present", arr.Find(30));
-    LineInt("CSimpleArray.Find.firstOfDup", arr.Find(20)); // two 20s -> first index
+    LineInt("CSimpleArray.Find.firstOfDup", arr.Find(20));
     LineInt("CSimpleArray.Find.absent", arr.Find(999));
 
-    // Remove(value) drops the first match; RemoveAt(index) drops by position.
     LineInt("CSimpleArray.Remove.present", arr.Remove(20) != FALSE ? 1 : 0);
     LineInt("CSimpleArray.GetSize.afterRemove", arr.GetSize());
     LineInt("CSimpleArray.Remove.absent", arr.Remove(999) != FALSE ? 1 : 0);
@@ -1815,22 +1448,8 @@ static void TestCSimpleArray()
     LineInt("CSimpleArray.GetSize.afterRemoveAll", arr.GetSize());
 }
 
-// ---------------------------------------------------------------------
-// CRBMap (atlcoll.h). ATL's ordered map. eMule's only instance is
-// CBarShader::m_Spans, a CRBMap<uint64, COLORREF>; this mirrors that
-// (ULONGLONG key, DWORD value). Crucially the map is ORDERED, so unlike
-// CMap's hash iteration this traversal order IS deterministic and can be
-// compared in full. POSITION values themselves are node addresses and
-// differ between the two probes by construction, so they are never
-// printed -- only the keys/values reached through them. State (count and
-// contents) is derived purely from the eMule-used traversal API
-// (GetHeadPosition + GetNext), never from GetCount/IsEmpty, which eMule
-// does not use and simple_mfc therefore does not declare.
-// ---------------------------------------------------------------------
 namespace
 {
-// Forward traversal of the whole map as "k=v,k=v,..." in key order, plus
-// the element count, both from GetHeadPosition/GetNext alone.
 std::string RbForward(CRBMap<ULONGLONG, DWORD>& m, int& count)
 {
     std::string out;
@@ -1838,7 +1457,6 @@ std::string RbForward(CRBMap<ULONGLONG, DWORD>& m, int& count)
     POSITION pos = m.GetHeadPosition();
     while (pos)
     {
-        // GetNext returns the pair at pos, then advances pos.
         auto* pair = m.GetNext(pos);
         if (count) out += ",";
         out += std::to_string(pair->m_key) + "=" + std::to_string(pair->m_value);
@@ -1846,12 +1464,11 @@ std::string RbForward(CRBMap<ULONGLONG, DWORD>& m, int& count)
     }
     return out;
 }
-} // namespace
+}
 
 static void TestCRBMap()
 {
     CRBMap<ULONGLONG, DWORD> m;
-    // Insert out of key order; the map must present them sorted.
     m.SetAt(50, 500);
     m.SetAt(10, 100);
     m.SetAt(40, 400);
@@ -1863,23 +1480,18 @@ static void TestCRBMap()
     LineInt("CRBMap.count", count);
     Line("CRBMap.ordered", fwd);
 
-    // SetAt on an existing key overwrites in place (no duplicate, no
-    // reorder): count stays, value updates.
     m.SetAt(30, 333);
     int count2 = 0;
     std::string fwd2 = RbForward(m, count2);
     LineInt("CRBMap.count.afterOverwrite", count2);
     Line("CRBMap.ordered.afterOverwrite", fwd2);
 
-    // Head/Tail keys, and the value at the head, via the used accessors.
     POSITION head = m.GetHeadPosition();
     LineInt("CRBMap.headKey", static_cast<long long>(m.GetKeyAt(head)));
     LineInt("CRBMap.headValue", static_cast<long long>(m.GetValueAt(head)));
     POSITION tail = m.GetTailPosition();
     LineInt("CRBMap.tailKey", static_cast<long long>(m.GetKeyAt(tail)));
 
-    // Backward traversal from the tail via GetPrev (the exact BarShader
-    // idiom), rendered as "k=v,..." in descending key order.
     {
         std::string back;
         int n = 0;
@@ -1894,7 +1506,6 @@ static void TestCRBMap()
         Line("CRBMap.reversed", back);
     }
 
-    // GetNextValue: like GetNext but yields the value and advances.
     {
         std::string vals;
         int n = 0;
@@ -1909,18 +1520,13 @@ static void TestCRBMap()
         Line("CRBMap.valuesInOrder", vals);
     }
 
-    // FindFirstKeyAfter = std::upper_bound: first key STRICTLY GREATER than
-    // the argument (the name is literal). Probe an exact hit (30 is
-    // present, so the answer is the NEXT key, 40), a gap (25 -> 30), and
-    // past the end (no position).
     POSITION exact = m.FindFirstKeyAfter(30);
-    LineInt("CRBMap.FindFirstKeyAfter.exact", static_cast<long long>(m.GetKeyAt(exact))); // -> 40
-    POSITION gap = m.FindFirstKeyAfter(25); // -> 30
+    LineInt("CRBMap.FindFirstKeyAfter.exact", static_cast<long long>(m.GetKeyAt(exact)));
+    POSITION gap = m.FindFirstKeyAfter(25);
     LineInt("CRBMap.FindFirstKeyAfter.gap", static_cast<long long>(m.GetKeyAt(gap)));
-    POSITION past = m.FindFirstKeyAfter(1000); // beyond max key -> none
+    POSITION past = m.FindFirstKeyAfter(1000);
     LineBool("CRBMap.FindFirstKeyAfter.pastEnd.none", past == nullptr);
 
-    // RemoveAt(head) drops the smallest key; re-traverse.
     m.RemoveAt(m.GetHeadPosition());
     int count3 = 0;
     std::string fwd3 = RbForward(m, count3);
@@ -1931,22 +1537,6 @@ static void TestCRBMap()
     LineBool("CRBMap.emptyAfterRemoveAll", m.GetHeadPosition() == nullptr);
 }
 
-// ---------------------------------------------------------------------
-// AfxParseURL (afxinet.h). Pure string parsing -- no socket is opened and
-// no WinInet call is made -- which is what makes it comparable at all;
-// the rest of afxinet.h is a live network surface this suite has no
-// business touching.
-// ---------------------------------------------------------------------
-// The dwServiceType AfxParseURL writes is an OPAQUE, header-defined token,
-// not a portable number: real MFC's AFX_INET_SERVICE_HTTPS is 4107, while
-// simple_mfc's afxinet.h defines it as 4, and the two probes include
-// different headers by construction -- so the raw value differs even when
-// the classification is identical. What is actually meaningful, and what
-// eMule itself relies on (it compares m_dwServiceType against the
-// AFX_INET_SERVICE_* names), is *which* service was recognized. Map the
-// value back to a name through each side's own constants, and compare
-// that. FTP(1)/HTTP(3) happen to share a value across both header sets;
-// HTTPS is exactly where they don't, which is why the raw form failed.
 static std::string ServiceName(DWORD service)
 {
     if (service == AFX_INET_SERVICE_HTTP) return "HTTP";
@@ -1962,11 +1552,6 @@ static void TestAfxParseURL()
         const char* label;
         LPCTSTR url;
     };
-    // Only schemes eMule actually feeds AfxParseURL (http/https, plus ftp
-    // which shares MFC's classification cleanly). Exotic schemes real MFC
-    // happens to recognize via InternetCrackUrl (gopher, file, ...) are
-    // deliberately not tested: eMule never passes them, and real MFC's
-    // handling of them is not a contract simple_mfc set out to reproduce.
     const Case kCases[] = {
         {"http.explicitPort", L"http://example.com:8080/path/to/file"},
         {"https.defaultPort", L"https://example.com/index.html"},
@@ -1977,9 +1562,6 @@ static void TestAfxParseURL()
         {"ftp.defaultPort", L"ftp://files.example.com/pub/"},
         {"http.query", L"http://example.com/search?q=mfc&lang=en"},
         {"http.deepPath", L"http://example.com/a/b/c/d.html"},
-        // The failure cases eMule's retry logic depends on. A schemeless
-        // URL MUST fail (HttpDownloadDlg.cpp then prepends "http://" and
-        // retries); an empty one likewise.
         {"schemeless.fails", L"example.com/path"},
         {"empty.fails", L""},
     };
@@ -1991,12 +1573,6 @@ static void TestAfxParseURL()
         INTERNET_PORT port = 0;
         BOOL ok = AfxParseURL(c.url, service, server, object, port);
 
-        // One record per case: these outputs are a single parse result and
-        // are only meaningful together. On failure only the boolean is
-        // compared -- AfxParseURL is documented as "nonzero if successful;
-        // otherwise 0" and says nothing about the out-parameters when it
-        // fails, so their contents there are unspecified (same reasoning
-        // this suite already applies to GetErrorMessage's text).
         std::string label = std::string("AfxParseURL.") + c.label;
         std::string value = "0";
         if (ok)
@@ -2010,27 +1586,10 @@ static void TestAfxParseURL()
     }
 }
 
-// ---------------------------------------------------------------------
-// Pattern-driven cases: instead of one hand-picked value per assertion,
-// generate N inputs from a fixed-seed PRNG and run the same call on each.
-// std::mt19937's algorithm is fully specified by the standard, so a given
-// seed produces a byte-identical draw sequence in both probes -- they are
-// two separate processes/binaries, but compiled from this same source
-// file (see the file header), so "the same seed" really does mean "the
-// same inputs" here, with no need to serialize/replay anything between
-// them. Each case gets a unique, self-describing label (e.g.
-// "Pattern.CString.Format.03") so a mismatch in compare.py's output
-// names the exact iteration to reproduce, without re-running anything.
-// ---------------------------------------------------------------------
 namespace
 {
 constexpr unsigned kPatternSeed = 20260722u;
 
-// A short, printable-ASCII-only random word: CString/CRC-style tests
-// intentionally avoid non-ASCII input, matching the documented,
-// deliberately-deferred MakeUpper/MakeLower/CompareNoCase gap (see
-// README.md "Known conformance gaps") -- this generator is not the place
-// to accidentally re-open it.
 std::string RandomAsciiWord(std::mt19937& rng, int minLen, int maxLen)
 {
     std::uniform_int_distribution<int> lenDist(minLen, maxLen);
@@ -2051,7 +1610,7 @@ int DaysInMonth(int y, int m)
     if (m == 2 && IsLeapYear(y)) return 29;
     return kDays[m - 1];
 }
-} // namespace
+}
 
 static void TestPatternCString()
 {
@@ -2073,7 +1632,7 @@ static void TestPatternCString()
         int prec = precDist(rng);
 
         CStringA wordA(word.c_str());
-        CString wordW(wordA); // explicit cross-width (narrow->wide) converting ctor
+        CString wordW(wordA);
 
         CString fmt;
         switch (i % 5)
@@ -2142,9 +1701,6 @@ static void TestPatternBase64()
         std::vector<BYTE> buf(static_cast<size_t>(n));
         for (auto& b : buf) b = static_cast<BYTE>(byteDist(rng));
 
-        // Odd iterations exercise the CRLF-wrapping path (real MIME line
-        // breaks every 76 output chars) against real ATL -- eMule itself
-        // only ever passes NOCRLF, so this is otherwise unvalidated logic.
         DWORD flags = (i % 2 == 0) ? ATL_BASE64_FLAG_NOCRLF : ATL_BASE64_FLAG_NONE;
 
         int needed = Base64EncodeGetRequiredLength(n, flags);
@@ -2164,9 +1720,6 @@ static void TestPatternUnicodeToUtf8()
 {
     std::mt19937 rng(kPatternSeed + 4);
     std::uniform_int_distribution<int> lenDist(1, 20);
-    // Weighted ranges: plain ASCII, Latin-1 supplement, general BMP
-    // (avoiding the surrogate range D800-DFFF on its own), and a
-    // surrogate-pair marker handled specially below.
     std::uniform_int_distribution<int> kindDist(0, 3);
     std::uniform_int_distribution<int> asciiDist(0x20, 0x7E);
     std::uniform_int_distribution<int> latin1Dist(0xA0, 0xFF);
@@ -2192,7 +1745,7 @@ static void TestPatternUnicodeToUtf8()
                 break;
             }
         }
-        w.push_back(0); // include the terminator, matching eMule's own two-pass usage
+        w.push_back(0);
 
         int srcChars = static_cast<int>(w.size());
         int needed = AtlUnicodeToUTF8(w.c_str(), srcChars, nullptr, 0);
@@ -2206,17 +1759,6 @@ static void TestPatternUnicodeToUtf8()
     }
 }
 
-// ---------------------------------------------------------------------
-// CMapPtrToPtr (afxcoll.h). The hash-map surface: SetAt/Lookup/RemoveKey/
-// RemoveAll plus the GetStartPosition/GetNextAssoc walk.
-//
-// Keys and values are addresses, which differ between runs, so nothing
-// prints a pointer: every key/value is a slot in one fixed array and what
-// is compared is its INDEX. Bucket ORDER is not compared either -- real
-// MFC's hash table and this branch's std::unordered_map are free to lay a
-// map out differently, and do; the walk below is sorted so that what the
-// case asserts is the set of associations, which IS a contract.
-// ---------------------------------------------------------------------
 static int g_slots[6] = {10, 11, 12, 13, 14, 15};
 
 static std::string SortedJoin(std::vector<std::string> v)
@@ -2249,7 +1791,6 @@ static void TestCMapPtrToPtr()
     void* missed = nullptr;
     LineBool("CMapPtrToPtr.Lookup.miss", m.Lookup(&g_slots[5], missed) != FALSE);
 
-    // SetAt on an existing key replaces rather than inserts.
     m.SetAt(&g_slots[2], &g_slots[0]);
     LineInt("CMapPtrToPtr.GetCount.after_overwrite", m.GetCount());
     m.Lookup(&g_slots[2], found);
@@ -2275,11 +1816,6 @@ static void TestCMapPtrToPtr()
     LineBool("CMapPtrToPtr.IsEmpty.after_RemoveAll", m.IsEmpty() != FALSE);
 }
 
-// ---------------------------------------------------------------------
-// CMapStringToPtr (afxcoll.h). Same surface as above with a CString key,
-// plus the CPair-based walk (PGetFirstAssoc/PGetNextAssoc/PLookup) that
-// real MFC added alongside GetNextAssoc.
-// ---------------------------------------------------------------------
 static void TestCMapStringToPtr()
 {
     CMapStringToPtr m;
@@ -2297,13 +1833,10 @@ static void TestCMapStringToPtr()
     LineInt("CMapStringToPtr.Lookup.hit.value", found ? *static_cast<int*>(found) : -1);
     void* missed = nullptr;
     LineBool("CMapStringToPtr.Lookup.miss", m.Lookup(L"epsilon", missed) != FALSE);
-    // Lookup is by string CONTENT, not by buffer identity: a key built at
-    // run time must find the entry inserted under a literal.
     CString built = L"ga";
     built += L"mma";
     LineBool("CMapStringToPtr.Lookup.by_content", m.Lookup(built, found) != FALSE);
 
-    // operator[] inserts a default-constructed value for an absent key.
     m[L"epsilon"] = &g_slots[4];
     LineInt("CMapStringToPtr.GetCount.after_subscript", m.GetCount());
 
@@ -2318,12 +1851,6 @@ static void TestCMapStringToPtr()
     }
     Line("CMapStringToPtr.walk.sorted", SortedJoin(assoc));
 
-    // No CPair walk here on purpose: real MFC gives PLookup/PGetFirstAssoc/
-    // PGetNextAssoc to CMap and to CMapStringToString, but NOT to
-    // CMapStringToPtr -- and eMule's own CPair walks are all over CMap
-    // typedefs (CKnownFilesMap, CServerSocketMap, CClientVersionMap), which
-    // TestCMapTemplate covers.
-
     LineBool("CMapStringToPtr.RemoveKey.present", m.RemoveKey(L"alpha") != FALSE);
     LineBool("CMapStringToPtr.RemoveKey.absent", m.RemoveKey(L"alpha") != FALSE);
     LineInt("CMapStringToPtr.GetCount.after_remove", m.GetCount());
@@ -2331,10 +1858,6 @@ static void TestCMapStringToPtr()
     LineInt("CMapStringToPtr.GetCount.after_RemoveAll", m.GetCount());
 }
 
-// ---------------------------------------------------------------------
-// CMapStringToString (afxcoll.h). The one collection eMule uses as a
-// plain string->string dictionary.
-// ---------------------------------------------------------------------
 static void TestCMapStringToString()
 {
     CMapStringToString m;
@@ -2352,7 +1875,6 @@ static void TestCMapStringToString()
     LineBool("CMapStringToString.Lookup.miss", m.Lookup(L"four", absent) != FALSE);
     Line("CMapStringToString.Lookup.miss.leaves_value", absent);
 
-    // Overwriting an existing key.
     m.SetAt(L"two", L"DUE");
     m.Lookup(L"two", value);
     Line("CMapStringToString.SetAt.overwrite.value", value);
@@ -2380,13 +1902,6 @@ static void TestCMapStringToString()
     LineBool("CMapStringToString.IsEmpty.after_RemoveAll", m.IsEmpty() != FALSE);
 }
 
-// ---------------------------------------------------------------------
-// CTypedPtrList<CPtrList, TYPE> / CTypedPtrArray<CPtrArray, TYPE>
-// (afxtempl.h). Thin typed wrappers: every method forwards to the untyped
-// base and casts. What is under test is that the forwarding preserves the
-// base's ORDER and RETURN VALUES exactly -- so the elements are printed by
-// the int they point at, never by address.
-// ---------------------------------------------------------------------
 static void TestCTypedPtrList()
 {
     CTypedPtrList<CPtrList, int*> list;
@@ -2405,7 +1920,7 @@ static void TestCTypedPtrList()
     std::vector<std::string> forward;
     for (POSITION pos = list.GetHeadPosition(); pos != nullptr;)
         forward.push_back(std::to_string(*list.GetNext(pos)));
-    Line("CTypedPtrList.GetNext.forward", SortedJoin(forward)); // order-independent set
+    Line("CTypedPtrList.GetNext.forward", SortedJoin(forward));
     std::string ordered;
     for (POSITION pos = list.GetHeadPosition(); pos != nullptr;)
     {
@@ -2429,8 +1944,6 @@ static void TestCTypedPtrList()
     list.InsertAfter(second, &g_slots[4]);
     LineInt("CTypedPtrList.GetCount.after_inserts", list.GetCount());
 
-    // Find comes from the untyped base on purpose (see the note in
-    // afxtempl.h) -- so it takes a void*, in real MFC too.
     LineBool("CTypedPtrList.Find.present", list.Find((void*)&g_slots[5]) != nullptr);
     LineBool("CTypedPtrList.Find.absent", list.Find((void*)&g_slots[2]) != nullptr);
 
@@ -2446,8 +1959,6 @@ static void TestCTypedPtrArray()
     CTypedPtrArray<CPtrArray, int*> arr;
     LineInt("CTypedPtrArray.GetSize.empty", arr.GetSize());
 
-    // Add returns the index it stored at, so every iteration needs its own
-    // case name -- compare.py matches on the name and rejects duplicates.
     for (int i = 0; i < 4; ++i)
     {
         char label[64];
@@ -2463,7 +1974,7 @@ static void TestCTypedPtrArray()
     LineInt("CTypedPtrArray.SetAt.reads_back", *arr.GetAt(1));
     *arr.ElementAt(1) = 99;
     LineInt("CTypedPtrArray.ElementAt.is_writable", g_slots[5]);
-    g_slots[5] = 15; // restore, later cases read this array too
+    g_slots[5] = 15;
 
     arr.InsertAt(0, &g_slots[4]);
     LineInt("CTypedPtrArray.GetSize.after_InsertAt", arr.GetSize());
@@ -2474,8 +1985,6 @@ static void TestCTypedPtrArray()
     LineBool("CTypedPtrArray.SetAtGrow.fills_gap_with_null", arr.GetAt(6) == nullptr);
     LineInt("CTypedPtrArray.SetAtGrow.reads_back", *arr.GetAt(7));
 
-    // void**, not int**: GetData comes from the untyped base on both sides
-    // (real MFC's CTypedPtrArray does not redeclare it).
     void** data = arr.GetData();
     LineBool("CTypedPtrArray.GetData.matches_GetAt", data != nullptr && data[0] == arr.GetAt(0));
 
@@ -2493,18 +2002,6 @@ static void TestCTypedPtrArray()
     LineInt("CTypedPtrArray.GetSize.after_RemoveAll", arr.GetSize());
 }
 
-// ---------------------------------------------------------------------
-// CWinThread / AfxBeginThread (afxwin.h).
-//
-// Everything read off the CWinThread object is read BEFORE the thread is
-// resumed: AfxBeginThread leaves m_bAutoDelete set, so the object frees
-// itself the moment its procedure returns, and touching it after that is
-// undefined on both sides alike. Completion is observed through an atomic
-// the procedure writes, never through the thread object.
-//
-// The thread is created suspended for the same reason -- it makes the
-// "before it runs" window deterministic instead of a race.
-// ---------------------------------------------------------------------
 namespace
 {
 std::atomic<int> g_workerRan{0};
@@ -2517,8 +2014,6 @@ UINT AFX_CDECL ConformanceWorker(LPVOID pParam)
     return 7;
 }
 
-// Bounded wait. Nothing in this harness may block a CI runner for longer
-// than it takes to notice something is wrong.
 template <class Pred>
 bool PollUntil(Pred pred, int timeoutMs = 5000)
 {
@@ -2530,7 +2025,7 @@ bool PollUntil(Pred pred, int timeoutMs = 5000)
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 }
-} // namespace
+}
 
 static void TestCWinThread()
 {
@@ -2555,39 +2050,15 @@ static void TestCWinThread()
     LineBool("CWinThread.SetThreadPriority.back_to_normal", pThread->SetThreadPriority(THREAD_PRIORITY_NORMAL) != FALSE);
     LineInt("CWinThread.GetThreadPriority.after_set_normal", pThread->GetThreadPriority());
 
-    // Win32 returns the PREVIOUS suspend count; a thread created suspended
-    // has one, so the first resume reports 1 and there is nothing left to
-    // resume afterwards.
     LineInt("CWinThread.ResumeThread.from_suspended", static_cast<long long>(pThread->ResumeThread()));
-    // pThread is unusable from here on (auto-delete).
 
     LineBool("CWinThread.worker.ran", PollUntil([] { return g_workerRan.load() != 0; }));
     LineInt("CWinThread.worker.received_param", g_workerParam.load());
 }
 
-// ---------------------------------------------------------------------
-// CAsyncSocket (afxsock.h) -- the SYNCHRONOUS surface, over loopback.
-//
-// The async surface (AsyncSelect + OnReceive/OnSend/OnAccept/OnConnect/
-// OnClose) is deliberately not compared: real MFC delivers those through
-// WSAAsyncSelect and a hidden window, i.e. only to a thread that runs a
-// message pump, and a console probe has none. That is a property of MFC's
-// delivery mechanism, not a difference in socket behaviour.
-//
-// Every value printed here is platform-NEUTRAL by construction: no raw
-// handle, no port number, and no errno/WSA error code (10035 on Windows,
-// EWOULDBLOCK/EINPROGRESS elsewhere) is ever printed -- only whether an
-// error was reported. Sockets created for async notification are
-// non-blocking on both sides, so each transfer step polls to a deadline.
-// ---------------------------------------------------------------------
 static void TestCAsyncSocket()
 {
 #if defined(SIMPLE_MFC_USE_REAL_MFC)
-    // Real MFC's CAsyncSocket reaches for the module's instance handle when
-    // it creates the hidden notification window, and that handle is only
-    // filled in by AfxWinInit -- which a console application has to call
-    // itself. Done here rather than in main() so the rest of the run stays
-    // in the exact state the other sections were written against.
     static bool inited = false;
     if (!inited)
     {
@@ -2611,8 +2082,6 @@ static void TestCAsyncSocket()
 
     LineBool("CAsyncSocket.Listen", listener.Listen(5) != FALSE);
 
-    // Nothing has connected yet: a non-blocking accept must fail rather
-    // than wait, and must report an error for it.
     CAsyncSocket tooEarly;
     LineBool("CAsyncSocket.Accept.with_no_pending_connection", listener.Accept(tooEarly) != FALSE);
     LineBool("CAsyncSocket.GetLastError.reports_the_would_block", CAsyncSocket::GetLastError() != 0);
@@ -2620,8 +2089,6 @@ static void TestCAsyncSocket()
     CAsyncSocket client;
     LineBool("CAsyncSocket.Create.client",
              client.Create(0, SOCK_STREAM, FD_CONNECT | FD_READ | FD_WRITE | FD_CLOSE) != FALSE);
-    // A non-blocking connect() reports "in progress" rather than success,
-    // so its return value is not the interesting part -- the accept is.
     client.Connect(L"127.0.0.1", boundPort);
 
     CAsyncSocket server;
@@ -2648,8 +2115,6 @@ static void TestCAsyncSocket()
     LineInt("CAsyncSocket.Receive.bytes", got);
     Line("CAsyncSocket.Receive.payload", std::string(received, static_cast<size_t>(got > 0 ? got : 0)));
 
-    // Options round-trip. SO_REUSEADDR's numeric value differs per
-    // platform, so only the round-trip itself is compared.
     int reuse = 1;
     LineBool("CAsyncSocket.SetSockOpt.SO_REUSEADDR",
              server.SetSockOpt(SO_REUSEADDR, &reuse, static_cast<int>(sizeof(reuse))) != FALSE);
@@ -2663,8 +2128,6 @@ static void TestCAsyncSocket()
 
     LineBool("CAsyncSocket.ShutDown.sends", client.ShutDown(CAsyncSocket::sends) != FALSE);
 
-    // Detach hands the handle back without closing it, and unregisters the
-    // object -- so FromHandle must stop finding it.
     SOCKET detached = server.Detach();
     LineBool("CAsyncSocket.Detach.returns_the_handle", detached != INVALID_SOCKET);
     LineBool("CAsyncSocket.Detach.clears_m_hSocket", server.m_hSocket == INVALID_SOCKET);
@@ -2682,40 +2145,6 @@ static void TestCAsyncSocket()
     listener.Close();
 }
 
-// =====================================================================
-// FULL-COVERAGE SECTIONS
-//
-// Everything below was added to close the gap between "the classes eMule
-// leans on are compared" and "every method that CAN be compared IS".
-// Each section drives its subject from a table of varying inputs and
-// prints one record per input, so a difference shows up as a named case
-// rather than as a single pass/fail.
-//
-// The methods still not compared, and why they cannot be:
-//
-//   * Nothing from COM or the registry: those classes have been removed
-//     from this branch (see atlbase.h's banner), so there is no longer a
-//     surface here for this suite to leave uncompared.
-//   * CObject::AssertValid / CObject::Dump and the whole of CDumpContext:
-//     real MFC declares them under #ifdef _DEBUG only. They do not exist
-//     as members in the Release configuration this suite builds.
-//   * CWinThread::Run: real MFC's implementation IS the message pump --
-//     it returns only on WM_QUIT, so calling it deadlocks the probe. It is
-//     the ONE remaining member of this branch that this suite does not
-//     compare, and it stays because eMule overrides it in eight thread
-//     classes.
-//   * CAsyncSocket's OnReceive/OnSend/OnAccept/OnConnect/OnClose/
-//     OnOutOfBandData as *notifications*: real MFC delivers them through
-//     WSAAsyncSelect and a hidden window, i.e. only to a thread running a
-//     message pump. Their default implementations are still called
-//     directly and compared below -- that part is comparable.
-// =====================================================================
-
-// ---------------------------------------------------------------------
-// CRuntimeClass: IsDerivedFrom / CreateObject, plus DYNAMIC_DOWNCAST
-// (which is AfxDynamicDownCast behind a macro, the only spelling eMule
-// uses).
-// ---------------------------------------------------------------------
 namespace
 {
 class DynBase : public CObject
@@ -2733,12 +2162,10 @@ public:
     DynMade() { tag = 2; }
 };
 IMPLEMENT_DYNCREATE(DynMade, DynBase)
-} // namespace
+}
 
 static void TestCRuntimeClass()
 {
-    // IsDerivedFrom over the full matrix of the four classes in play, so
-    // both the TRUE and the FALSE half of the relation is compared.
     struct Pair { const char* label; CRuntimeClass* derived; CRuntimeClass* base; };
     const Pair pairs[] = {
         {"made_from_base",    RUNTIME_CLASS(DynMade), RUNTIME_CLASS(DynBase)},
@@ -2756,8 +2183,6 @@ static void TestCRuntimeClass()
         LineBool(name.c_str(), p.derived->IsDerivedFrom(p.base) != FALSE);
     }
 
-    // CreateObject: DECLARE_DYNCREATE makes a class creatable by name,
-    // DECLARE_DYNAMIC alone does not -- and the difference is observable.
     CObject* made = RUNTIME_CLASS(DynMade)->CreateObject();
     LineBool("CRuntimeClass.CreateObject.dyncreate_returns_object", made != nullptr);
     LineBool("CRuntimeClass.CreateObject.result_is_the_class",
@@ -2770,8 +2195,6 @@ static void TestCRuntimeClass()
     LineBool("CRuntimeClass.CreateObject.dynamic_only_returns_null", notCreatable == nullptr);
     delete notCreatable;
 
-    // DYNAMIC_DOWNCAST -> AfxDynamicDownCast. Succeeds down the chain,
-    // returns null across it.
     DynMade concrete;
     CObject* asObject = &concrete;
     LineBool("AfxDynamicDownCast.to_own_class", DYNAMIC_DOWNCAST(DynMade, asObject) != nullptr);
@@ -2781,16 +2204,6 @@ static void TestCRuntimeClass()
     LineBool("AfxDynamicDownCast.null_input", DYNAMIC_DOWNCAST(DynMade, (CObject*)nullptr) != nullptr);
 }
 
-// ---------------------------------------------------------------------
-// The exception types the earlier sections did not reach, and the
-// buffer contract of GetErrorMessage.
-//
-// The message TEXT is not compared, for the reason TestExceptions()
-// already documents (real MFC builds it from its own string resources,
-// which need a CWinApp this console harness deliberately does not have).
-// What IS compared is the part that is a documented contract regardless
-// of the text: GetErrorMessage must never write past nMaxError.
-// ---------------------------------------------------------------------
 static void TestExceptionGaps()
 {
     CNotSupportedException nse;
@@ -2808,9 +2221,6 @@ static void TestExceptionGaps()
     LineBool("CArchiveException.IsKindOf.CSimpleException",
              ae.IsKindOf(RUNTIME_CLASS(CSimpleException)) != FALSE);
 
-    // The buffer contract, over a range of buffer sizes including the
-    // degenerate ones. A sentinel is written one past the limit each
-    // time: whatever text lands in the buffer, that sentinel must survive.
     {
         const UINT sizes[] = {1, 2, 8, 64, 255};
         for (UINT n : sizes)
@@ -2829,14 +2239,6 @@ static void TestExceptionGaps()
         }
     }
 
-    // ThrowOsError maps an OS error code onto a CFileException::Cause.
-    // The mapping is the behaviour under test, so drive it with several
-    // codes rather than one.
-    //
-    // Zero is NOT among them: it means "no error", and real MFC treats
-    // being handed it as a contract violation -- the probe died on
-    // STATUS_BREAKPOINT there, which is how this list came to be
-    // non-zero-only.
     {
         struct Case { const char* label; LONG osError; };
         const Case cases[] = {
@@ -2869,9 +2271,6 @@ static void TestExceptionGaps()
             {
                 CFileException::ThrowOsError(c.osError, L"probe.dat");
 #if defined(SIMPLE_MFC_USE_REAL_MFC)
-                // Only reachable on the real-MFC side: this branch marks
-                // ThrowOsError [[noreturn]], so the compiler knows the line
-                // below cannot run (and warns C4702 if it is left in).
                 Line((std::string("CFileException.ThrowOsError.") + c.label).c_str(),
                      std::string("NEVER (did not throw)"));
 #endif
@@ -2890,13 +2289,8 @@ static void TestExceptionGaps()
     }
 }
 
-// ---------------------------------------------------------------------
-// CString: the members no earlier section reached.
-// ---------------------------------------------------------------------
 namespace
 {
-// FormatV/AppendFormatV take a va_list, which only a variadic function
-// can produce -- these are the harness's way of building one.
 void CallFormatV(CString& s, LPCTSTR fmt, ...)
 {
     va_list args;
@@ -2911,13 +2305,10 @@ void CallAppendFormatV(CString& s, LPCTSTR fmt, ...)
     s.AppendFormatV(fmt, args);
     va_end(args);
 }
-} // namespace
+}
 
 static void TestCStringGaps()
 {
-    // --- Collate / CollateNoCase ----------------------------------------
-    // Only the SIGN is compared: Collate goes through the CRT's locale
-    // collation, whose magnitudes are implementation-defined.
     {
         struct Case { const char* label; LPCTSTR a; LPCTSTR b; };
         const Case cases[] = {
@@ -2939,7 +2330,6 @@ static void TestCStringGaps()
         }
     }
 
-    // --- FindOneOf -------------------------------------------------------
     {
         struct Case { const char* label; LPCTSTR s; LPCTSTR set; };
         const Case cases[] = {
@@ -2958,10 +2348,6 @@ static void TestCStringGaps()
         }
     }
 
-    // --- Truncate --------------------------------------------------------
-    // Real ATL asserts on a length above the current one, so every case
-    // here stays within bounds -- what is compared is the resulting
-    // string AND the resulting length, which must agree.
     {
         const int lengths[] = {0, 1, 3, 6};
         for (int n : lengths)
@@ -2974,7 +2360,6 @@ static void TestCStringGaps()
         }
     }
 
-    // --- SetString (both overloads) --------------------------------------
     {
         struct Case { const char* label; LPCTSTR src; };
         const Case cases[] = {
@@ -3002,7 +2387,6 @@ static void TestCStringGaps()
         }
     }
 
-    // --- GetString -------------------------------------------------------
     {
         const wchar_t* inputs[] = {L"", L"x", L"a longer value with spaces", L"éè"};
         int i = 0;
@@ -3017,7 +2401,6 @@ static void TestCStringGaps()
         }
     }
 
-    // --- AppendChar ------------------------------------------------------
     {
         CString s;
         const wchar_t chars[] = {L'a', L'B', L'0', L' ', L'é'};
@@ -3026,7 +2409,6 @@ static void TestCStringGaps()
         LineInt("CString.AppendChar.GetLength", s.GetLength());
     }
 
-    // --- FormatV / AppendFormatV -----------------------------------------
     {
         CString s;
         CallFormatV(s, L"%d/%s/%c", 42, L"mid", L'z');
@@ -3043,10 +2425,6 @@ static void TestCStringGaps()
         Line("CString.FormatV.numeric_flags", wide);
     }
 
-    // --- ReleaseBufferSetLength -------------------------------------------
-    // The point of the SetLength form is that it takes the length from the
-    // caller rather than scanning for a NUL, so it keeps text that has one
-    // embedded -- which is exactly what is compared here.
     {
         const int lengths[] = {0, 1, 5};
         for (int n : lengths)
@@ -3054,7 +2432,7 @@ static void TestCStringGaps()
             CString s;
             LPTSTR buf = s.GetBuffer(16);
             for (int i = 0; i < 8; ++i) buf[i] = static_cast<wchar_t>(L'a' + i);
-            buf[3] = L'\0'; // a NUL a plain ReleaseBuffer would stop at
+            buf[3] = L'\0';
             s.ReleaseBufferSetLength(n);
             LineInt((std::string("CString.ReleaseBufferSetLength.") + std::to_string(n)).c_str(),
                     s.GetLength());
@@ -3062,10 +2440,6 @@ static void TestCStringGaps()
     }
 
 #ifdef _WIN32
-    // --- LoadString (Windows only, as in real MFC) ------------------------
-    // A console probe carries no string table, so every id misses. That
-    // outcome is still a comparable contract: FALSE, and the string left
-    // empty rather than untouched.
     {
         const UINT ids[] = {1u, 100u, 61472u};
         for (UINT id : ids)
@@ -3081,12 +2455,11 @@ static void TestCStringGaps()
             LineBool(("CString.LoadString.hinstance." + std::to_string(id)).c_str(), okh != FALSE);
 
             CString l(L"previous content");
-            BOOL okl = l.LoadString(::GetModuleHandleW(nullptr), id, 0x0409); // en-US
+            BOOL okl = l.LoadString(::GetModuleHandleW(nullptr), id, 0x0409);
             LineBool(("CString.LoadString.langid." + std::to_string(id)).c_str(), okl != FALSE);
         }
     }
 
-    // --- AllocSysString ---------------------------------------------------
     {
         const wchar_t* inputs[] = {L"", L"x", L"a BSTR value", L"é中"};
         int i = 0;
@@ -3106,9 +2479,6 @@ static void TestCStringGaps()
 #endif
 }
 
-// ---------------------------------------------------------------------
-// CFileFind: the attribute predicates and the three timestamps.
-// ---------------------------------------------------------------------
 static void TestCFileFindAttributes()
 {
     CString dir = TempDir() + CString(L"simple_mfc_conformance_attr" SMFC_SEP);
@@ -3123,10 +2493,6 @@ static void TestCFileFindAttributes()
         SafeClose(f);
     }
 
-    // Every predicate on an ordinary, freshly written file. All of them
-    // are FALSE on both platforms except IsArchived, which Windows sets on
-    // any newly written file and POSIX has no notion of -- that one case
-    // is listed in platform_dependent.txt.
     {
         CFileFind finder;
         BOOL found = finder.FindFile(plain);
@@ -3141,11 +2507,6 @@ static void TestCFileFindAttributes()
         LineBool("CFileFind.Attr.IsArchived", finder.IsArchived() != FALSE);
         LineBool("CFileFind.Attr.IsDirectory", finder.IsDirectory() != FALSE);
 
-        // The three timestamps, in both the CTime and the FILETIME form.
-        // The instants themselves are non-deterministic, so what is
-        // compared is what IS deterministic: that the call succeeds, that
-        // the two overloads agree with each other, and that the value
-        // lands in a sane range rather than at the epoch.
         CTime writeTime;
         LineBool("CFileFind.GetLastWriteTime.CTime.returns_true",
                  finder.GetLastWriteTime(writeTime) != FALSE);
@@ -3164,12 +2525,6 @@ static void TestCFileFindAttributes()
         LineBool("CFileFind.GetLastAccessTime.plausible_year",
                  accessTime.GetYear() >= 2020 && accessTime.GetYear() < 2100);
 
-        // The raw-FILETIME forms only exist where FILETIME does. Off
-        // Windows the type is an incomplete declaration and these three
-        // methods are documented no-ops, so a case here would compare the
-        // platform, not the library. The Windows side-by-side comparison
-        // -- the authoritative one -- still covers them in full; on POSIX
-        // compare.py simply reports them as present in the recording only.
 #ifdef _WIN32
         FILETIME writeFt{}, createFt{}, accessFt{};
         LineBool("CFileFind.GetLastWriteTime.FILETIME.returns_true",
@@ -3178,8 +2533,6 @@ static void TestCFileFindAttributes()
                  finder.GetCreationTime(&createFt) != FALSE);
         LineBool("CFileFind.GetLastAccessTime.FILETIME.returns_true",
                  finder.GetLastAccessTime(&accessFt) != FALSE);
-        // The two spellings of the same instant must agree: a FILETIME is
-        // 100 ns ticks since 1601, a CTime is seconds since 1970.
         auto toUnix = [](const FILETIME& ft) {
             unsigned long long ticks =
                 (static_cast<unsigned long long>(ft.dwHighDateTime) << 32) | ft.dwLowDateTime;
@@ -3193,19 +2546,12 @@ static void TestCFileFindAttributes()
                  toUnix(accessFt) == static_cast<long long>(accessTime.GetTime()));
 #endif
 
-        // Written last, so the write time cannot precede the creation time
-        // by more than the clock's own granularity.
         LineBool("CFileFind.times.write_not_before_creation",
                  writeTime.GetTime() + 2 >= createTime.GetTime());
 
         finder.Close();
     }
 
-    // A read-only file, so IsReadOnly has a TRUE case too. _wchmod is the
-    // one spelling that means the same thing on both platforms: it sets
-    // FILE_ATTRIBUTE_READONLY on Windows and clears the write bits on
-    // POSIX, and CFileFind::IsReadOnly reads whichever of the two the
-    // platform keeps.
     {
         CString ro = dir + CString(L"readonly.bin");
         {
@@ -3230,8 +2576,6 @@ static void TestCFileFindAttributes()
         SafeRemoveFile(ro);
     }
 
-    // FindNextFile's own return value on a directory with a known number
-    // of matches: TRUE while another entry follows, FALSE on the last one.
     {
         const wchar_t* extra[] = {L"one.seq", L"two.seq", L"three.seq"};
         for (const wchar_t* n : extra)
@@ -3250,7 +2594,7 @@ static void TestCFileFindAttributes()
             working = finder.FindNextFile();
             lastReturn = working ? 1 : 0;
             ++seen;
-            if (seen > 16) break; // never loop unboundedly in CI
+            if (seen > 16) break;
         }
         LineInt("CFileFind.FindNextFile.iterations", seen);
         LineInt("CFileFind.FindNextFile.last_return", lastReturn);
@@ -3262,10 +2606,6 @@ static void TestCFileFindAttributes()
     RemoveDirectoryW(dir);
 }
 
-// ---------------------------------------------------------------------
-// CSyncObject: the abstract base's own surface, reached through a base
-// pointer so it is the base's declarations that are exercised.
-// ---------------------------------------------------------------------
 static void TestCSyncObjectBase()
 {
     CEvent manualEvent(TRUE, TRUE);
@@ -3288,9 +2628,6 @@ static void TestCSyncObjectBase()
     }
 }
 
-// ---------------------------------------------------------------------
-// CWinThread: the parts of the lifecycle AfxBeginThread does not reach.
-// ---------------------------------------------------------------------
 namespace
 {
 std::atomic<int> g_lifecycleRan{0};
@@ -3300,24 +2637,20 @@ UINT AFX_CDECL LifecycleWorker(LPVOID pParam)
     g_lifecycleRan.store(pParam ? *static_cast<int*>(pParam) : -1);
     return 3;
 }
-} // namespace
+}
 
 static void TestCWinThreadLifecycle()
 {
     g_lifecycleRan.store(0);
     static int marker = 99;
 
-    // The constructor + CreateThread path, which is what AfxBeginThread
-    // does internally and what code that wants the object first uses.
     CWinThread* pThread = new CWinThread(LifecycleWorker, &marker);
-    pThread->m_bAutoDelete = FALSE; // this test owns it, so it can outlive the run
+    pThread->m_bAutoDelete = FALSE;
     LineBool("CWinThread.CreateThread.suspended",
              pThread->CreateThread(CREATE_SUSPENDED) != FALSE);
     LineBool("CWinThread.CreateThread.sets_m_hThread", pThread->m_hThread != nullptr);
     LineBool("CWinThread.CreateThread.has_not_run_yet", g_lifecycleRan.load() == 0);
 
-    // Suspend counts nest. Created suspended the count is 1; suspending
-    // again makes it 2, and each call reports the count BEFORE it acted.
     LineInt("CWinThread.SuspendThread.from_one",
             static_cast<long long>(pThread->SuspendThread()));
     LineInt("CWinThread.ResumeThread.from_two",
@@ -3330,31 +2663,19 @@ static void TestCWinThreadLifecycle()
     LineInt("CWinThread.CreateThread.worker_param", g_lifecycleRan.load());
     delete pThread;
 
-    // The three virtuals a worker thread never calls, on an object that
-    // was never started -- the only state in which calling them is safe.
-    // CWinThread::Run is deliberately absent: its real MFC implementation
-    // IS the message pump and would never return.
     {
         CWinThread idle;
         idle.m_bAutoDelete = FALSE;
         LineBool("CWinThread.InitInstance.default", idle.InitInstance() != FALSE);
         LineInt("CWinThread.ExitInstance.default", idle.ExitInstance());
-        idle.Delete(); // m_bAutoDelete is FALSE, so this must NOT free it
+        idle.Delete();
         LineBool("CWinThread.Delete.without_autodelete_is_a_noop",
                  idle.m_bAutoDelete == FALSE);
     }
 }
 
-// ---------------------------------------------------------------------
-// CAsyncSocket: the datagram surface (Bind / SendTo / both ReceiveFrom
-// overloads), AsyncSelect, and the default notification handlers.
-// ---------------------------------------------------------------------
 namespace
 {
-// The On* notifications are protected on CAsyncSocket -- in real MFC and,
-// since the conformance suite found the difference, here too. A derived
-// class is the only place they can be called from, which is exactly how a
-// consumer reaches them.
 class NotificationProbe : public CAsyncSocket
 {
 public:
@@ -3365,15 +2686,12 @@ public:
     void CallOnClose(int e) { OnClose(e); }
     void CallOnOutOfBandData(int e) { OnOutOfBandData(e); }
 };
-} // namespace
+}
 
 static void TestCAsyncSocketDatagram()
 {
     LineBool("AfxSocketInit.before_datagram", AfxSocketInit(nullptr) != FALSE);
 
-    // Bind wants a socket that Create() has not already bound, so the
-    // handle comes from the platform API and is adopted with Attach --
-    // harness scaffolding, not part of what is compared.
     SOCKET raw = ::socket(AF_INET, SOCK_DGRAM, 0);
     LineBool("CAsyncSocket.Bind.raw_socket_available", raw != INVALID_SOCKET);
 
@@ -3389,15 +2707,12 @@ static void TestCAsyncSocketDatagram()
     Line("CAsyncSocket.Bind.address", boundAddress);
     LineBool("CAsyncSocket.Bind.port_is_assigned", boundPort != 0);
 
-    // Binding a second time must fail: the socket already has a name.
     LineBool("CAsyncSocket.Bind.second_bind_fails", receiver.Bind(0, L"127.0.0.1") != FALSE);
 
     CAsyncSocket sender;
     LineBool("CAsyncSocket.SendTo.sender_created",
              sender.Create(0, SOCK_DGRAM, FD_READ | FD_WRITE, L"127.0.0.1") != FALSE);
 
-    // Several payload sizes, so the return value is compared against a
-    // varying expectation rather than one.
     const char* payloads[] = {"a", "datagram", "0123456789012345678901234567890123456789"};
     int idx = 0;
     for (const char* payload : payloads)
@@ -3407,11 +2722,9 @@ static void TestCAsyncSocketDatagram()
         LineInt(("CAsyncSocket.SendTo." + std::to_string(idx) + ".returns_length").c_str(), sent);
 
         char buf[128]{};
-        // Non-blocking on both sides: poll to a deadline rather than wait.
         int got = -1;
         if (idx == 0)
         {
-            // The CString/UINT overload.
             CString fromAddress;
             UINT fromPort = 0;
             PollUntil([&] {
@@ -3426,7 +2739,6 @@ static void TestCAsyncSocketDatagram()
         }
         else
         {
-            // The raw SOCKADDR overload.
             sockaddr_in from{};
             int fromLen = static_cast<int>(sizeof(from));
             PollUntil([&] {
@@ -3446,8 +2758,6 @@ static void TestCAsyncSocketDatagram()
         ++idx;
     }
 
-    // AsyncSelect: what is comparable is whether the request is accepted,
-    // not whether a notification arrives (which needs a message pump).
     {
         const long masks[] = {FD_READ, FD_READ | FD_WRITE, 0};
         int i = 0;
@@ -3459,14 +2769,9 @@ static void TestCAsyncSocketDatagram()
         }
     }
 
-    // The default notification handlers. They are PROTECTED -- the library
-    // calls them, a caller does not -- so the only way to reach them is the
-    // way a consumer would: from a derived class. Real MFC's defaults are
-    // empty virtuals and so are this branch's; what is compared is that
-    // each returns, accepts any error code, and leaves the socket alone.
     {
         NotificationProbe probe;
-        const int codes[] = {0, 10035 /*WSAEWOULDBLOCK*/, -1};
+        const int codes[] = {0, 10035  , -1};
         for (int code : codes)
         {
             const std::string suffix = "." + std::to_string(code);
@@ -3493,28 +2798,17 @@ static void TestCAsyncSocketDatagram()
     receiver.Close();
 }
 
-// ---------------------------------------------------------------------
-// The remaining one-off members: CMemFile::GrowFile, CArchive::GetFile,
-// CTime::GetLocalTm, the sized map constructors, the HashKey overloads,
-// and AfxSocketTerm.
-// ---------------------------------------------------------------------
 namespace
 {
-// GrowFile is protected in real MFC (public here). A using-declaration in
-// a derived class re-exports it under both, which is how the same source
-// can call it on either side.
 class GrowableMemFile : public CMemFile
 {
 public:
     using CMemFile::GrowFile;
 };
-} // namespace
+}
 
 static void TestRemainingGaps()
 {
-    // --- CMemFile::GrowFile ------------------------------------------------
-    // Growing must extend the buffer without moving the position or
-    // changing what has already been written.
     {
         const ULONGLONG sizes[] = {0, 1, 64, 4096};
         for (ULONGLONG want : sizes)
@@ -3539,7 +2833,6 @@ static void TestRemainingGaps()
         }
     }
 
-    // --- CArchive::GetFile -------------------------------------------------
     {
         CMemFile backing;
         CArchive ar(&backing, CArchive::store);
@@ -3552,11 +2845,6 @@ static void TestRemainingGaps()
         backing.Close();
     }
 
-    // --- CTime::GetLocalTm --------------------------------------------------
-    // A fixed instant, so every field is a compared constant rather than
-    // whatever the clock happened to say. Real MFC also accepts a null
-    // pointer (returning shared per-thread storage); that form has no
-    // thread-safe equivalent here and is not part of the comparison.
     {
         struct Case { const char* label; int y, mo, d, h, mi, s; };
         const Case cases[] = {
@@ -3583,8 +2871,6 @@ static void TestRemainingGaps()
         }
     }
 
-    // --- the sized map constructors -----------------------------------------
-    // The hint only sizes the hash table; behaviour must not depend on it.
     {
         const INT_PTR hints[] = {1, 17, 1024};
         for (INT_PTR hint : hints)
@@ -3610,20 +2896,12 @@ static void TestRemainingGaps()
         }
     }
 
-    // --- _AtlGetConversionACP ------------------------------------------------
-    // The code page ATL's conversion macros convert through. Its VALUE is a
-    // platform fact (Windows answers with a real code-page id, POSIX has no
-    // ANSI code page at all), so the cross-platform comparison skips it --
-    // the Windows side-by-side one does not, and that is where it matters.
     {
         LineInt("AtlGetConversionACP.value", static_cast<long long>(_AtlGetConversionACP()));
         LineBool("AtlGetConversionACP.is_stable",
                  _AtlGetConversionACP() == _AtlGetConversionACP());
     }
 
-    // --- HashKey -------------------------------------------------------------
-    // The string specialisation's exact value IS the contract (CMap's
-    // bucket assignment depends on it), so it is compared as a number.
     {
         const wchar_t* keys[] = {L"", L"a", L"abc", L"a longer key value", L"éè"};
         int i = 0;
@@ -3644,40 +2922,18 @@ static void TestRemainingGaps()
     }
 }
 
-// ---------------------------------------------------------------------
-// AfxSocketTerm, in its own section and called LAST: it tears down the
-// thread's socket state, so nothing that uses a socket may follow it.
-// ---------------------------------------------------------------------
 static void TestAfxSocketTerm()
 {
     AfxSocketTerm();
     LineBool("AfxSocketTerm.returns", true);
-    // Re-initialising afterwards must work: the pair is reference-counted
-    // per thread, not a one-way door.
     LineBool("AfxSocketTerm.reinit_after_term", AfxSocketInit(nullptr) != FALSE);
     AfxSocketTerm();
     LineBool("AfxSocketTerm.second_term_returns", true);
 }
 
-// ---------------------------------------------------------------------
-// The _DEBUG-only surface: CObject::AssertValid/Dump and CDumpContext.
-//
-// Real MFC declares all three under #ifdef _DEBUG -- in a Release build
-// they are not members at all, which is why the Release comparison cannot
-// reach them. simple_mfc has them unconditionally, so the guard below is
-// what real MFC needs, not what this branch needs. The Windows job builds
-// and compares BOTH configurations; the POSIX job keeps comparing against
-// the Release recording, so these cases simply do not appear there.
-// ---------------------------------------------------------------------
 #ifdef _DEBUG
 namespace
 {
-// CDumpContext's DESTINATION is the one part of it that is genuinely not
-// portable: real MFC writes through a CFile*, simple_mfc through a
-// std::wostream&. Neither is the contract -- the characters are -- so each
-// side gets a sink of its own shape and both hand back the same
-// std::string for comparison. Harness scaffolding, per side, exactly like
-// the POSIX stand-ins at the top of this file.
 class DumpBuffer
 {
 public:
@@ -3712,14 +2968,10 @@ public:
     int value = 5;
 };
 IMPLEMENT_DYNAMIC(DumpSubject, CObject)
-} // namespace
+}
 
 static void TestDebugOnly()
 {
-    // --- CObject::AssertValid --------------------------------------------
-    // A valid object passes silently; that the call returns at all is the
-    // whole observable contract, since the failing path breaks into the
-    // debugger and is not something a probe may provoke.
     {
         DumpSubject subject;
         subject.AssertValid();
@@ -3735,14 +2987,6 @@ static void TestDebugOnly()
         LineBool("CObject.AssertValid.CFile_returns", true);
     }
 
-    // --- CObject::Dump ----------------------------------------------------
-    // The default implementation prints the runtime class name, so the
-    // text is compared for the classes whose name this branch did NOT
-    // rename... which is none of them: every one carries the E prefix, and
-    // RTTI.CFileException.ClassName already covers that in
-    // renamed_symbols.txt. What is compared here is that Dump wrote
-    // something and that two objects of different classes wrote different
-    // things.
     {
         DumpBuffer a;
         CDumpContext dca = a.Context();
@@ -3756,13 +3000,6 @@ static void TestDebugOnly()
         fe.Dump(dcb);
         const std::string dumpedException = b.Take();
 
-        // DumpSubject is declared in THIS file, so its runtime class name
-        // is the same string on both sides -- unlike every library class,
-        // which carries the E prefix. That makes the default Dump's exact
-        // text comparable rather than merely non-empty.
-        // The text carries the object's own address, which is not a
-        // comparable value -- so what is compared is everything around it:
-        // the exact prefix, the exact terminator, and the total shape.
         const std::string prefix = "a DumpSubject at $";
         LineBool("CObject.Dump.prefix",
                  dumpedSubject.compare(0, prefix.size(), prefix) == 0);
@@ -3774,7 +3011,6 @@ static void TestDebugOnly()
         LineBool("CObject.Dump.differs_by_class", dumpedSubject != dumpedException);
     }
 
-    // --- CDumpContext::SetDepth / GetDepth ---------------------------------
     {
         const int depths[] = {0, 1, 7, -1};
         int i = 0;
@@ -3788,11 +3024,6 @@ static void TestDebugOnly()
         }
     }
 
-    // --- every operator<< overload, over several values each ---------------
-    // The TEXT is the contract here: MFC formats each type through a
-    // printf conversion, and a stream default that merely looks similar is
-    // not the same thing (an iostream renders 1.5 as "1.5", "%f" renders
-    // it as "1.500000").
     {
         const wchar_t* wides[] = {L"", L"wide", L"with spaces", L"éè"};
         int i = 0;
@@ -3866,8 +3097,6 @@ static void TestDebugOnly()
         }
     }
     {
-        // A pointer's VALUE is an address, which cannot be compared. That
-        // the insertion produced non-empty text can be.
         DumpBuffer buf;
         CDumpContext dc = buf.Context();
         int local = 0;
@@ -3887,17 +3116,14 @@ static void TestDebugOnly()
         dcPtr << &subject;
         LineBool("CDumpContext.insert.CObject_ptr.non_empty", !byPtr.Take().empty());
 
-        // The null case has a fixed spelling with no address in it, so
-        // unlike the two above it can be compared as text.
         DumpBuffer nul;
         CDumpContext dcNul = nul.Context();
         dcNul << static_cast<const CObject*>(nullptr);
         Line("CDumpContext.insert.CObject_null.text", nul.Take());
     }
 }
-#endif // _DEBUG
+#endif
 
-// ---------------------------------------------------------------------
 int main()
 {
     SilenceWindowsDialogs();
@@ -3952,19 +3178,12 @@ int main()
     TestPatternUnicodeToUtf8();
     TestRemainingGaps();
 
-    // Only real MFC's Release build lacks these; this branch has them
-    // either way, so the guard is real MFC's, not ours.
 #ifdef _DEBUG
     TestDebugOnly();
 #endif
 
-    // Last: it tears down the thread's socket state.
     TestAfxSocketTerm();
 
-    // Explicit end-of-run marker. A probe that dies partway through still
-    // exits with a code compare.py checks, but a truncated run that
-    // somehow exits 0 anyway would otherwise look like "the last N cases
-    // are missing" rather than "this probe never finished".
     Line("#END", std::to_string(g_index));
     return 0;
 }

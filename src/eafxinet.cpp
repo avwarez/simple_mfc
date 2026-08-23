@@ -1,5 +1,3 @@
-// afxinet.cpp — AfxParseURL. Pure string parsing (scheme/host/port/
-// object), no WinInet dependency.
 #include "eafxinet.h"
 
 BOOL EAfxParseURL(LPCTSTR pstrURL, DWORD& dwServiceType, ECString& strServer,
@@ -11,14 +9,6 @@ BOOL EAfxParseURL(LPCTSTR pstrURL, DWORD& dwServiceType, ECString& strServer,
     if (url.IsEmpty())
         return FALSE;
 
-    // A scheme ("http://") is REQUIRED: a URL without one makes real MFC
-    // return FALSE, and that failure is load-bearing. eMule's only caller
-    // (HttpDownloadDlg.cpp) relies on it precisely -- it calls AfxParseURL,
-    // and *on failure* prepends "http://" and retries. An earlier version
-    // here defaulted a schemeless URL to HTTP and returned TRUE, which
-    // silently suppressed that retry and left eMule's download URL without
-    // the prefix its own logic expects. Verified against real MFC by the
-    // conformance suite (AfxParseURL.schemeless.fails).
     int nSchemeEnd = url.Find(L"://");
     if (nSchemeEnd < 0)
         return FALSE;
@@ -31,7 +21,6 @@ BOOL EAfxParseURL(LPCTSTR pstrURL, DWORD& dwServiceType, ECString& strServer,
     else if (scheme == ECString(L"ftp")) { dwServiceType = EAFX_INET_SERVICE_FTP; nDefaultPort = 21; }
     else { dwServiceType = EAFX_INET_SERVICE_HTTP; nDefaultPort = 80; }
 
-    // host[:port] up to the first '/', which starts the object (path).
     int nSlash = rest.Find(L'/');
     ECString hostPort = (nSlash >= 0) ? rest.Left(nSlash) : rest;
     strObject = (nSlash >= 0) ? rest.Mid(nSlash) : ECString(L"/");

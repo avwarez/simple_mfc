@@ -1,8 +1,7 @@
-#include "eafx.h"     // CString is only forward-declared in atltime.h; the
-                     // Format() bodies below need the complete type
+#include "eafx.h"
 #include "eatltime.h"
 
-ECTime::ECTime(int nYear, int nMonth, int nDay, int nHour, int nMin, int nSec, int /*nDST*/)
+ECTime::ECTime(int nYear, int nMonth, int nDay, int nHour, int nMin, int nSec, int  )
 {
     std::tm t{};
     t.tm_year = nYear - 1900;
@@ -23,9 +22,6 @@ ECString ECTime::Format(const wchar_t* pszFormat) const
     return ECString(n > 0 ? buf : L"");
 }
 
-// The narrow-literal overloads: widen the format string and reuse the
-// wide implementation, so the two can never drift apart. See the header
-// for why they exist at all (a UNICODE build passing a "..." literal).
 ECString ECTime::Format(const char* pszFormat) const
 {
     ECStringW strFormat(pszFormat ? pszFormat : "");
@@ -40,9 +36,6 @@ ECString ECTimeSpan::Format(const char* pszFormat) const
 
 ECString ECTimeSpan::Format(const wchar_t* pszFormat) const
 {
-    // A span is a duration, not a point in time, so wcsftime is not
-    // applicable: %H must stay within 0-23 with the overflow carried by
-    // %D, and a negative span formats from its magnitude.
     long long span = m_span < 0 ? -m_span : m_span;
     ECString result;
     for (const wchar_t* p = pszFormat; p && *p; ++p) {
@@ -72,10 +65,8 @@ ECString ECTimeSpan::Format(const wchar_t* pszFormat) const
             result += L'%';
             break;
         case L'\0':
-            return result; // trailing '%', nothing to interpret
+            return result;
         default:
-            // Unknown specifier: real MFC leaves it as-is rather than
-            // dropping it, which keeps a malformed format visible.
             result += L'%';
             result += *p;
             break;

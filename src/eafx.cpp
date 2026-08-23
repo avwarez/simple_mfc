@@ -8,12 +8,9 @@
 #include <cstdint>
 #include <cstring>
 #ifndef _WIN32
-#include <sys/stat.h> // st_atime, for CFileFind::GetLastAccessTime
+#include <sys/stat.h>
 #endif
 
-// ---------------------------------------------------------------------
-// RTTI
-// ---------------------------------------------------------------------
 const ECRuntimeClass ECObject::classCRuntimeClass = {"CObject", nullptr, nullptr};
 EIMPLEMENT_DYNAMIC(ECException, ECObject)
 EIMPLEMENT_DYNAMIC(ECSimpleException, ECException)
@@ -26,13 +23,6 @@ EIMPLEMENT_DYNAMIC(ECStdioFile, ECFile)
 EIMPLEMENT_DYNAMIC(ECMemFile, ECFile)
 EIMPLEMENT_DYNAMIC(ECFileFind, ECObject)
 
-// ---------------------------------------------------------------------
-// CDumpContext / CObject::Dump
-// ---------------------------------------------------------------------
-// Each numeric overload goes through the SAME printf conversion real MFC
-// uses (%d / %u / %ld / %f), not through the stream's default formatting.
-// The two are not interchangeable: an iostream renders 1.5 as "1.5" where
-// "%f" renders it as "1.500000", and a dump is read as text.
 namespace
 {
 template <class T>
@@ -42,28 +32,18 @@ std::wstring DumpFormat(const wchar_t* conversion, T value)
     const int n = std::swprintf(buf, sizeof buf / sizeof buf[0], conversion, value);
     return n > 0 ? std::wstring(buf, static_cast<size_t>(n)) : std::wstring();
 }
-} // namespace
+}
 
-// Inserting a `const char*` into a wide stream does NOT write the text --
-// it selects the pointer overload and writes an address. That is what this
-// did, and since CObject::Dump below feeds it m_lpszClassName (a narrow
-// literal), EVERY default Dump printed a hexadecimal address where the
-// class name belonged. Widen explicitly, as real MFC's LPCSTR overload does.
 ECDumpContext& ECDumpContext::operator<<(const char* lpsz)
 {
     if (lpsz) m_os << mfc_detail::Widen(lpsz, std::strlen(lpsz));
     return *this;
 }
 ECDumpContext& ECDumpContext::operator<<(LPCTSTR lpsz) { if (lpsz) m_os << lpsz; return *this; }
-// Real MFC spells the null case "NULL"; "(null)" was this branch's own
-// wording and nothing but a dump reader would ever have noticed.
 ECDumpContext& ECDumpContext::operator<<(const ECObject* pOb) { if (pOb) pOb->Dump(*this); else m_os << L"NULL"; return *this; }
 ECDumpContext& ECDumpContext::operator<<(int n) { m_os << DumpFormat(L"%d", n); return *this; }
 ECDumpContext& ECDumpContext::operator<<(unsigned int u) { m_os << DumpFormat(L"%u", u); return *this; }
 ECDumpContext& ECDumpContext::operator<<(long l) { m_os << DumpFormat(L"%ld", l); return *this; }
-// Real MFC renders a double the way _gcvt does -- shortest form at 15
-// significant digits, with a bare trailing '.' when there is no fractional
-// part ("0.", "1.5", "1234.5"). Not "%f", which would print 0.000000.
 ECDumpContext& ECDumpContext::operator<<(double d)
 {
     std::wstring text = DumpFormat(L"%.15g", d);
@@ -73,10 +53,6 @@ ECDumpContext& ECDumpContext::operator<<(double d)
     return *this;
 }
 
-// Pointer-width uppercase hex, zero padded -- MSVC's "%p", which is the
-// form real MFC's dump carries ("at $000000220F7DE5A8"). Formatted by hand
-// rather than through %p so the SHAPE is the same off Windows too, where
-// the CRT's %p writes "0x55f8...".
 ECDumpContext& ECDumpContext::operator<<(const void* lp)
 {
     static const wchar_t kDigits[] = L"0123456789ABCDEF";
@@ -88,22 +64,12 @@ ECDumpContext& ECDumpContext::operator<<(const void* lp)
     return *this;
 }
 
-// Real MFC's format, verified against it: "a <class> at $<address>\n".
-// Printing the bare class name was this branch's own shorter wording -- and
-// since every eMule Dump override starts by calling this one, every dump
-// line eMule produces was missing both the object's address and its
-// terminating newline.
 void ECObject::Dump(ECDumpContext& dc) const
 {
     dc << "a " << GetRuntimeClass()->m_lpszClassName << " at $"
        << static_cast<const void*>(this) << "\n";
 }
 
-// The function behind the DYNAMIC_DOWNCAST macro: a checked cast that
-// answers null instead of undefined behaviour when the object is not of
-// the asked-for class. Declared since the first version of this header and
-// never defined until the conformance suite reached full method coverage —
-// eMule's two DYNAMIC_DOWNCAST sites would not have linked.
 ECObject* EAfxDynamicDownCast(ECRuntimeClass* pClass, ECObject* pObject)
 {
     if (pObject != nullptr && pObject->IsKindOf(pClass))
@@ -111,14 +77,6 @@ ECObject* EAfxDynamicDownCast(ECRuntimeClass* pClass, ECObject* pObject)
     return nullptr;
 }
 
-// ---------------------------------------------------------------------
-// CException
-// ---------------------------------------------------------------------
-// Declared virtual on the base, as real MFC does -- eMule calls it
-// through a plain "const CException&" (OtherFunctions.cpp:1793), which
-// only compiles if the base has it. (An earlier note here claimed the
-// opposite; the compile check disproved it.) The base itself knows no
-// message, so it reports failure and the subclasses override.
 BOOL ECException::GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pnHelpContext) const
 {
     if (pnHelpContext) *pnHelpContext = 0;
@@ -126,9 +84,6 @@ BOOL ECException::GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pnHelp
     return FALSE;
 }
 
-// ---------------------------------------------------------------------
-// CNotSupportedException
-// ---------------------------------------------------------------------
 BOOL ECNotSupportedException::GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pnHelpContext) const
 {
     if (pnHelpContext) *pnHelpContext = 0;
@@ -140,9 +95,6 @@ BOOL ECNotSupportedException::GetErrorMessage(LPTSTR lpszError, UINT nMaxError, 
     return TRUE;
 }
 
-// ---------------------------------------------------------------------
-// CMemoryException
-// ---------------------------------------------------------------------
 BOOL ECMemoryException::GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pnHelpContext) const
 {
     if (pnHelpContext) *pnHelpContext = 0;
@@ -154,9 +106,6 @@ BOOL ECMemoryException::GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* 
     return TRUE;
 }
 
-// ---------------------------------------------------------------------
-// CFileException
-// ---------------------------------------------------------------------
 BOOL ECFileException::GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pnHelpContext) const
 {
     if (pnHelpContext) *pnHelpContext = 0;
@@ -185,60 +134,42 @@ BOOL ECFileException::GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pn
     return TRUE;
 }
 
-// Best-effort mapping from a Win32 GetLastError()-style OS error code to a
-// CFileException::Cause, covering the common, well-documented codes real
-// MFC's own (closed-source) internal table maps; anything else falls back
-// to genericException, matching the documented fallback behavior of real
-// MFC's CFileException::OsErrorToException/ThrowOsError. Literal values
-// used instead of <windows.h> macros to keep this file portable (same
-// convention already used in afxsock.h for socket constants).
 namespace
 {
 int OsErrorToCause(LONG lOsError)
 {
     switch (lOsError)
     {
-        case 2: return ECFileException::fileNotFound;         // ERROR_FILE_NOT_FOUND
-        case 3: return ECFileException::badPath;               // ERROR_PATH_NOT_FOUND
-        case 4: return ECFileException::tooManyOpenFiles;      // ERROR_TOO_MANY_OPEN_FILES
-        case 5: return ECFileException::accessDenied;          // ERROR_ACCESS_DENIED
-        case 6: return ECFileException::fileNotFound;          // ERROR_INVALID_HANDLE (real MFC's answer, verified)
-        case 19: return ECFileException::accessDenied;         // ERROR_WRITE_PROTECT
-        case 32: return ECFileException::sharingViolation;     // ERROR_SHARING_VIOLATION
-        case 33: return ECFileException::lockViolation;        // ERROR_LOCK_VIOLATION
-        case 38: return ECFileException::endOfFile;             // ERROR_HANDLE_EOF
-        case 39: return ECFileException::diskFull;              // ERROR_HANDLE_DISK_FULL
-        case 112: return ECFileException::diskFull;             // ERROR_DISK_FULL
-        // The rest of the table was filled in from real MFC's own answers,
-        // read off the conformance run that drives ThrowOsError over every
-        // common Win32 file error. ERROR_BAD_PATHNAME in particular used to
-        // fall through to genericException here while real MFC answers
-        // badPath -- a caller switching on m_cause took the wrong branch.
-        case 15: return ECFileException::badPath;               // ERROR_INVALID_DRIVE
-        case 16: return ECFileException::removeCurrentDir;      // ERROR_CURRENT_DIRECTORY
-        case 123: return ECFileException::badPath;              // ERROR_INVALID_NAME
-        case 131: return ECFileException::badSeek;              // ERROR_NEGATIVE_SEEK
-        case 161: return ECFileException::badPath;              // ERROR_BAD_PATHNAME
-        case 206: return ECFileException::badPath;              // ERROR_FILENAME_EXCED_RANGE
-        case 80: return ECFileException::accessDenied;          // ERROR_FILE_EXISTS
-        case 145: return ECFileException::removeCurrentDir;     // ERROR_DIR_NOT_EMPTY
-        case 183: return ECFileException::accessDenied;         // ERROR_ALREADY_EXISTS
+        case 2: return ECFileException::fileNotFound;
+        case 3: return ECFileException::badPath;
+        case 4: return ECFileException::tooManyOpenFiles;
+        case 5: return ECFileException::accessDenied;
+        case 6: return ECFileException::fileNotFound;
+        case 19: return ECFileException::accessDenied;
+        case 32: return ECFileException::sharingViolation;
+        case 33: return ECFileException::lockViolation;
+        case 38: return ECFileException::endOfFile;
+        case 39: return ECFileException::diskFull;
+        case 112: return ECFileException::diskFull;
+        case 15: return ECFileException::badPath;
+        case 16: return ECFileException::removeCurrentDir;
+        case 123: return ECFileException::badPath;
+        case 131: return ECFileException::badSeek;
+        case 161: return ECFileException::badPath;
+        case 206: return ECFileException::badPath;
+        case 80: return ECFileException::accessDenied;
+        case 145: return ECFileException::removeCurrentDir;
+        case 183: return ECFileException::accessDenied;
         default: return ECFileException::genericException;
     }
 }
-} // namespace
+}
 
 [[noreturn]] void ECFileException::ThrowOsError(LONG lOsError, LPCTSTR lpszFileName)
 {
     throw new ECFileException(OsErrorToCause(lOsError), lOsError, lpszFileName);
 }
 
-// ---------------------------------------------------------------------
-// Global AfxThrow* functions — throw by pointer, like real MFC (calling
-// code catches with `catch (CFileException* e)` and then calls
-// `e->Delete()`). AfxThrowMemoryException throws a preallocated STATIC
-// instance: during a genuine out-of-memory condition, a `new` would fail.
-// ---------------------------------------------------------------------
 [[noreturn]] void EAfxThrowFileException(int cause, LONG lOsError, LPCTSTR lpszFileName)
 {
     throw new ECFileException(cause, lOsError, lpszFileName);
@@ -250,9 +181,6 @@ int OsErrorToCause(LONG lOsError)
     throw &s_oom;
 }
 
-// ---------------------------------------------------------------------
-// CFile
-// ---------------------------------------------------------------------
 BOOL ECFile::Open(LPCTSTR lpszFileName, UINT nOpenFlags, ECFileException* pError)
 {
     std::ios_base::openmode mode = std::ios::binary;
@@ -291,10 +219,6 @@ ULONGLONG ECFile::Seek(LONGLONG lOff, UINT nFrom)
     auto dir = nFrom == begin ? std::ios::beg : nFrom == end ? std::ios::end : std::ios::cur;
     m_stream.clear();
     m_stream.seekg(static_cast<std::streamoff>(lOff), dir);
-    // Sync the put pointer to the SAME absolute position just resolved by
-    // seekg. Re-issuing the seek with a current/end-relative offset would
-    // move the shared file position a second time (doubling current-origin
-    // seeks); seek the put pointer to the resolved absolute offset instead.
     m_stream.seekp(m_stream.tellg());
     return GetPosition();
 }
@@ -347,23 +271,6 @@ void ECFile::Rename(LPCTSTR lpszOldName, LPCTSTR lpszNewName)
     std::filesystem::rename(std::filesystem::path(lpszOldName), std::filesystem::path(lpszNewName));
 }
 
-// ---------------------------------------------------------------------
-// CStdioFile
-// ---------------------------------------------------------------------
-// std::wfstream is not used here (the file is opened in binary mode): we
-// read line by line as a sequence of raw wchar_t (consistent with the
-// typical use of CStdioFile on UTF-16/ASCII text files written by the
-// application itself, not external system files). A preceding '\r' (from
-// a "\r\n" terminator) is NOT stripped in either overload below and stays
-// part of the returned line, unless the file was opened with the
-// typeText flag (not implemented as a distinct code path here, since
-// simple_mfc never requests OS-level CRLF translation either).
-//
-// The two overloads differ in what they do with '\n' itself — confirmed
-// against real MFC via the conformance suite (tests/conformance/): the
-// LPTSTR/UINT overload is fgets()-like and keeps '\n' as the last
-// character written into the buffer (if it fits), while the CString&
-// overload parses a line and strips '\n' from the result.
 LPTSTR ECStdioFile::ReadString(LPTSTR lpsz, UINT nMax)
 {
     wchar_t ch;
@@ -399,9 +306,6 @@ void ECStdioFile::WriteString(LPCTSTR lpsz)
     m_stream.write(reinterpret_cast<const char*>(lpsz), static_cast<std::streamsize>(std::char_traits<wchar_t>::length(lpsz) * sizeof(wchar_t)));
 }
 
-// ---------------------------------------------------------------------
-// CMemFile
-// ---------------------------------------------------------------------
 UINT ECMemFile::Read(void* lpBuf, UINT nCount)
 {
     size_t avail = m_buffer.size() > m_pos ? m_buffer.size() - m_pos : 0;
@@ -418,9 +322,6 @@ void ECMemFile::Write(const void* lpBuf, UINT nCount)
     m_pos += nCount;
 }
 
-// Real MFC reallocates the buffer so that a later write of dwNewLen bytes
-// needs no further growth; a std::vector already amortises that, so this
-// only has to guarantee the length.
 void ECMemFile::GrowFile(ULONGLONG dwNewLen)
 {
     if (dwNewLen > m_buffer.size())
@@ -435,12 +336,6 @@ ULONGLONG ECMemFile::Seek(LONGLONG lOff, UINT nFrom)
     return m_pos;
 }
 
-// Hands the contents over as a malloc'd block, matching real MFC's
-// documented contract ("the caller becomes responsible for freeing the
-// buffer"). The vector-backed storage has no malloc'd block to detach in
-// place, so this copies out into a freshly malloc'd one -- externally
-// indistinguishable from a true detach, since either way the caller ends
-// up owning a malloc'd buffer and this CMemFile ends up empty.
 BYTE* ECMemFile::Detach()
 {
     size_t n = m_buffer.size();
@@ -452,12 +347,7 @@ BYTE* ECMemFile::Detach()
     return p;
 }
 
-// Takes ownership of the caller's malloc'd buffer. Real MFC keeps the
-// pointer directly as its internal storage; this vector-backed CMemFile
-// copies it in and immediately frees the original -- the caller must not
-// touch lpBuffer after this call either way, so the two are
-// indistinguishable from outside the class.
-void ECMemFile::Attach(BYTE* lpBuffer, UINT nBufferSize, UINT /*nGrowBytes*/)
+void ECMemFile::Attach(BYTE* lpBuffer, UINT nBufferSize, UINT  )
 {
     if (lpBuffer != nullptr && nBufferSize > 0)
         m_buffer.assign(lpBuffer, lpBuffer + nBufferSize);
@@ -467,9 +357,6 @@ void ECMemFile::Attach(BYTE* lpBuffer, UINT nBufferSize, UINT /*nGrowBytes*/)
     m_pos = 0;
 }
 
-// ---------------------------------------------------------------------
-// CFileFind
-// ---------------------------------------------------------------------
 namespace
 {
 bool WildcardMatch(const std::wstring& pattern, const std::wstring& name)
@@ -487,17 +374,13 @@ bool WildcardMatch(const std::wstring& pattern, const std::wstring& name)
 }
 }
 
-BOOL ECFileFind::FindFile(LPCTSTR pstrName, DWORD /*dwUnused*/)
+BOOL ECFileFind::FindFile(LPCTSTR pstrName, DWORD  )
 {
     std::filesystem::path spec = pstrName && *pstrName ? std::filesystem::path(pstrName) : std::filesystem::path(L"*");
     m_dir = spec.has_parent_path() ? spec.parent_path() : std::filesystem::path(L".");
     std::wstring pattern = spec.filename().wstring();
     if (pattern.empty()) pattern = L"*";
 
-    // Real MFC's GetRoot returns the search string with the file-name part
-    // stripped but the trailing path separator KEPT (e.g. "C:\dir\"). Derive
-    // it from the original spec rather than m_dir (whose parent_path() drops
-    // the separator).
     std::wstring specStr = spec.wstring();
     std::wstring fname = spec.filename().wstring();
     m_root = specStr.substr(0, specStr.size() - fname.size());
@@ -542,14 +425,9 @@ BOOL ECFileFind::IsDirectory() const
 }
 
 #ifdef _WIN32
-static BOOL HasFileAttribute(const std::filesystem::path& p, DWORD dwAttr); // defined below
+static BOOL HasFileAttribute(const std::filesystem::path& p, DWORD dwAttr);
 #endif
 
-// Timestamps. std::filesystem exposes only the modification time, and
-// only as a file_time_type whose epoch is unspecified before C++20's
-// clock_cast -- hence the now()-difference conversion below. Creation and
-// last-access times have no portable source at all, so they answer FALSE
-// rather than inventing a value (same rule as the attribute bits below).
 BOOL ECFileFind::GetLastWriteTime(ECTime& refTime) const
 {
     std::error_code ec;
@@ -562,23 +440,16 @@ BOOL ECFileFind::GetLastWriteTime(ECTime& refTime) const
     return TRUE;
 }
 
-// On Windows both of these have a real source (the same
-// WIN32_FILE_ATTRIBUTE_DATA the FILETIME overloads below read), and real
-// MFC answers TRUE for both. They returned a flat FALSE on every platform
-// until the conformance suite compared them: on Windows that was simply
-// wrong, not a portability limit.
 #ifdef _WIN32
 namespace
 {
-// A FILETIME is 100 ns ticks since 1601-01-01; a CTime is seconds since
-// 1970-01-01. 11644473600 is the gap between the two epochs.
 ECTime TimeFromFileTime(const FILETIME& ft)
 {
     const unsigned long long ticks =
         (static_cast<unsigned long long>(ft.dwHighDateTime) << 32) | ft.dwLowDateTime;
     return ECTime(static_cast<__time64_t>(ticks / 10000000ULL) - 11644473600LL);
 }
-} // namespace
+}
 
 BOOL ECFileFind::GetCreationTime(ECTime& refTime) const
 {
@@ -589,15 +460,9 @@ BOOL ECFileFind::GetCreationTime(ECTime& refTime) const
     return TRUE;
 }
 #else
-// POSIX has no portable creation ("birth") time: statx/STATX_BTIME exists
-// on recent Linux but is not answered by every filesystem, so reporting
-// failure is the honest answer rather than substituting another stamp.
-BOOL ECFileFind::GetCreationTime(ECTime& /*refTime*/) const { return FALSE; }
+BOOL ECFileFind::GetCreationTime(ECTime&  ) const { return FALSE; }
 #endif
 
-// The FILETIME forms. FILETIME is a Windows type, so off Windows these
-// have nothing to fill in and report failure, exactly like the creation/
-// access times above.
 #ifdef _WIN32
 BOOL ECFileFind::GetLastWriteTime(FILETIME* pTimeStamp) const
 {
@@ -644,9 +509,6 @@ BOOL ECFileFind::GetLastAccessTime(ECTime& refTime) const
     return TRUE;
 }
 #else
-// Unlike the creation time, the last-access time IS universally available
-// off Windows -- st_atime has been in stat(2) since the beginning. It is
-// only std::filesystem that does not surface it.
 BOOL ECFileFind::GetLastAccessTime(ECTime& refTime) const
 {
     struct stat st{};
@@ -684,9 +546,6 @@ BOOL ECFileFind::IsCompressed() const
 #endif
 }
 
-// The Windows file-attribute bits. std::filesystem models none of them,
-// so they are read from the real API where there is one and reported as
-// absent everywhere else.
 #ifdef _WIN32
 static BOOL HasFileAttribute(const std::filesystem::path& p, DWORD dwAttr)
 {
@@ -725,15 +584,9 @@ ULONGLONG ECFileFind::GetLength() const
     return ec ? 0 : sz;
 }
 
-// Real MFC's GetRoot returns the directory that is being searched (the
-// search string with the file-name/wildcard part stripped but the trailing
-// separator kept), NOT the filesystem root (C:\). Captured in FindFile.
 ECString ECFileFind::GetRoot() const { return ECString(m_root.c_str()); }
 
-// ---------------------------------------------------------------------
-// CArchive — see the class comment in afx.h for the wire-format notes.
-// ---------------------------------------------------------------------
-ECArchive::ECArchive(ECFile* pFile, UINT nMode, int /*nBufSize*/, void* /*lpBuf*/)
+ECArchive::ECArchive(ECFile* pFile, UINT nMode, int  , void*  )
     : m_pFile(pFile), m_nMode(nMode)
 {
 }
@@ -744,8 +597,6 @@ BOOL ECArchive::IsLoading() const { return (m_nMode & static_cast<UINT>(ECArchiv
 BOOL ECArchive::IsStoring() const { return IsLoading() ? FALSE : TRUE; }
 ECFile* ECArchive::GetFile() const { return m_pFile; }
 
-// Real MFC: "Close does not close the file; it flushes the archive's
-// buffer." The underlying CFile stays open and is the caller's to close.
 void ECArchive::Close() { Flush(); }
 void ECArchive::Flush() { if (m_pFile != nullptr) m_pFile->Flush(); }
 
@@ -758,17 +609,12 @@ template <class T>
 ECArchive& ArReadRaw(ECArchive& ar, T& v) { ar.Read(&v, sizeof(T)); return ar; }
 template <class T>
 ECArchive& ArWriteRaw(ECArchive& ar, T v) { ar.Write(&v, sizeof(T)); return ar; }
-} // namespace
+}
 
 ECArchive& ECArchive::operator>>(BYTE& by) { return ArReadRaw(*this, by); }
 ECArchive& ECArchive::operator>>(WORD& w) { return ArReadRaw(*this, w); }
 ECArchive& ECArchive::operator>>(int& i) { return ArReadRaw(*this, i); }
 ECArchive& ECArchive::operator>>(UINT& u) { return ArReadRaw(*this, u); }
-// MFC's archive slot for `long` is 32 bits wide, because on Windows `long`
-// IS 32 bits. Off Windows the C++ type is 64 bits, but the WIRE FORMAT is
-// not ours to redefine: a file written here has to be readable by a real
-// MFC build, and vice versa. So the slot stays 32 bits and the value is
-// narrowed/sign-extended across it, exactly as it would be on Windows.
 ECArchive& ECArchive::operator>>(long& l)
 {
 #ifdef _WIN32
@@ -776,7 +622,7 @@ ECArchive& ECArchive::operator>>(long& l)
 #else
     std::int32_t v = 0;
     Read(&v, sizeof(v));
-    l = v;                  // sign-extends, matching a 32-bit LONG load
+    l = v;
     return *this;
 #endif
 }
@@ -796,7 +642,7 @@ ECArchive& ECArchive::operator<<(long l)
 #ifdef _WIN32
     return ArWriteRaw(*this, l);
 #else
-    return ArWriteRaw(*this, static_cast<std::int32_t>(l));   // see operator>> above
+    return ArWriteRaw(*this, static_cast<std::int32_t>(l));
 #endif
 }
 #ifdef _WIN32
@@ -806,10 +652,6 @@ ECArchive& ECArchive::operator<<(float f) { return ArWriteRaw(*this, f); }
 ECArchive& ECArchive::operator<<(double d) { return ArWriteRaw(*this, d); }
 ECArchive& ECArchive::operator<<(ULONGLONG dwdw) { return ArWriteRaw(*this, dwdw); }
 
-// See the wire-format note on the CArchive class in afx.h: a 32-bit
-// length prefix followed by that many raw wchar_t, round-trip-correct
-// within simple_mfc but not a byte-exact match for real MFC's
-// CString::Serialize.
 ECArchive& ECArchive::operator>>(ECString& str)
 {
     UINT nLen = 0;

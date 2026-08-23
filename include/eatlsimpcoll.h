@@ -1,47 +1,15 @@
-// atlsimpcoll.h — CSimpleArray, ATL's lightweight vector. Real ATL
-// declares it in this header (atlbase.h only includes it), so it lives
-// here too.
-//
-// This one is a real implementation rather than a declaration-only stub:
-// ATL's own CSimpleArray is header-only inline code. It deliberately
-// keeps ATL's storage model -- a single malloc'd block in a public m_aT,
-// with m_nSize/m_nAllocSize beside it -- instead of hiding a std::vector,
-// because eMule/srchybrid reaches straight into it:
-//
-//   CKnownFile **ppRotated = (CKnownFile**)malloc(m_aFiles.m_nAllocSize * ...);
-//   ...
-//   m_aFiles.m_aT = ppRotated;          // SharedFileList.cpp
-//
-// which only works if the buffer really is one malloc'd block the array
-// owns. Interface checked against the Microsoft Learn CSimpleArray page:
-// GetData is const and returns a non-const T*, which is ATL's actual
-// shape, not an oversight. The page omits the const subscript operator,
-// but eMule indexes const arrays and compiles against real ATL, so that
-// one is real as well -- the page is incomplete.
-//
-// eMule uses Add / GetSize / GetData / RemoveAll / RemoveAt / Remove /
-// Find / operator[], across 29 files -- and only those are declared here
-// (the subset discipline the rest of simple_mfc follows). Real ATL's
-// CSimpleArray also has SetAtIndex; eMule never calls it (0 sites), so it
-// is intentionally not reproduced.
 #pragma once
 
-#include "eafx.h" // BOOL/TRUE/FALSE
+#include "eafx.h"
 
 #include <cstdlib>
 #include <cstring>
 #include <new>
 
-// The optional second template parameter mirrors ATL's TEqual policy slot
-// but is unused here: Find/Remove use operator== directly, which is only
-// instantiated for element types actually searched (so struct element
-// types that never call Find need no operator==, matching real ATL
-// template behaviour).
 template <class T, class TEqual = void>
 class ECSimpleArray
 {
 public:
-    // All three are public in real ATL, and eMule assigns m_aT directly.
     T* m_aT;
     int m_nSize;
     int m_nAllocSize;
@@ -77,7 +45,6 @@ public:
     {
         if (m_nSize == m_nAllocSize && !Grow(m_nAllocSize == 0 ? 4 : m_nAllocSize * 2))
             return FALSE;
-        // Placement new: the block is raw malloc'd memory.
         ::new (static_cast<void*>(m_aT + m_nSize)) T(t);
         ++m_nSize;
         return TRUE;
@@ -120,8 +87,6 @@ public:
     }
 
 private:
-    // realloc, as real ATL does: that is what makes m_aT a block the
-    // caller can swap for one of its own.
     BOOL Grow(int nNewAllocSize)
     {
         if (nNewAllocSize <= m_nAllocSize)

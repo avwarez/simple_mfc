@@ -1,18 +1,5 @@
-// afxcoll.h — NATIVE implementation (standard C++17 library only).
-// "Concrete" MFC collections, reimplemented on top of std::list/std::vector.
-//
-// Note on POSITION: here it is an opaque pointer to a heap-allocated
-// std::list iterator (a "box"), consistent with normal MFC usage
-// (GetHeadPosition -> GetNext loop until POSITION is null). If an
-// iteration is interrupted before reaching the end, the leftover box is
-// not freed (a known limitation, documented in ../README.md: real MFC
-// manages nodes through a block allocator (CPlex) freed when the list is
-// destroyed; here, to stay on standard library only without reinventing
-// an allocator, this practical limitation is accepted).
 #pragma once
 
-// Real MFC's sentinel POSITION meaning "before the first element", used
-// by CListCtrl/CMap walkers to distinguish "not started" from "at end".
 #ifndef EBEFORE_START_POSITION
 #define EBEFORE_START_POSITION ((EPOSITION)-1L)
 #endif
@@ -20,23 +7,13 @@
 #include "eafx.h"
 
 #include <list>
-#include <memory>        // std::unique_ptr, the CMapStringTo* PLookup scratch
+#include <memory>
 #include <type_traits>
-#include <unordered_map> // CMapPtrToPtr, CMapStringTo*
+#include <unordered_map>
 #include <vector>
 
-using EPOSITION = void*; // not a real Win32/SDK type, safe to always define
+using EPOSITION = void*;
 
-// INT_PTR is a real basetsd.h typedef on Windows; guarded the same way as
-// afxwin.h's copy of this same alias (see there for why: eMule/srchybrid
-// also includes real Win32 headers directly, which define this too).
-//
-// Off Windows it has to be POINTER-SIZED, which is what basetsd.h makes it
-// (`int` on Win32, `__int64` on Win64) and what its name says. A flat
-// `long long` happens to be the right width on LP64, and is the wrong one
-// on any 32-bit target -- 64 bits for an index into a container that
-// cannot hold more than 2^31 elements, and a type that no longer matches
-// real MFC's on the one configuration where the difference is observable.
 #ifdef _WIN32
 #include <windows.h>
 #else
@@ -80,8 +57,6 @@ public:
         return ref;
     }
     T& GetAt(EPOSITION position) { return **static_cast<Iter*>(position); }
-    // const traversal overloads (real MFC has them): they advance the caller's
-    // POSITION (which is external state) but never mutate the list itself.
     const T& GetNext(EPOSITION& rPosition) const
     {
         auto* box = static_cast<Iter*>(rPosition);
@@ -146,11 +121,6 @@ private:
 template <class T>
 class ArrayImpl
 {
-    // std::vector<bool> is the packed-bit specialisation: its at()/[] hand
-    // back a proxy object, not a T&, so ElementAt/GetData/operator[] could
-    // not compile for a CArray<bool>. Storing bool as unsigned char keeps
-    // one real, addressable object per element, which is what real MFC's
-    // CArray does anyway.
     using StoredT = std::conditional_t<std::is_same<T, bool>::value, unsigned char, T>;
     static T& AsT(StoredT& v) noexcept { return reinterpret_cast<T&>(v); }
     static const T& AsT(const StoredT& v) noexcept { return reinterpret_cast<const T&>(v); }
@@ -159,8 +129,6 @@ public:
     INT_PTR Add(T v) { m_v.push_back(std::move(v)); return static_cast<INT_PTR>(m_v.size()) - 1; }
     INT_PTR Append(const ArrayImpl& src)
     {
-        // Real MFC returns the index of the FIRST appended element (i.e. the
-        // old size), not the new total size.
         INT_PTR oldSize = static_cast<INT_PTR>(m_v.size());
         m_v.insert(m_v.end(), src.m_v.begin(), src.m_v.end());
         return oldSize;
@@ -188,17 +156,14 @@ public:
         if (static_cast<size_t>(i) >= m_v.size()) m_v.resize(static_cast<size_t>(i) + 1);
         m_v[static_cast<size_t>(i)] = std::move(v);
     }
-    void SetSize(INT_PTR nNewSize, INT_PTR /*nGrowBy*/ = -1) { m_v.resize(static_cast<size_t>(nNewSize)); }
+    void SetSize(INT_PTR nNewSize, INT_PTR   = -1) { m_v.resize(static_cast<size_t>(nNewSize)); }
 
 private:
     std::vector<StoredT> m_v;
 };
 
-} // namespace mfc_detail
+}
 
-// ---------------------------------------------------------------------
-// CObList / CPtrList / CStringList
-// ---------------------------------------------------------------------
 class ECObList : public ECObject
 {
     EDECLARE_DYNAMIC(ECObList)
@@ -267,15 +232,6 @@ private:
     mfc_detail::ListImpl<void*> m_impl;
 };
 
-// ---------------------------------------------------------------------
-// CMapPtrToPtr — the concrete pointer-keyed map (header afxcoll.h, as
-// its CObList/CPtrList siblings above). Reached through eMule's own
-// _AFX_SOCK_THREAD_STATE shim (AsyncSocketEx.h defines
-// "#define _AFX_SOCK_THREAD_STATE AFX_MODULE_THREAD_STATE"), whose
-// socket-handle maps it allocates directly: "pThreadState->
-// m_pmapSocketHandle = new CMapPtrToPtr;" (Emule.cpp:386,388).
-// std::unordered_map with the identity hash real MFC uses for pointers.
-// ---------------------------------------------------------------------
 class ECMapPtrToPtr : public ECObject
 {
     EDECLARE_DYNAMIC(ECMapPtrToPtr)
@@ -294,9 +250,6 @@ public:
     BOOL RemoveKey(void* key) { return m_map.erase(key) != 0 ? TRUE : FALSE; }
     void RemoveAll() { m_map.clear(); }
 
-    // MFC's map walk: GetStartPosition hands out an opaque cursor that
-    // GetNextAssoc advances. Same box-an-iterator convention as the lists
-    // above (see the POSITION note at the top of this header).
     EPOSITION GetStartPosition() const
     {
         return m_map.empty() ? nullptr : new Iter(m_map.begin());
@@ -318,17 +271,6 @@ private:
     Map m_map;
 };
 
-// ---------------------------------------------------------------------
-// CMapStringToPtr / CMapStringToString (header afxcoll.h, as in real MFC,
-// where these are standalone classes -- NOT the afxtempl.h CMap template).
-// They cannot derive from CMap here because afxtempl.h #includes THIS
-// header (so the reverse include would be a cycle), which is precisely why
-// real MFC keeps the string-keyed maps self-contained in afxcoll.h. The
-// shared body below is the same std::unordered_map wrapper CMap uses,
-// specialised to a CString key with real MFC's own content-based string
-// hash (equal strings share a bucket regardless of buffer identity -- see
-// the HashKey<LPCTSTR> note in afxtempl.h).
-// ---------------------------------------------------------------------
 namespace mfc_detail
 {
 struct CStringContentHash
@@ -356,7 +298,7 @@ public:
         VALUE value;
     };
 
-    explicit CStringKeyMapImpl(INT_PTR /*nBlockSize*/ = 10) {}
+    explicit CStringKeyMapImpl(INT_PTR   = 10) {}
 
     BOOL Lookup(LPCTSTR key, VALUE& rValue) const
     {
@@ -414,13 +356,8 @@ private:
     MapT m_map;
     mutable std::unique_ptr<ECPair> m_scratch;
 };
-} // namespace mfc_detail
+}
 
-// The block-size constructor is inherited explicitly rather than left to
-// the compiler: a base class's constructors are NOT part of a derived
-// class's interface by default, so without this `CMapStringToPtr m(17)`
-// -- which real MFC accepts -- would not compile. Found by the
-// conformance suite when it went to full method coverage.
 class ECMapStringToPtr : public mfc_detail::CStringKeyMapImpl<void*, void*>
 {
 public:
@@ -455,9 +392,6 @@ public:
     EPOSITION InsertBefore(EPOSITION position, const ECString& e) { return m_impl.InsertBefore(position, e); }
     EPOSITION InsertAfter(EPOSITION position, const ECString& e) { return m_impl.InsertAfter(position, e); }
     EPOSITION GetTailPosition() const { return m_impl.GetTailPosition(); }
-    // Appends another whole list, the overload real MFC's list classes all
-    // carry alongside the single-element one. Defined inline: afxcoll.h is
-    // a real implementation, not a declaration-only stub.
     void AddTail(ECStringList* pNewList)
     {
         if (pNewList == nullptr) return;
@@ -482,9 +416,6 @@ private:
     mfc_detail::ListImpl<ECString> m_impl;
 };
 
-// ---------------------------------------------------------------------
-// CPtrArray / CStringArray / CByteArray / CUIntArray
-// ---------------------------------------------------------------------
 class ECPtrArray : public ECObject
 {
     EDECLARE_DYNAMIC(ECPtrArray)
@@ -540,8 +471,6 @@ private:
     mfc_detail::ArrayImpl<ECString> m_impl;
 };
 
-// Numeric arrays. Real MFC generates these from the same CArray template, so
-// they share the full array surface (Add/operator[]/ElementAt/SetAtGrow/...).
 #define SIMPLE_MFC_DECLARE_NUM_ARRAY(ClassName, ElemType)                        \
 class ClassName : public ECObject                                                 \
 {                                                                               \

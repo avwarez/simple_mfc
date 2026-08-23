@@ -1,11 +1,3 @@
-// afxmt.h — NATIVE implementation (standard C++17 library only).
-// Multithread synchronization on top of <mutex>/<condition_variable>.
-//
-// Known limitation: in real MFC, CMutex supports "named" mutexes shared
-// across processes (a Win32 kernel object) via lpszName — this is
-// inherently operating-system specific and cannot be expressed with the
-// standard C++ library alone. Here lpszName is accepted but ignored:
-// CMutex only works as an in-process mutex.
 #pragma once
 
 #include "eafx.h"
@@ -13,51 +5,26 @@
 #include <condition_variable>
 #include <mutex>
 
-// ---------------------------------------------------------------------
-// CSyncObject — abstract base for synchronization objects.
-// ---------------------------------------------------------------------
 class ECSyncObject : public ECObject
 {
     EDECLARE_DYNAMIC(ECSyncObject)
 public:
     virtual BOOL Lock(DWORD dwTimeout = 0xFFFFFFFF) = 0;
     virtual BOOL Unlock() = 0;
-    // Real MFC exposes the underlying Win32 handle by implicit conversion
-    // (used e.g. by eMule's UploadBandwidthThrottler::GetSocketAvailableEvent,
-    // which returns a CEvent where a HANDLE is expected). There is no real
-    // OS handle here, but the kernel-object subclasses (CEvent, CMutex)
-    // still fill this with a unique non-null token, because real MFC's is
-    // never null for them and a caller may well test it. CCriticalSection
-    // leaves it null -- so does real MFC, a critical section not being a
-    // kernel object.
     HANDLE m_hObject = nullptr;
     operator HANDLE() const { return m_hObject; }
 };
 
-// ---------------------------------------------------------------------
-// CCriticalSection — on top of std::recursive_mutex (reentrant, like the
-// real Win32 critical section).
-// ---------------------------------------------------------------------
 class ECCriticalSection : public ECSyncObject
 {
     EDECLARE_DYNAMIC(ECCriticalSection)
 public:
-    // Lock() with no arguments remains available thanks to the default of
-    // CSyncObject::Lock(DWORD dwTimeout = 0xFFFFFFFF): no separate overload
-    // is needed (in real MFC, CCriticalSection::Lock()/Lock(DWORD) are
-    // instead two distinct overloads on top of a parameterless
-    // CSyncObject::Lock() — unified here so it can go through the same
-    // abstract polymorphic interface also used by CEvent/CMutex).
     BOOL Lock(DWORD dwTimeout = 0xFFFFFFFF) override;
     BOOL Unlock() override { m_sect.unlock(); return TRUE; }
 
     std::recursive_timed_mutex m_sect;
 };
 
-// ---------------------------------------------------------------------
-// CEvent — on top of std::condition_variable + a flag, with
-// manual-reset/auto-reset semantics equivalent to the Win32 ones.
-// ---------------------------------------------------------------------
 class ECEvent : public ECSyncObject
 {
     EDECLARE_DYNAMIC(ECEvent)
@@ -66,7 +33,7 @@ public:
                      LPCTSTR lpszName = nullptr, void* lpsaAttribute = nullptr);
 
     BOOL Lock(DWORD dwTimeout = 0xFFFFFFFF) override;
-    BOOL Unlock() override { return TRUE; } // CEvent has no real "unlock" in real MFC
+    BOOL Unlock() override { return TRUE; }
     BOOL SetEvent();
     BOOL PulseEvent();
     BOOL ResetEvent();
@@ -78,10 +45,6 @@ private:
     std::condition_variable m_cv;
 };
 
-// ---------------------------------------------------------------------
-// CMutex — on top of std::recursive_mutex, in-process only (see the note
-// at the top of this file for the "named" cross-process mutex limitation).
-// ---------------------------------------------------------------------
 class ECMutex : public ECSyncObject
 {
     EDECLARE_DYNAMIC(ECMutex)
@@ -95,10 +58,6 @@ private:
     std::recursive_timed_mutex m_mutex;
 };
 
-// ---------------------------------------------------------------------
-// CSingleLock — "manual" RAII (explicit Lock/Unlock, not in the
-// constructor) on a CSyncObject, same as real MFC.
-// ---------------------------------------------------------------------
 class ECSingleLock
 {
 public:
@@ -119,7 +78,7 @@ public:
         m_locked = FALSE;
         return ok;
     }
-    BOOL Unlock(LONG /*lCount*/, LONG* lPrevCount = nullptr)
+    BOOL Unlock(LONG  , LONG* lPrevCount = nullptr)
     {
         if (lPrevCount) *lPrevCount = 1;
         return Unlock();

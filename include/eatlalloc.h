@@ -1,13 +1,3 @@
-// atlalloc.h — NATIVE implementation (standard C++17 library only).
-// CTempBuffer, ATL's "small on the stack, large on the heap" scratch
-// buffer. eMule/srchybrid uses it in MediaInfo.cpp to receive variable
-// length attribute data from the Windows Media header interfaces:
-// declared empty, sized with Allocate(), then indexed.
-//
-// Real ATL takes the stack-allocation threshold as a second template
-// parameter with a default, which is why eMule can write CTempBuffer<WORD>
-// with one argument. A template, so (like afxtempl.h) it is necessarily
-// header-only -- there is no fixed set of T's to instantiate in a .cpp.
 #pragma once
 #include "eafx.h"
 
@@ -30,9 +20,6 @@ public:
     }
     T* AllocateBytes(size_t nBytes) { return Allocate(nBytes / sizeof(T)); }
 
-    // Grows or shrinks in place, preserving as much of the existing
-    // content as still fits -- real ATL's Reallocate has the same
-    // preserve-on-resize contract.
     T* Reallocate(size_t nElements)
     {
         size_t nBytes = nElements * sizeof(T);
@@ -59,18 +46,11 @@ public:
         return m_p;
     }
 
-
     operator T*() const noexcept { return m_p; }
     T& operator[](size_t iElement) noexcept { return m_p[iElement]; }
     const T& operator[](size_t iElement) const noexcept { return m_p[iElement]; }
 
 private:
-    // Real ATL's CTempBuffer has no Free(): it releases in its destructor
-    // and nowhere else, which is why the conformance suite could never
-    // compare ours ("error C2039: 'Free': is not a member of
-    // ATL::CTempBuffer"). eMule never called it either. Kept as a private
-    // helper because the destructor and Allocate both need the same three
-    // lines -- it is simply no longer part of the interface.
     void Release() noexcept
     {
         if (m_p != nullptr && m_p != FixedPtr())

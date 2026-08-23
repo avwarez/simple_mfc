@@ -1,6 +1,3 @@
-// atlenc.cpp — Base64Encode/Base64EncodeGetRequiredLength. Textbook
-// Base64 (RFC 4648), pure integer/byte arithmetic, no platform
-// dependency.
 #include "eatlenc.h"
 
 namespace
@@ -8,9 +5,8 @@ namespace
 constexpr char kBase64Chars[] =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-// Groups of 4 output characters per 76-column MIME line (76 / 4 = 19).
 constexpr int kGroupsPerLine = 19;
-} // namespace
+}
 
 int EBase64EncodeGetRequiredLength(int nSrcLen, DWORD dwFlags) noexcept
 {
@@ -57,7 +53,7 @@ BOOL EBase64Encode(const BYTE* pbSrcData, int nSrcLen, LPSTR szDest,
         unsigned int b0 = pbSrcData[i];
         unsigned int b1 = (i + 1 < nSrcLen) ? pbSrcData[i + 1] : 0;
         unsigned int b2 = (i + 2 < nSrcLen) ? pbSrcData[i + 2] : 0;
-        int nAvail = nSrcLen - i; // 1, 2, or >=3 bytes left in this group
+        int nAvail = nSrcLen - i;
 
         szDest[nOut++] = kBase64Chars[(b0 >> 2) & 0x3F];
         szDest[nOut++] = kBase64Chars[((b0 << 4) | (b1 >> 4)) & 0x3F];
