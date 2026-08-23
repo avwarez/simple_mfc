@@ -21,11 +21,11 @@ class ECTempBuffer
 public:
     ECTempBuffer() noexcept : m_p(nullptr), m_nElements(0) {}
     explicit ECTempBuffer(size_t nElements) : m_p(nullptr), m_nElements(0) { Allocate(nElements); }
-    ~ECTempBuffer() noexcept { Free(); }
+    ~ECTempBuffer() noexcept { Release(); }
 
     T* Allocate(size_t nElements)
     {
-        Free();
+        Release();
         return Reallocate(nElements);
     }
     T* AllocateBytes(size_t nBytes) { return Allocate(nBytes / sizeof(T)); }
@@ -59,7 +59,19 @@ public:
         return m_p;
     }
 
-    void Free() noexcept
+
+    operator T*() const noexcept { return m_p; }
+    T& operator[](size_t iElement) noexcept { return m_p[iElement]; }
+    const T& operator[](size_t iElement) const noexcept { return m_p[iElement]; }
+
+private:
+    // Real ATL's CTempBuffer has no Free(): it releases in its destructor
+    // and nowhere else, which is why the conformance suite could never
+    // compare ours ("error C2039: 'Free': is not a member of
+    // ATL::CTempBuffer"). eMule never called it either. Kept as a private
+    // helper because the destructor and Allocate both need the same three
+    // lines -- it is simply no longer part of the interface.
+    void Release() noexcept
     {
         if (m_p != nullptr && m_p != FixedPtr())
             std::free(m_p);
@@ -67,11 +79,6 @@ public:
         m_nElements = 0;
     }
 
-    operator T*() const noexcept { return m_p; }
-    T& operator[](size_t iElement) noexcept { return m_p[iElement]; }
-    const T& operator[](size_t iElement) const noexcept { return m_p[iElement]; }
-
-private:
     T* FixedPtr() noexcept { return reinterpret_cast<T*>(m_fixed); }
 
     alignas(T) unsigned char m_fixed[t_nFixedBytes > 0 ? static_cast<size_t>(t_nFixedBytes) : 1];

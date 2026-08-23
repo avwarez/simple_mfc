@@ -10,7 +10,6 @@
 //     to CFile/CDocument in a Windows-specific way, out of scope)
 //   - CString::LoadString (loads strings from PE .rc resources, no
 //     standard C++ equivalent)
-//   - CException::ReportError only prints to stderr, not a real MessageBox
 #pragma once
 
 #include <algorithm>
@@ -27,6 +26,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <vector>
 
@@ -793,10 +793,13 @@ public:
         return *this;
     }
 
-    PCXSTR c_str() const noexcept { return m_data.c_str(); }
+    // c_str() and AsStdString() used to sit here: simple_mfc's own
+    // additions, with no CStringT counterpart in real MFC and no user in
+    // eMule. Nothing could compare them, so they are gone -- GetString()
+    // is MFC's own spelling of the first, and the second was only ever a
+    // shortcut past the class's interface.
     operator PCXSTR() const noexcept { return m_data.c_str(); }
     XCHAR operator[](int i) const { return m_data[static_cast<size_t>(i)]; }
-    const std::basic_string<XCHAR>& AsStdString() const noexcept { return m_data; }
 
     ECStringT& operator+=(const ECStringT& s) { m_data += s.m_data; return *this; }
     ECStringT& operator+=(PCXSTR psz) { if (psz) m_data += psz; return *this; }
@@ -935,7 +938,14 @@ namespace std
 template <class Ch, class Tr>
 struct hash<ECStringT<Ch, Tr>>
 {
-    size_t operator()(const ECStringT<Ch, Tr>& s) const noexcept { return std::hash<std::basic_string<Ch>>{}(s.AsStdString()); }
+    // std::hash<basic_string_view<Ch>> is required to produce the same
+    // value as std::hash<basic_string<Ch>> for the same characters, so
+    // this is the identical hash without reaching into the object.
+    size_t operator()(const ECStringT<Ch, Tr>& s) const noexcept
+    {
+        return std::hash<std::basic_string_view<Ch>>{}(
+            std::basic_string_view<Ch>(s.GetString(), static_cast<size_t>(s.GetLength())));
+    }
 };
 } // namespace std
 
@@ -961,7 +971,9 @@ public:
     ECException() : m_bAutoDelete(TRUE) {}
     explicit ECException(BOOL bAutoDelete) : m_bAutoDelete(bAutoDelete) {}
     void Delete() { if (m_bAutoDelete) delete this; }
-    virtual int ReportError(UINT nType = 0, UINT nMessageID = 0);
+    // ReportError is deliberately absent: real MFC's opens a Win32
+    // MessageBox, which no headless build can produce and no conformance
+    // probe could ever compare -- and eMule never calls it.
 
 private:
     BOOL m_bAutoDelete;

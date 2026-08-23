@@ -114,16 +114,6 @@ ECObject* EAfxDynamicDownCast(ECRuntimeClass* pClass, ECObject* pObject)
 // ---------------------------------------------------------------------
 // CException
 // ---------------------------------------------------------------------
-int ECException::ReportError(UINT /*nType*/, UINT /*nMessageID*/)
-{
-    // Real MFC opens a MessageBox (Win32). Here, with no GUI available,
-    // we print to stderr: an equivalent "headless" behavior.
-    wchar_t buf[512]{};
-    GetErrorMessage(buf, 512);
-    std::fwprintf(stderr, L"[CException] %ls\n", buf[0] ? buf : L"(no message)");
-    return 0;
-}
-
 // Declared virtual on the base, as real MFC does -- eMule calls it
 // through a plain "const CException&" (OtherFunctions.cpp:1793), which
 // only compiles if the base has it. (An earlier note here claimed the
@@ -186,7 +176,7 @@ BOOL ECFileException::GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pn
     if (!m_strFileName.IsEmpty())
     {
         msg += L" (";
-        msg += m_strFileName.AsStdString();
+        msg += m_strFileName.GetString();
         msg += L")";
     }
     size_t n = std::min<size_t>(nMaxError - 1, msg.size());

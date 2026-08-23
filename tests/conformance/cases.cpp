@@ -523,10 +523,7 @@ static void TestExceptions()
 
     // AfxThrowFileException / AfxThrowMemoryException: throw by pointer,
     // caught the same way real MFC code does (catch (CFileException* e),
-    // then e->Delete()). CException::ReportError() is intentionally NOT
-    // exercised: on the real-MFC side it opens a genuine Win32 MessageBox,
-    // which would hang a non-interactive CI runner waiting for a dismissal
-    // that never comes.
+    // then e->Delete()).
     try
     {
         AfxThrowFileException(CFileException::diskFull, ERROR_DISK_FULL, L"y.dat");
@@ -2718,18 +2715,16 @@ static void TestCAsyncSocket()
 //   * CObject::AssertValid / CObject::Dump and the whole of CDumpContext:
 //     real MFC declares them under #ifdef _DEBUG only. They do not exist
 //     as members in the Release configuration this suite builds.
-//   * CException::ReportError: on real MFC it opens a Win32 MessageBox,
-//     which would hang a non-interactive runner forever.
 //   * CWinThread::Run: real MFC's implementation IS the message pump --
-//     it returns only on WM_QUIT, so calling it deadlocks the probe.
+//     it returns only on WM_QUIT, so calling it deadlocks the probe. It is
+//     the ONE remaining member of this branch that this suite does not
+//     compare, and it stays because eMule overrides it in eight thread
+//     classes.
 //   * CAsyncSocket's OnReceive/OnSend/OnAccept/OnConnect/OnClose/
 //     OnOutOfBandData as *notifications*: real MFC delivers them through
 //     WSAAsyncSelect and a hidden window, i.e. only to a thread running a
 //     message pump. Their default implementations are still called
 //     directly and compared below -- that part is comparable.
-//   * CString::c_str / CString::AsStdString: simple_mfc's own additions.
-//     Real MFC has no such members, so there is nothing to compare
-//     against; emitting a native-only case would be reported as EXTRA.
 // =====================================================================
 
 // ---------------------------------------------------------------------
@@ -3516,8 +3511,8 @@ static void TestCAsyncSocketDatagram()
 
 // ---------------------------------------------------------------------
 // The remaining one-off members: CMemFile::GrowFile, CArchive::GetFile,
-// CTempBuffer::Free, CTime::GetLocalTm, the sized map constructors, the
-// HashKey overloads, and AfxSocketTerm.
+// CTime::GetLocalTm, the sized map constructors, the HashKey overloads,
+// and AfxSocketTerm.
 // ---------------------------------------------------------------------
 namespace
 {
@@ -3572,14 +3567,6 @@ static void TestRemainingGaps()
         ar.Close();
         backing.Close();
     }
-
-    // --- CTempBuffer::Free -------------------------------------------------
-    // NOT compared, and the Windows job is what established why: real
-    // ATL's CTempBuffer has no Free() at all -- it frees in its destructor
-    // and nowhere else ("error C2039: 'Free': is not a member of
-    // ATL::CTempBuffer<int,128,ATL::CCRTAllocator>"). Free() is a
-    // simple_mfc addition, so there is no counterpart to compare it
-    // against; it is still exercised on every destruction above.
 
     // --- CTime::GetLocalTm --------------------------------------------------
     // A fixed instant, so every field is a compared constant rather than
