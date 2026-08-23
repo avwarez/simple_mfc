@@ -3341,6 +3341,24 @@ static void TestCWinThreadLifecycle()
 // CAsyncSocket: the datagram surface (Bind / SendTo / both ReceiveFrom
 // overloads), AsyncSelect, and the default notification handlers.
 // ---------------------------------------------------------------------
+namespace
+{
+// The On* notifications are protected on CAsyncSocket -- in real MFC and,
+// since the conformance suite found the difference, here too. A derived
+// class is the only place they can be called from, which is exactly how a
+// consumer reaches them.
+class NotificationProbe : public CAsyncSocket
+{
+public:
+    void CallOnReceive(int e) { OnReceive(e); }
+    void CallOnSend(int e) { OnSend(e); }
+    void CallOnAccept(int e) { OnAccept(e); }
+    void CallOnConnect(int e) { OnConnect(e); }
+    void CallOnClose(int e) { OnClose(e); }
+    void CallOnOutOfBandData(int e) { OnOutOfBandData(e); }
+};
+} // namespace
+
 static void TestCAsyncSocketDatagram()
 {
     LineBool("AfxSocketInit.before_datagram", AfxSocketInit(nullptr) != FALSE);
@@ -3433,29 +3451,33 @@ static void TestCAsyncSocketDatagram()
         }
     }
 
-    // The default notification handlers. Real MFC's are empty virtuals and
-    // so are this branch's; calling each one directly compares that -- it
-    // must return, change nothing observable, and accept any error code.
+    // The default notification handlers. They are PROTECTED -- the library
+    // calls them, a caller does not -- so the only way to reach them is the
+    // way a consumer would: from a derived class. Real MFC's defaults are
+    // empty virtuals and so are this branch's; what is compared is that
+    // each returns, accepts any error code, and leaves the socket alone.
     {
+        NotificationProbe probe;
         const int codes[] = {0, 10035 /*WSAEWOULDBLOCK*/, -1};
         for (int code : codes)
         {
             const std::string suffix = "." + std::to_string(code);
-            receiver.OnReceive(code);
+            probe.CallOnReceive(code);
             LineBool(("CAsyncSocket.OnReceive.default_returns" + suffix).c_str(), true);
-            receiver.OnSend(code);
+            probe.CallOnSend(code);
             LineBool(("CAsyncSocket.OnSend.default_returns" + suffix).c_str(), true);
-            receiver.OnAccept(code);
+            probe.CallOnAccept(code);
             LineBool(("CAsyncSocket.OnAccept.default_returns" + suffix).c_str(), true);
-            receiver.OnConnect(code);
+            probe.CallOnConnect(code);
             LineBool(("CAsyncSocket.OnConnect.default_returns" + suffix).c_str(), true);
-            receiver.OnClose(code);
+            probe.CallOnClose(code);
             LineBool(("CAsyncSocket.OnClose.default_returns" + suffix).c_str(), true);
-            receiver.OnOutOfBandData(code);
+            probe.CallOnOutOfBandData(code);
             LineBool(("CAsyncSocket.OnOutOfBandData.default_returns" + suffix).c_str(), true);
         }
-        // Nothing the handlers did may have disturbed the socket.
-        LineBool("CAsyncSocket.On_handlers.socket_still_valid",
+        LineBool("CAsyncSocket.On_handlers.left_socket_untouched",
+                 probe.m_hSocket == INVALID_SOCKET);
+        LineBool("CAsyncSocket.On_handlers.receiver_still_valid",
                  receiver.m_hSocket != INVALID_SOCKET);
     }
 
@@ -3523,24 +3545,12 @@ static void TestRemainingGaps()
     }
 
     // --- CTempBuffer::Free -------------------------------------------------
-    // Free releases whatever Allocate took, and the buffer is reusable
-    // afterwards -- across sizes that straddle the on-stack fixed block.
-    {
-        const size_t counts[] = {1, 16, 512, 4096};
-        for (size_t n : counts)
-        {
-            CTempBuffer<int> buf;
-            int* p = buf.Allocate(n);
-            LineBool(("CTempBuffer.Free." + std::to_string(n) + ".allocated").c_str(), p != nullptr);
-            if (p) for (size_t i = 0; i < n; ++i) p[i] = static_cast<int>(i);
-            LineInt(("CTempBuffer.Free." + std::to_string(n) + ".last_element").c_str(),
-                    p ? p[n - 1] : -1);
-            buf.Free();
-            int* again = buf.Allocate(n);
-            LineBool(("CTempBuffer.Free." + std::to_string(n) + ".reusable_after_free").c_str(),
-                     again != nullptr);
-        }
-    }
+    // NOT compared, and the Windows job is what established why: real
+    // ATL's CTempBuffer has no Free() at all -- it frees in its destructor
+    // and nowhere else ("error C2039: 'Free': is not a member of
+    // ATL::CTempBuffer<int,128,ATL::CCRTAllocator>"). Free() is a
+    // simple_mfc addition, so there is no counterpart to compare it
+    // against; it is still exercised on every destruction above.
 
     // --- CTime::GetLocalTm --------------------------------------------------
     // A fixed instant, so every field is a compared constant rather than

@@ -25,13 +25,37 @@ EIMPLEMENT_DYNAMIC(ECFileFind, ECObject)
 // ---------------------------------------------------------------------
 // CDumpContext / CObject::Dump
 // ---------------------------------------------------------------------
-ECDumpContext& ECDumpContext::operator<<(const char* lpsz) { if (lpsz) m_os << lpsz; return *this; }
+// Each numeric overload goes through the SAME printf conversion real MFC
+// uses (%d / %u / %ld / %f), not through the stream's default formatting.
+// The two are not interchangeable: an iostream renders 1.5 as "1.5" where
+// "%f" renders it as "1.500000", and a dump is read as text.
+namespace
+{
+template <class T>
+std::wstring DumpFormat(const wchar_t* conversion, T value)
+{
+    wchar_t buf[64];
+    const int n = std::swprintf(buf, sizeof buf / sizeof buf[0], conversion, value);
+    return n > 0 ? std::wstring(buf, static_cast<size_t>(n)) : std::wstring();
+}
+} // namespace
+
+// Inserting a `const char*` into a wide stream does NOT write the text --
+// it selects the pointer overload and writes an address. That is what this
+// did, and since CObject::Dump below feeds it m_lpszClassName (a narrow
+// literal), EVERY default Dump printed a hexadecimal address where the
+// class name belonged. Widen explicitly, as real MFC's LPCSTR overload does.
+ECDumpContext& ECDumpContext::operator<<(const char* lpsz)
+{
+    if (lpsz) m_os << mfc_detail::Widen(lpsz, std::strlen(lpsz));
+    return *this;
+}
 ECDumpContext& ECDumpContext::operator<<(LPCTSTR lpsz) { if (lpsz) m_os << lpsz; return *this; }
 ECDumpContext& ECDumpContext::operator<<(const ECObject* pOb) { if (pOb) pOb->Dump(*this); else m_os << L"(null)"; return *this; }
-ECDumpContext& ECDumpContext::operator<<(int n) { m_os << n; return *this; }
-ECDumpContext& ECDumpContext::operator<<(unsigned int u) { m_os << u; return *this; }
-ECDumpContext& ECDumpContext::operator<<(long l) { m_os << l; return *this; }
-ECDumpContext& ECDumpContext::operator<<(double d) { m_os << d; return *this; }
+ECDumpContext& ECDumpContext::operator<<(int n) { m_os << DumpFormat(L"%d", n); return *this; }
+ECDumpContext& ECDumpContext::operator<<(unsigned int u) { m_os << DumpFormat(L"%u", u); return *this; }
+ECDumpContext& ECDumpContext::operator<<(long l) { m_os << DumpFormat(L"%ld", l); return *this; }
+ECDumpContext& ECDumpContext::operator<<(double d) { m_os << DumpFormat(L"%f", d); return *this; }
 ECDumpContext& ECDumpContext::operator<<(const void* lp) { m_os << lp; return *this; }
 
 void ECObject::Dump(ECDumpContext& dc) const

@@ -140,10 +140,28 @@ DWORD ECWinThread::ResumeThread()
 
 DWORD ECWinThread::SuspendThread()
 {
-    // Documented no-op: arbitrary mid-run suspension has no portable
-    // equivalent; the create-suspended path (the only one eMule relies on)
-    // is handled by the gate in CreateThread/ResumeThread.
-    return 0;
+    if (m_pImpl == nullptr)
+        return 0;
+
+    unsigned long previous;
+    {
+        std::lock_guard<std::mutex> lk(m_pImpl->m);
+        previous = m_pImpl->suspendCount;
+        ++m_pImpl->suspendCount;
+        m_pImpl->resumed = false;
+    }
+    // Win32 returns the count as it was BEFORE this call, and the counts
+    // nest: a thread created suspended is at 1, so suspending it again
+    // reports 1 and it then takes two resumes to release. That bookkeeping
+    // is honoured exactly here, and for a thread still waiting on the
+    // create-suspended gate below it is also *enforced* -- the gate stays
+    // shut until the count returns to zero.
+    //
+    // What remains a documented deviation is suspending a thread that is
+    // already running: std::thread has no portable way to freeze one
+    // mid-execution, so the count moves but the thread does not stop. The
+    // create-suspended path is the only one eMule uses.
+    return previous;
 }
 
 BOOL ECWinThread::SetThreadPriority(int nPriority)

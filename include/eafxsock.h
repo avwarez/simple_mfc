@@ -145,6 +145,13 @@ public:
     // --- async notification callbacks (override in a derived class) -------
     // Real MFC declares these virtual on CAsyncSocket; the reactor calls
     // them exactly as WSAAsyncSelect + the hidden window would.
+    //
+    // PROTECTED, as in real MFC: they are the notification the library
+    // delivers to a derived class, never something a caller invokes from
+    // outside. They were public here until the conformance suite tried to
+    // call them and real MFC refused (C2248) -- an access difference that
+    // would have let a consumer write a call real MFC does not compile.
+protected:
     virtual void OnReceive(int nErrorCode);
     virtual void OnSend(int nErrorCode);
     virtual void OnOutOfBandData(int nErrorCode);
