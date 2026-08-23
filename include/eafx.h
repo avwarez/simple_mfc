@@ -351,17 +351,17 @@ inline std::u16string Utf16FormatBuild(const char16_t* fmt, va_list ap)
         spec.push_back(conv);
 
         auto emit = [&out, &spec](auto value) {
-            char small[256];
-            const int n = std::snprintf(small, sizeof small, spec.c_str(), value);
+            char stackBuf[256];
+            const int n = std::snprintf(stackBuf, sizeof stackBuf, spec.c_str(), value);
             if (n < 0) return;
-            if (static_cast<size_t>(n) < sizeof small)
+            if (static_cast<size_t>(n) < sizeof stackBuf)
             {
-                Utf16AppendNarrow(out, small, static_cast<size_t>(n));
+                Utf16AppendNarrow(out, stackBuf, static_cast<size_t>(n));
                 return;
             }
-            std::vector<char> big(static_cast<size_t>(n) + 1);
-            std::snprintf(big.data(), big.size(), spec.c_str(), value);
-            Utf16AppendNarrow(out, big.data(), static_cast<size_t>(n));
+            std::vector<char> heapBuf(static_cast<size_t>(n) + 1);
+            std::snprintf(heapBuf.data(), heapBuf.size(), spec.c_str(), value);
+            Utf16AppendNarrow(out, heapBuf.data(), static_cast<size_t>(n));
         };
 
         switch (conv)
@@ -838,11 +838,18 @@ private:
     static std::basic_string<XCHAR> VFormat(PCXSTR fmt, va_list args)
     {
 #ifdef _MSC_VER
-        PCXSTR fmtUsed = fmt;
+        constexpr bool translate =
+            !std::is_same_v<XCHAR, char> && !std::is_same_v<XCHAR, wchar_t>;
 #else
-        const std::basic_string<XCHAR> fmtHeld = mfc_detail::TranslateFormat(fmt);
-        PCXSTR fmtUsed = fmtHeld.c_str();
+        constexpr bool translate = true;
 #endif
+        std::basic_string<XCHAR> fmtHeld;
+        PCXSTR fmtUsed = fmt;
+        if constexpr (translate)
+        {
+            fmtHeld = mfc_detail::TranslateFormat(fmt);
+            fmtUsed = fmtHeld.c_str();
+        }
         size_t size = 256;
         std::vector<XCHAR> buf(size);
         for (;;)
