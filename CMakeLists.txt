@@ -87,6 +87,30 @@ elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     endif()
 endif()
 
+# CTime is 64-bit time (__time64_t), but every conversion it makes goes
+# through the CRT's localtime/mktime -- so its real range is the range of
+# std::time_t. MSVC has made that 64 bits since VS2005, on Win32 too. A
+# 32-bit glibc target still defaults to a 32-bit one, which silently caps
+# CTime at 2038-01-19: mktime returns -1 for anything later and eMule's
+# stored timestamps stop round-tripping. glibc >= 2.34 offers the way out,
+# and it is all-or-nothing across a program's translation units, hence
+# PUBLIC -- a consumer compiled without it would see a different time_t in
+# the same headers. Probed rather than assumed: on a C library that does
+# not offer the switch (or already has a 64-bit time_t), nothing is added
+# and the static_assert in tests/portability reports whether the result is
+# adequate.
+if (NOT WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 4)
+    include(CheckCXXSourceCompiles)
+    set(CMAKE_REQUIRED_DEFINITIONS -D_FILE_OFFSET_BITS=64 -D_TIME_BITS=64)
+    check_cxx_source_compiles(
+        "#include <ctime>\nstatic_assert(sizeof(std::time_t) == 8, \"32-bit time_t\");\nint main() { return 0; }"
+        SIMPLE_MFC_HAVE_TIME_BITS_64)
+    unset(CMAKE_REQUIRED_DEFINITIONS)
+    if (SIMPLE_MFC_HAVE_TIME_BITS_64)
+        target_compile_definitions(simple_mfc PUBLIC _FILE_OFFSET_BITS=64 _TIME_BITS=64)
+    endif()
+endif()
+
 if (MSVC)
     target_compile_options(simple_mfc PUBLIC /W4 /EHsc /permissive-)
     target_compile_definitions(simple_mfc PUBLIC

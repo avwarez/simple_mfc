@@ -1742,23 +1742,36 @@ static void TestCMemFileDetachAttach()
 // ---------------------------------------------------------------------
 static void TestCTempBuffer()
 {
+    // Every index below is a size_t, deliberately, and an `int` would not
+    // compile on a 32-bit target. CTempBuffer offers both an
+    // `operator[](size_t)` and an implicit `operator T*()`, so indexing it
+    // with an int makes the member (exact object, int -> size_t on the
+    // index) and the built-in pointer subscript (user conversion on the
+    // object, int -> ptrdiff_t on the index) tie: on LP64/LLP64 the index
+    // needs a conversion either way, so the exact object match settles it,
+    // while on ILP32 ptrdiff_t IS int, the built-in's index becomes an
+    // exact match, and neither candidate is better in both positions --
+    // C2666 / "ambiguous overload for operator[]". The shape is real ATL's
+    // own, so this is a property of the interface being reproduced, not of
+    // the reproduction; what belongs here is an index type that is right
+    // on every target.
     // 64 fixed bytes == 16 ints: this stays on the stack throughout.
     CTempBuffer<int, 64> fixedBuf;
     fixedBuf.Allocate(8);
-    for (int i = 0; i < 8; ++i)
-        fixedBuf[i] = i * 3;
+    for (size_t i = 0; i < 8; ++i)
+        fixedBuf[i] = static_cast<int>(i) * 3;
     std::string fixedVals;
-    for (int i = 0; i < 8; ++i)
+    for (size_t i = 0; i < 8; ++i)
         fixedVals += std::to_string(fixedBuf[i]) + (i == 7 ? "" : ",");
     Line("CTempBuffer.fixed.values", fixedVals);
 
     // 16 fixed bytes == 4 ints: asking for 100 forces the heap path.
     CTempBuffer<int, 16> heapBuf;
     heapBuf.Allocate(100);
-    for (int i = 0; i < 100; ++i)
-        heapBuf[i] = i;
-    LineInt("CTempBuffer.heap.first", heapBuf[0]);
-    LineInt("CTempBuffer.heap.last", heapBuf[99]);
+    for (size_t i = 0; i < 100; ++i)
+        heapBuf[i] = static_cast<int>(i);
+    LineInt("CTempBuffer.heap.first", heapBuf[size_t(0)]);
+    LineInt("CTempBuffer.heap.last", heapBuf[size_t(99)]);
 
     // Reallocate across the fixed->heap boundary, reading back values
     // written BEFORE the move. atlalloc.h's own comment claims real ATL
@@ -1774,19 +1787,20 @@ static void TestCTempBuffer()
     // difference, since not preserving means reading uninitialized memory.
     CTempBuffer<int, 16> growBuf;
     growBuf.Allocate(4);
-    for (int i = 0; i < 4; ++i)
-        growBuf[i] = 100 + i;
+    for (size_t i = 0; i < 4; ++i)
+        growBuf[i] = 100 + static_cast<int>(i);
     growBuf.Reallocate(64);
     std::string preserved;
-    for (int i = 0; i < 4; ++i)
+    for (size_t i = 0; i < 4; ++i)
         preserved += std::to_string(growBuf[i]) + (i == 3 ? "" : ",");
     Line("CTempBuffer.growPreservesContent", preserved);
 
     CTempBuffer<char, 32> byteBuf;
     byteBuf.AllocateBytes(200);
-    byteBuf[0] = 'A';
-    byteBuf[199] = 'Z';
-    Line("CTempBuffer.AllocateBytes.ends", std::string(1, byteBuf[0]) + std::string(1, byteBuf[199]));
+    byteBuf[size_t(0)] = 'A';
+    byteBuf[size_t(199)] = 'Z';
+    Line("CTempBuffer.AllocateBytes.ends",
+         std::string(1, byteBuf[size_t(0)]) + std::string(1, byteBuf[size_t(199)]));
 }
 
 // ---------------------------------------------------------------------

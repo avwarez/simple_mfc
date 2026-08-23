@@ -41,6 +41,7 @@
 #include "esockimpl.h"
 
 #include <cstdio>
+#include <ctime>
 
 // ---------------------------------------------------------------------
 // 1. The language standard.
@@ -84,6 +85,11 @@ static_assert(sizeof(LONGLONG) == 8, "LONGLONG is 64 bits");
 static_assert(sizeof(ULONGLONG) == 8, "ULONGLONG is 64 bits");
 static_assert(sizeof(BOOL) == 4, "BOOL is Win32's 32-bit int, not bool");
 static_assert(sizeof(__time64_t) == 8, "CTime is 64-bit time, on 32-bit targets too");
+// ...and it has to be 64-bit all the way down: CTime stores a __time64_t
+// but converts through the CRT's localtime/mktime, so a 32-bit std::time_t
+// would cap it at 2038-01-19 while every declaration here still said 64.
+// See the _TIME_BITS block in the top-level CMakeLists.txt.
+static_assert(sizeof(std::time_t) >= 8, "CTime converts through time_t: a 32-bit one stops in 2038");
 static_assert(sizeof(INT_PTR) == sizeof(void*), "INT_PTR is pointer-sized, as its name says");
 static_assert(sizeof(EPOSITION) == sizeof(void*), "POSITION is a pointer-shaped cookie");
 
