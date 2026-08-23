@@ -13,6 +13,7 @@
 #include "eatlenc.h"
 #include "eatlsimpcoll.h"
 #include "eatltime.h"
+#include "eatltypes.h"
 #include "esockimpl.h"
 
 #include <cstdio>
@@ -35,6 +36,15 @@ static_assert(sizeof(__time64_t) == 8, "CTime is 64-bit time, on 32-bit targets 
 static_assert(sizeof(std::time_t) >= 8, "CTime converts through time_t: a 32-bit one stops in 2038");
 static_assert(sizeof(INT_PTR) == sizeof(void*), "INT_PTR is pointer-sized, as its name says");
 static_assert(sizeof(EPOSITION) == sizeof(void*), "POSITION is a pointer-shaped cookie");
+
+static_assert(sizeof(POINT) == 8, "a Win32 POINT is two 32-bit LONGs, on LP64 too");
+static_assert(sizeof(SIZE) == 8, "a Win32 SIZE is two 32-bit LONGs, on LP64 too");
+static_assert(sizeof(RECT) == 16, "a Win32 RECT is four 32-bit LONGs, on LP64 too");
+static_assert(sizeof(ECPoint) == sizeof(POINT), "ECPoint adds no storage to POINT");
+static_assert(sizeof(ECSize) == sizeof(SIZE), "ECSize adds no storage to SIZE");
+static_assert(sizeof(ECRect) == sizeof(RECT), "ECRect adds no storage to RECT");
+static_assert(std::is_standard_layout<ECRect>::value,
+              "CRect::TopLeft/BottomRight reinterpret the rect as two POINTs");
 
 namespace {
 struct Element : public ECObject { int n = 0; };

@@ -48,6 +48,7 @@ add_library(simple_mfc STATIC
     src/eatlconv.cpp
     src/eatlenc.cpp
     src/eatltime.cpp
+    src/eatltypes.cpp
 )
 add_library(simple_mfc::simple_mfc ALIAS simple_mfc)
 

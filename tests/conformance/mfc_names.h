@@ -76,6 +76,10 @@ using CAsyncSocket = ECAsyncSocket;
 constexpr auto& AfxSocketInit = EAfxSocketInit;
 constexpr auto& AfxSocketTerm = EAfxSocketTerm;
 
+using CPoint = ECPoint;
+using CSize  = ECSize;
+using CRect  = ECRect;
+
 using CTime     = ECTime;
 using CTimeSpan = ECTimeSpan;
 

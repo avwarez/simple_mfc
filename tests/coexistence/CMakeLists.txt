@@ -36,7 +36,7 @@ find_package(Python3 COMPONENTS Interpreter REQUIRED)
 # flags for both halves of it.
 set(SMFC_COEXIST_SOURCES)
 foreach (source IN ITEMS eafx eafxcoll eafximpl eafxinet eafxmt eafxsock eafxwin
-                         eatlconv eatlenc eatltime)
+                         eatlconv eatlenc eatltime eatltypes)
     list(APPEND SMFC_COEXIST_SOURCES "${PROJECT_SOURCE_DIR}/src/${source}.cpp")
 endforeach()
 
@@ -95,6 +95,7 @@ set(SMFC_HEADER_PAIRS
     "eatlenc.h|atlenc.h"
     "eatlsimpcoll.h|atlsimpcoll.h"
     "eatltime.h|atltime.h"
+    "eatltypes.h|atltypes.h"
     "esockimpl.h|afxsock.h"
 )
 

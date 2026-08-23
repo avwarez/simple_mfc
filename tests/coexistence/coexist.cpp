@@ -6,6 +6,7 @@
     #include <afxwin.h>
     #include <afxsock.h>
     #include <atltime.h>
+    #include <atltypes.h>
 #elif defined(SMFC_COEXIST_MFC_FIRST)
     #include <afx.h>
     #include <afxcoll.h>
@@ -14,6 +15,7 @@
     #include <afxwin.h>
     #include <afxsock.h>
     #include <atltime.h>
+    #include <atltypes.h>
 
     #include "eafx.h"
     #include "eafxcoll.h"
@@ -22,6 +24,7 @@
     #include "eafxwin.h"
     #include "eafxsock.h"
     #include "eatltime.h"
+    #include "eatltypes.h"
 #elif defined(SMFC_COEXIST_SMFC_FIRST)
     #include "eafx.h"
     #include "eafxcoll.h"
@@ -30,6 +33,7 @@
     #include "eafxwin.h"
     #include "eafxsock.h"
     #include "eatltime.h"
+    #include "eatltypes.h"
 
     #include <afx.h>
     #include <afxcoll.h>
@@ -38,6 +42,7 @@
     #include <afxwin.h>
     #include <afxsock.h>
     #include <atltime.h>
+    #include <atltypes.h>
 #else
     #error "Define one of SMFC_COEXIST_MFC_ONLY / _MFC_FIRST / _SMFC_FIRST"
 #endif
@@ -216,6 +221,9 @@ static void ProbeRealMfc()
     REC("mfc.sizeof.CObject", (long long)sizeof(CObject));
     REC("mfc.sizeof.CTime",   (long long)sizeof(CTime));
     REC("mfc.sizeof.CFile",   (long long)sizeof(CFile));
+    REC("mfc.sizeof.CPoint",  (long long)sizeof(CPoint));
+    REC("mfc.sizeof.CSize",   (long long)sizeof(CSize));
+    REC("mfc.sizeof.CRect",   (long long)sizeof(CRect));
 
     CString s(_T("Coexistence"));
     s.MakeUpper();
@@ -358,6 +366,31 @@ static void ProbeSimpleMfc()
         e->Delete();
     }
     REC("smfc.mfc_exception.caught_by_our_handler", ourCatchSawMfc);
+
+    {
+        ECRect ours(10, 20, 110, 220);
+        REC("smfc.interop.CRect.same_layout", sizeof(ECRect) == sizeof(CRect));
+        REC("smfc.interop.CPoint.same_layout", sizeof(ECPoint) == sizeof(CPoint));
+
+        CRect theirs(static_cast<const RECT&>(ours));
+        REC("smfc.interop.CRect.mfc_reads_ours",
+            theirs.Width() == ours.Width() && theirs.Height() == ours.Height());
+
+        CRect mfcRect(1, 2, 31, 42);
+        ECRect back(static_cast<const RECT&>(mfcRect));
+        REC("smfc.interop.CRect.we_read_mfc",
+            back.left == 1 && back.top == 2 && back.right == 31 && back.bottom == 42);
+
+        ECRect win32(0, 0, 10, 10);
+        ::InflateRect(&win32, 5, 5);
+        REC("smfc.interop.CRect.win32_api_writes_ours",
+            win32.left == -5 && win32.top == -5 && win32.right == 15 && win32.bottom == 15);
+
+        REC("smfc.CRect.TopLeft",
+            (long long)(ours.TopLeft().x * 1000 + ours.TopLeft().y));
+        REC("smfc.CRect.BottomRight",
+            (long long)(ours.BottomRight().x * 1000 + ours.BottomRight().y));
+    }
 
     CString fromOurs((LPCTSTR)s);
     ECString fromTheirs((LPCTSTR)fromOurs);

@@ -9,6 +9,7 @@
     #include "eatlenc.h"
     #include "eatlconv.h"
     #include "eatlalloc.h"
+    #include "eatltypes.h"
     #include "eatlsimpcoll.h"
     #include "eatlcoll.h"
     #include "eafxinet.h"
@@ -24,6 +25,7 @@
     #include <atlenc.h>
     #include <atlconv.h>
     #include <atlalloc.h>
+    #include <atltypes.h>
     #include <atlsimpcoll.h>
     #include <atlcoll.h>
     #include <afxinet.h>
@@ -1129,6 +1131,248 @@ static void TestCMapTemplate()
     LineInt("CMap.SetAt.overwrite.value", ovv);
 }
 
+namespace
+{
+std::string RectStr(const RECT& r)
+{
+    return "(" + std::to_string(r.left) + "," + std::to_string(r.top) + "," +
+           std::to_string(r.right) + "," + std::to_string(r.bottom) + ")";
+}
+std::string PointStr(const POINT& p)
+{
+    return std::to_string(p.x) + "," + std::to_string(p.y);
+}
+std::string SizeStr(const SIZE& s)
+{
+    return std::to_string(s.cx) + "," + std::to_string(s.cy);
+}
+}
+
+static void TestCPointCSize()
+{
+    CPoint p(10, 20);
+    CPoint q(3, 4);
+    CSize sz(5, 7);
+
+    LineInt("CPoint.x", p.x);
+    LineInt("CPoint.y", p.y);
+
+    Line("CPoint.plusPoint", PointStr(p + q));
+    Line("CPoint.plusSize", PointStr(p + sz));
+    Line("CPoint.minusPoint", SizeStr(p - q));
+    Line("CPoint.minusSize", PointStr(p - sz));
+    Line("CPoint.unaryMinus", PointStr(-p));
+
+    CPoint fromSize(sz);
+    Line("CPoint.ctor.fromSize", PointStr(fromSize));
+    CPoint fromPoint((POINT)q);
+    Line("CPoint.ctor.fromPOINT", PointStr(fromPoint));
+    CPoint packed(static_cast<DWORD>(0xFFF00010u));
+    Line("CPoint.ctor.packed", PointStr(packed));
+
+    CPoint offset = p;
+    offset.Offset(1, -2);
+    Line("CPoint.Offset", PointStr(offset));
+    CPoint offsetSz = p;
+    offsetSz.Offset(sz);
+    Line("CPoint.OffsetSize", PointStr(offsetSz));
+    CPoint offsetPt = p;
+    offsetPt.Offset((POINT)q);
+    Line("CPoint.OffsetPoint", PointStr(offsetPt));
+
+    CPoint setPt;
+    setPt.SetPoint(42, -42);
+    Line("CPoint.SetPoint", PointStr(setPt));
+    Line("CPoint.ctor.default", PointStr(CPoint()));
+
+    LineBool("CPoint.operatorEq.true", p == CPoint(10, 20));
+    LineBool("CPoint.operatorEq.false", p == q);
+    LineBool("CPoint.operatorNe", p != q);
+
+    CPoint plusEq = p;
+    plusEq += sz;
+    Line("CPoint.plusEqualsSize", PointStr(plusEq));
+    CPoint plusEqPt = p;
+    plusEqPt += (POINT)q;
+    Line("CPoint.plusEqualsPoint", PointStr(plusEqPt));
+    CPoint minusEq = p;
+    minusEq -= (POINT)q;
+    Line("CPoint.minusEqualsPoint", PointStr(minusEq));
+    CPoint minusEqSz = p;
+    minusEqSz -= sz;
+    Line("CPoint.minusEqualsSize", PointStr(minusEqSz));
+
+    CRect base(1, 2, 3, 4);
+    Line("CPoint.plusRect", RectStr(p + &base));
+    Line("CPoint.minusRect", RectStr(p.operator-(&base)));
+
+    Line("CSize.ctor.default", SizeStr(CSize()));
+    CSize fromPt((POINT)q);
+    Line("CSize.ctor.fromPOINT", SizeStr(fromPt));
+    CSize fromSz((SIZE)sz);
+    Line("CSize.ctor.fromSIZE", SizeStr(fromSz));
+    Line("CSize.plus", SizeStr(sz + CSize(1, 2)));
+    Line("CSize.minus", SizeStr(sz - CSize(1, 2)));
+    Line("CSize.unaryMinus", SizeStr(-sz));
+    LineBool("CSize.operatorEq.true", sz == CSize(5, 7));
+    LineBool("CSize.operatorEq.false", sz == CSize(5, 8));
+    LineBool("CSize.operatorNe", sz != CSize(5, 8));
+    CSize plusEqSz = sz;
+    plusEqSz += CSize(1, 2);
+    Line("CSize.plusEquals", SizeStr(plusEqSz));
+    CSize minusEqSz2 = sz;
+    minusEqSz2 -= CSize(1, 2);
+    Line("CSize.minusEquals", SizeStr(minusEqSz2));
+    Line("CSize.plusPoint", PointStr(sz + (POINT)q));
+    Line("CSize.minusPoint", PointStr(sz - (POINT)q));
+    Line("CSize.plusRect", RectStr(sz + &base));
+    Line("CSize.minusRect", RectStr(sz.operator-(&base)));
+}
+
+static void TestCRectMethods()
+{
+    CRect r(10, 20, 110, 220);
+    LineInt("CRect.Width", r.Width());
+    LineInt("CRect.Height", r.Height());
+    Line("CRect.Size", SizeStr(r.Size()));
+    Line("CRect.CenterPoint", PointStr(r.CenterPoint()));
+    Line("CRect.TopLeft", PointStr(r.TopLeft()));
+    Line("CRect.BottomRight", PointStr(r.BottomRight()));
+    LineBool("CRect.IsRectEmpty.false", r.IsRectEmpty() != FALSE);
+    LineBool("CRect.PtInRect.inside", r.PtInRect(CPoint(50, 50)) != FALSE);
+    LineBool("CRect.PtInRect.onRightEdge", r.PtInRect(CPoint(110, 50)) != FALSE);
+    LineBool("CRect.PtInRect.onTopLeft", r.PtInRect(CPoint(10, 20)) != FALSE);
+
+    Line("CRect.ctor.default", RectStr(CRect()));
+    CRect fromPointSize(CPoint(1, 2), CSize(30, 40));
+    Line("CRect.ctor.pointSize", RectStr(fromPointSize));
+    CRect fromCorners(CPoint(1, 2), CPoint(31, 42));
+    Line("CRect.ctor.corners", RectStr(fromCorners));
+    RECT plain{5, 6, 7, 8};
+    CRect fromRect(plain);
+    Line("CRect.ctor.fromRECT", RectStr(fromRect));
+    CRect fromPtr(&plain);
+    Line("CRect.ctor.fromLPCRECT", RectStr(fromPtr));
+
+    CRect empty;
+    empty.SetRectEmpty();
+    Line("CRect.SetRectEmpty", RectStr(empty));
+    LineBool("CRect.IsRectEmpty.true", empty.IsRectEmpty() != FALSE);
+
+    CRect setr;
+    setr.SetRect(1, 2, 3, 4);
+    Line("CRect.SetRect", RectStr(setr));
+
+    CRect moved = r;
+    moved.MoveToXY(0, 0);
+    Line("CRect.MoveToXY", RectStr(moved));
+    CRect movedX = r;
+    movedX.MoveToX(-5);
+    Line("CRect.MoveToX", RectStr(movedX));
+    CRect movedY = r;
+    movedY.MoveToY(-5);
+    Line("CRect.MoveToY", RectStr(movedY));
+    CRect movedPt = r;
+    movedPt.MoveToXY(CPoint(7, 9));
+    Line("CRect.MoveToXY.point", RectStr(movedPt));
+
+    CRect off = r;
+    off.OffsetRect(5, -5);
+    Line("CRect.OffsetRect.xy", RectStr(off));
+    CRect offPt = r;
+    offPt.OffsetRect(CPoint(2, 3));
+    Line("CRect.OffsetRect.point", RectStr(offPt));
+    CRect offSz = r;
+    offSz.OffsetRect(CSize(2, 3));
+    Line("CRect.OffsetRect.size", RectStr(offSz));
+
+    CRect inf = r;
+    inf.InflateRect(5, 10);
+    Line("CRect.InflateRect.xy", RectStr(inf));
+    CRect inf4 = r;
+    inf4.InflateRect(1, 2, 3, 4);
+    Line("CRect.InflateRect.ltrb", RectStr(inf4));
+    CRect infSz = r;
+    infSz.InflateRect(CSize(4, 6));
+    Line("CRect.InflateRect.size", RectStr(infSz));
+    CRect infRc = r;
+    CRect infBy(1, 2, 3, 4);
+    infRc.InflateRect(&infBy);
+    Line("CRect.InflateRect.rect", RectStr(infRc));
+
+    CRect def = r;
+    def.DeflateRect(5, 10);
+    Line("CRect.DeflateRect.xy", RectStr(def));
+    CRect def4 = r;
+    def4.DeflateRect(1, 2, 3, 4);
+    Line("CRect.DeflateRect.ltrb", RectStr(def4));
+    CRect defSz = r;
+    defSz.DeflateRect(CSize(4, 6));
+    Line("CRect.DeflateRect.size", RectStr(defSz));
+    CRect defRc = r;
+    CRect defBy(1, 2, 3, 4);
+    defRc.DeflateRect(&defBy);
+    Line("CRect.DeflateRect.rect", RectStr(defRc));
+
+    CRect a(0, 0, 10, 10), b(5, 5, 15, 15), disjoint(100, 100, 110, 110);
+    CRect dst;
+    LineBool("CRect.IntersectRect.overlapping.result", dst.IntersectRect(&a, &b) != FALSE);
+    Line("CRect.IntersectRect.overlapping", RectStr(dst));
+    LineBool("CRect.IntersectRect.disjoint.result", dst.IntersectRect(&a, &disjoint) != FALSE);
+    Line("CRect.IntersectRect.disjoint", RectStr(dst));
+    LineBool("CRect.UnionRect.result", dst.UnionRect(&a, &b) != FALSE);
+    Line("CRect.UnionRect", RectStr(dst));
+    CRect emptySrc(0, 0, 0, 0);
+    LineBool("CRect.UnionRect.withEmpty.result", dst.UnionRect(&a, &emptySrc) != FALSE);
+    Line("CRect.UnionRect.withEmpty", RectStr(dst));
+    LineBool("CRect.SubtractRect.contained.result", dst.SubtractRect(&a, &a) != FALSE);
+    Line("CRect.SubtractRect.contained", RectStr(dst));
+
+    LineBool("CRect.operatorEq.true", a == CRect(0, 0, 10, 10));
+    LineBool("CRect.operatorNe", a != b);
+    Line("CRect.operatorPlus.point", RectStr(a + CPoint(3, 4)));
+    Line("CRect.operatorPlus.size", RectStr(a + CSize(3, 4)));
+    Line("CRect.operatorMinus.point", RectStr(a - CPoint(3, 4)));
+    Line("CRect.operatorMinus.size", RectStr(a - CSize(3, 4)));
+    CRect inflateBy(1, 2, 3, 4);
+    Line("CRect.operatorPlus.rect", RectStr(a + &inflateBy));
+    Line("CRect.operatorMinus.rect", RectStr(a.operator-(&inflateBy)));
+
+    Line("CRect.operatorAnd", RectStr(a & b));
+    Line("CRect.operatorOr", RectStr(a | b));
+    CRect andEq = a;
+    andEq &= b;
+    Line("CRect.operatorAndEquals", RectStr(andEq));
+    CRect orEq = a;
+    orEq |= b;
+    Line("CRect.operatorOrEquals", RectStr(orEq));
+    CRect plusEq = a;
+    plusEq += CPoint(1, 1);
+    Line("CRect.operatorPlusEquals.point", RectStr(plusEq));
+    CRect plusEqSz = a;
+    plusEqSz += CSize(1, 1);
+    Line("CRect.operatorPlusEquals.size", RectStr(plusEqSz));
+    CRect plusEqRc = a;
+    plusEqRc += &inflateBy;
+    Line("CRect.operatorPlusEquals.rect", RectStr(plusEqRc));
+    CRect minusEq = a;
+    minusEq -= CSize(1, 1);
+    Line("CRect.operatorMinusEquals.size", RectStr(minusEq));
+    CRect minusEqPt = a;
+    minusEqPt -= CPoint(1, 1);
+    Line("CRect.operatorMinusEquals.point", RectStr(minusEqPt));
+    CRect minusEqRc = a;
+    minusEqRc -= &inflateBy;
+    Line("CRect.operatorMinusEquals.rect", RectStr(minusEqRc));
+
+    CRect conv(1, 2, 3, 4);
+    LPRECT asPtr = conv;
+    Line("CRect.operatorLPRECT", RectStr(*asPtr));
+    const CRect constConv(5, 6, 7, 8);
+    LPCRECT asConstPtr = constConv;
+    Line("CRect.operatorLPCRECT", RectStr(*asConstPtr));
+}
+
 static void TestTime()
 {
     CTime t1(2026, 7, 19, 14, 30, 45);
@@ -1644,6 +1888,51 @@ static void TestPatternCString()
         default: fmt.Format(L"[%-*s]=%+d", width, (LPCTSTR)wordW, n); break;
         }
         Line(label, fmt);
+    }
+}
+
+static void TestPatternCRectAndPoint()
+{
+    std::mt19937 rng(kPatternSeed + 1);
+    std::uniform_int_distribution<int> coordDist(-500, 500);
+    std::uniform_int_distribution<int> sizeDist(0, 300);
+
+    for (int i = 0; i < 40; ++i)
+    {
+        int l1 = coordDist(rng);
+        int t1v = coordDist(rng);
+        int w1 = sizeDist(rng);
+        int h1 = sizeDist(rng);
+        CRect r1(l1, t1v, l1 + w1, t1v + h1);
+        int l2 = coordDist(rng);
+        int t2v = coordDist(rng);
+        int w2 = sizeDist(rng);
+        int h2 = sizeDist(rng);
+        CRect r2(l2, t2v, l2 + w2, t2v + h2);
+
+        char label[64];
+        std::snprintf(label, sizeof(label), "Pattern.CRect.%02d", i);
+        std::string s = "inter=" + RectStr(r1 & r2) + " union=" + RectStr(r1 | r2) +
+                        " w1=" + std::to_string(r1.Width()) + " h1=" + std::to_string(r1.Height()) +
+                        " empty1=" + (r1.IsRectEmpty() ? "1" : "0");
+        Line(label, s);
+
+        int px = coordDist(rng);
+        int py = coordDist(rng);
+        CPoint p(px, py);
+        char labelPt[64];
+        std::snprintf(labelPt, sizeof(labelPt), "Pattern.CRect.PtInRect.%02d", i);
+        LineBool(labelPt, r1.PtInRect(p) != FALSE);
+
+        char labelSub[64];
+        std::snprintf(labelSub, sizeof(labelSub), "Pattern.CRect.Subtract.%02d", i);
+        CRect sub;
+        BOOL subOk = sub.SubtractRect(&r1, &r2);
+        Line(labelSub, std::string(subOk ? "1:" : "0:") + RectStr(sub));
+
+        char labelCtr[64];
+        std::snprintf(labelCtr, sizeof(labelCtr), "Pattern.CRect.CenterPoint.%02d", i);
+        Line(labelCtr, PointStr(r1.CenterPoint()));
     }
 }
 
@@ -3156,6 +3445,8 @@ int main()
     TestCMapStringToString();
     TestCTypedPtrList();
     TestCTypedPtrArray();
+    TestCPointCSize();
+    TestCRectMethods();
     TestTime();
     TestCTempBuffer();
     TestCSimpleArray();
@@ -3173,6 +3464,7 @@ int main()
     TestCAsyncSocketDatagram();
 
     TestPatternCString();
+    TestPatternCRectAndPoint();
     TestPatternCTime();
     TestPatternBase64();
     TestPatternUnicodeToUtf8();
