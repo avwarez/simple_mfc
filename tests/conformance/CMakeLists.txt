@@ -6,6 +6,10 @@
 #   real_mfc_probe  MSVC + the "MFC and ATL" Visual Studio component only,
 #                   because that is the only place real MFC exists
 #
+# The Windows comparison applies renamed_symbols.txt and nothing else:
+# every other difference there is a real difference. The cross-platform one
+# additionally applies platform_dependent.txt.
+#
 # With both probes present the comparison is a CTest case. With only the
 # native one, there is nothing on this machine to compare against, so the
 # suite degrades to "the probe builds and runs to completion" — the shape
@@ -65,6 +69,7 @@ if (SIMPLE_MFC_BUILD_REAL_MFC_PROBE)
                 --native $<TARGET_FILE:smfc_probe>
                 --reference $<TARGET_FILE:real_mfc_probe>
                 --write-reference "${CMAKE_CURRENT_BINARY_DIR}/real_mfc.txt"
+                --exclude "${CMAKE_CURRENT_SOURCE_DIR}/renamed_symbols.txt"
     )
     # Outer bound on the whole step: compare.py already gives each probe its
     # own ceiling, so reaching this one means the driver itself is stuck.
@@ -91,6 +96,7 @@ if (SIMPLE_MFC_REFERENCE_FILE)
         COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/compare.py"
                 --native $<TARGET_FILE:smfc_probe>
                 --reference-file "${SIMPLE_MFC_REFERENCE_FILE}"
+                --exclude "${CMAKE_CURRENT_SOURCE_DIR}/renamed_symbols.txt"
                 --exclude "${CMAKE_CURRENT_SOURCE_DIR}/platform_dependent.txt"
     )
     set_tests_properties(conformance_vs_recorded_real_mfc PROPERTIES TIMEOUT 900)

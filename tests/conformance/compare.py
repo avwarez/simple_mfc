@@ -89,16 +89,15 @@ def parse(text, origin):
     return records, order
 
 
-def load_exclusions(path):
-    """Case names whose VALUE is a platform fact rather than a behaviour."""
-    if not path:
-        return set()
+def load_exclusions(paths):
+    """Case names not to compare, from every --exclude file given."""
     names = set()
-    with open(path, encoding="utf-8") as handle:
-        for line in handle:
-            line = line.strip()
-            if line and not line.startswith("#"):
-                names.add(line)
+    for path in paths or []:
+        with open(path, encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    names.add(line)
     return names
 
 
@@ -110,8 +109,8 @@ def main():
                         help="the real-MFC probe executable, run side by side")
     parser.add_argument("--reference-file",
                         help="a recording of the real-MFC probe's output")
-    parser.add_argument("--exclude",
-                        help="file listing case names not to compare")
+    parser.add_argument("--exclude", action="append",
+                        help="file listing case names not to compare (repeatable)")
     parser.add_argument("--write-reference",
                         help="save the reference probe's output here")
     args = parser.parse_args()

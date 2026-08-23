@@ -32,6 +32,11 @@ struct ECWinThread::Impl
     std::mutex m;
     std::condition_variable cv;
     bool resumed = false;           // the create-suspended gate
+    // Win32's suspend count, which ResumeThread returns the PREVIOUS value
+    // of. A thread created suspended starts at 1, so the first resume
+    // reports 1 and every later one 0 -- the conformance suite compares
+    // this number against real MFC's, which is a straight ::ResumeThread.
+    unsigned long suspendCount = 0;
 };
 
 namespace {
@@ -77,6 +82,7 @@ BOOL ECWinThread::CreateThread(DWORD dwCreateFlags, UINT /*nStackSize*/,
 
     const bool suspended = (dwCreateFlags & CREATE_SUSPENDED) != 0;
     m_pImpl->resumed = !suspended;
+    m_pImpl->suspendCount = suspended ? 1u : 0u;
     m_nThreadID = g_threadIdCounter.fetch_add(1);
     m_hThread = reinterpret_cast<void*>(m_pImpl); // opaque, non-null token
 
@@ -113,15 +119,23 @@ BOOL ECWinThread::CreateThread(DWORD dwCreateFlags, UINT /*nStackSize*/,
 
 DWORD ECWinThread::ResumeThread()
 {
-    if (m_pImpl != nullptr)
+    if (m_pImpl == nullptr)
+        return 0;
+
+    unsigned long previous;
     {
-        {
-            std::lock_guard<std::mutex> lk(m_pImpl->m);
-            m_pImpl->resumed = true;
-        }
-        m_pImpl->cv.notify_all();
+        std::lock_guard<std::mutex> lk(m_pImpl->m);
+        previous = m_pImpl->suspendCount;
+        if (m_pImpl->suspendCount > 0)
+            --m_pImpl->suspendCount;
+        m_pImpl->resumed = (m_pImpl->suspendCount == 0);
     }
-    return 0;
+    m_pImpl->cv.notify_all();
+    // Win32 returns the suspend count as it was BEFORE this call: 1 for the
+    // first resume of a thread created suspended, 0 for a thread that was
+    // already running. Returning a flat 0 was this branch's own invention
+    // and the conformance suite caught it.
+    return previous;
 }
 
 DWORD ECWinThread::SuspendThread()

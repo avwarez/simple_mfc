@@ -1,0 +1,22 @@
+# Cases whose value differs ONLY because this branch renamed the symbol.
+#
+# Every MFC/ATL symbol here carries an `E` prefix (ECFile, ECString,
+# EAfxBeginThread). Two of MFC's mechanisms turn a symbol NAME into a
+# runtime VALUE — IMPLEMENT_DYNAMIC stringizes the class name into
+# CRuntimeClass::m_lpszClassName, and that string is then observable. A
+# case that prints such a string is comparing the rename, not behaviour,
+# so it is excluded here rather than left to fail forever.
+#
+# This list is applied to BOTH comparisons (the side-by-side Windows one
+# and the cross-platform one), unlike platform_dependent.txt which is
+# about the operating system. Keep it to cases where the ONLY difference
+# is the leading E, and check that eMule does not depend on the string:
+# for m_lpszClassName it does not — its one reader (Exceptions.h's
+# CATCH_MFC_EXCEPTION) writes it to a diagnostic log and nothing else.
+#
+# compare.py fails on a stale entry, so this list cannot outlive what it
+# describes.
+
+# ECFileException vs CFileException — EIMPLEMENT_DYNAMIC stringizes the
+# renamed class name. Cosmetic: it changes a log line, nothing more.
+RTTI.CFileException.ClassName
