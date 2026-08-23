@@ -106,5 +106,13 @@ if (SIMPLE_MFC_REFERENCE_FILE)
                 --exclude "${CMAKE_CURRENT_SOURCE_DIR}/renamed_symbols.txt"
                 --exclude "${CMAKE_CURRENT_SOURCE_DIR}/platform_dependent.txt"
     )
-    set_tests_properties(conformance_vs_recorded_real_mfc PROPERTIES TIMEOUT 900)
+    # CTime/CTimeSpan answer in LOCAL time, on both sides -- so comparing a
+    # run here against a recording made on a machine in another zone reports
+    # a wall of one-hour differences that are not defects. The CI runners all
+    # sit in UTC, which is why this never surfaced there; a developer in any
+    # other zone saw thirteen failures on a conformant tree. Pin the zone the
+    # recording was made in instead of leaving it to the machine.
+    set_tests_properties(conformance_vs_recorded_real_mfc PROPERTIES
+        TIMEOUT 900
+        ENVIRONMENT "TZ=UTC")
 endif()

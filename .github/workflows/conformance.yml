@@ -80,26 +80,54 @@ jobs:
           if-no-files-found: warn
 
   posix:
-    name: native vs the recording (${{ matrix.compiler }})
+    name: native vs the recording (${{ matrix.name }})
     needs: windows
     # The recording is the whole point of this job, but a failed comparison
     # upstream must not hide a POSIX-only regression: run as long as the
     # artifact was produced.
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
+      # Three architectures, not one. The recording is a byte-for-byte
+      # record of what real MFC answered on Windows x64; a case whose value
+      # depends on the width of a pointer, the size of `long` or the
+      # endianness of the machine diverges from it here and nowhere else.
+      # The x86 entry is the one that matters most: it is the only 32-bit
+      # (ILP32) configuration anywhere in this repository's CI.
       matrix:
         include:
-          - compiler: gcc
+          - name: x64 gcc
+            runner: ubuntu-latest
             cc: gcc
             cxx: g++
-          - compiler: clang
+          - name: x64 clang
+            runner: ubuntu-latest
+            cc: clang
+            cxx: clang++
+          - name: x86 gcc
+            runner: ubuntu-latest
+            cc: gcc
+            cxx: g++
+            flags: -m32
+            multilib: true
+          - name: arm64 gcc
+            runner: ubuntu-24.04-arm
+            cc: gcc
+            cxx: g++
+          - name: arm64 clang
+            runner: ubuntu-24.04-arm
             cc: clang
             cxx: clang++
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install the 32-bit toolchain
+        if: matrix.multilib
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++-multilib
 
       - name: Download the reference recording
         id: reference
@@ -124,7 +152,9 @@ jobs:
             REFERENCE=""
           fi
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
-                -DSIMPLE_MFC_BUILD_CONFORMANCE=ON $REFERENCE
+                -DSIMPLE_MFC_BUILD_CONFORMANCE=ON $REFERENCE \
+                -DCMAKE_CXX_FLAGS="${{ matrix.flags }}" \
+                -DCMAKE_EXE_LINKER_FLAGS="${{ matrix.flags }}"
 
       - name: Build
         run: cmake --build build -j

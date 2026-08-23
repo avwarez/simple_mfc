@@ -28,13 +28,15 @@ endif()
 # and the demo are on `main`, not here. Besides the library itself, the only
 # other target is the opt-in conformance suite at the bottom of this file.
 #
-# afxtempl.h/atlalloc.h (CTempBuffer<>) are header-only (templates): no
-# source to compile for CArray<>/CList<>/CMap<>/CTempBuffer<>. The
-# declaration-only headers that remain (atlbase.h's CRegKey, atlcomcli.h's
-# CComPtr/CComBSTR) have no .cpp because they wrap the Windows registry and
-# COM, which have no portable equivalent. afxsock.cpp (CAsyncSocket) is the
-# opposite case: sockets map cleanly onto the portable Berkeley-sockets API
-# (WinSock2 / POSIX), so it is a real, linked implementation.
+# afxtempl.h/atlalloc.h/atlcoll.h/atlsimpcoll.h are header-only (templates):
+# there is no source to compile for CArray<>/CList<>/CMap<>/CTempBuffer<>/
+# CRBMap<>/CSimpleArray<>, and tests/portability instantiates them in full
+# so their bodies are compiled somewhere regardless. Every remaining header
+# has a .cpp here: the declaration-only ones (atlbase.h's CRegKey,
+# atlcomcli.h's COM wrappers) were removed from this branch rather than left
+# unimplemented. afxsock.cpp (CAsyncSocket) shows why sockets stayed: they
+# map cleanly onto the portable Berkeley-sockets API (WinSock2 / POSIX), so
+# it is a real, linked implementation.
 add_library(simple_mfc STATIC
     src/eafx.cpp
     src/eafxcoll.cpp
@@ -105,6 +107,18 @@ option(SIMPLE_MFC_BUILD_CONFORMANCE "Build the MFC/ATL conformance probes" OFF)
 if (SIMPLE_MFC_BUILD_CONFORMANCE)
     enable_testing()
     add_subdirectory(tests/conformance)
+endif()
+
+# --- Portability suite ----------------------------------------------------
+# tests/portability asks whether the library builds, links and runs on this
+# platform and architecture at all: every header included on its own, every
+# class template instantiated in full, the language standard and the Win32
+# integer widths asserted. Opt-in like the conformance suite, and enabled by
+# every job of .github/workflows/portability.yml.
+option(SIMPLE_MFC_BUILD_PORTABILITY "Build the header/instantiation portability probes" OFF)
+if (SIMPLE_MFC_BUILD_PORTABILITY)
+    enable_testing()
+    add_subdirectory(tests/portability)
 endif()
 
 # --- Install (optional, for use as an external library) --------------------

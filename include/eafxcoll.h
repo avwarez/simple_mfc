@@ -30,10 +30,18 @@ using EPOSITION = void*; // not a real Win32/SDK type, safe to always define
 // INT_PTR is a real basetsd.h typedef on Windows; guarded the same way as
 // afxwin.h's copy of this same alias (see there for why: eMule/srchybrid
 // also includes real Win32 headers directly, which define this too).
+//
+// Off Windows it has to be POINTER-SIZED, which is what basetsd.h makes it
+// (`int` on Win32, `__int64` on Win64) and what its name says. A flat
+// `long long` happens to be the right width on LP64, and is the wrong one
+// on any 32-bit target -- 64 bits for an index into a container that
+// cannot hold more than 2^31 elements, and a type that no longer matches
+// real MFC's on the one configuration where the difference is observable.
 #ifdef _WIN32
 #include <windows.h>
 #else
-using INT_PTR = long long;
+#include <cstdint>
+using INT_PTR = std::intptr_t;
 #endif
 
 namespace mfc_detail

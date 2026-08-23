@@ -989,7 +989,7 @@ class ECSimpleException : public ECException
 public:
     ECSimpleException() : ECException(FALSE) {}
     explicit ECSimpleException(BOOL bAutoDelete) : ECException(bAutoDelete) {}
-    virtual BOOL GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pnHelpContext = nullptr) const = 0;
+    virtual BOOL GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pnHelpContext = nullptr) const override = 0;
 };
 
 // Thrown for an operation a class does not implement; eMule's Kademlia
@@ -1025,7 +1025,7 @@ public:
         : ECException(TRUE), m_cause(cause), m_lOsError(lOsError),
           m_strFileName(lpszFileName ? lpszFileName : L"") {}
 
-    BOOL GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pnHelpContext = nullptr) const;
+    BOOL GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pnHelpContext = nullptr) const override;
 
     // Static factory: maps an OS-specific error code to a Cause (falling
     // back to genericException for anything not recognized, matching real

@@ -53,19 +53,19 @@ ECString ECTimeSpan::Format(const wchar_t* pszFormat) const
         wchar_t buf[32];
         switch (*++p) {
         case L'D':
-            swprintf(buf, 32, L"%lld", span / 86400);
+            std::swprintf(buf, 32, L"%lld", span / 86400);
             result += buf;
             break;
         case L'H':
-            swprintf(buf, 32, L"%02lld", (span / 3600) % 24);
+            std::swprintf(buf, 32, L"%02lld", (span / 3600) % 24);
             result += buf;
             break;
         case L'M':
-            swprintf(buf, 32, L"%02lld", (span / 60) % 60);
+            std::swprintf(buf, 32, L"%02lld", (span / 60) % 60);
             result += buf;
             break;
         case L'S':
-            swprintf(buf, 32, L"%02lld", span % 60);
+            std::swprintf(buf, 32, L"%02lld", span % 60);
             result += buf;
             break;
         case L'%':

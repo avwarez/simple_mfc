@@ -1,0 +1,119 @@
+# Portability: does this branch build, link and run on every platform and
+# architecture it claims to support?
+#
+# The conformance workflow answers "does it behave like real MFC", and it
+# can only ask that where real MFC exists -- one OS, one architecture. This
+# one asks the other half of the question, on all six pairs:
+#
+#              x86 (32-bit)      x64            arm64
+#   Linux      gcc, clang        gcc, clang     gcc, clang
+#   Windows    MSVC              MSVC           MSVC
+#
+# Every job builds the library, the one-TU-per-header self-containment
+# check and the instantiation probe, then RUNS the probe -- including on
+# the two 32-bit configurations, which execute on their 64-bit host, and on
+# arm64, where the runner is the target. What the probe asserts (the
+# language standard, the Win32 integer widths, every class template
+# instantiated in full) is in tests/portability/instantiate.cpp.
+name: portability
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  linux:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux x64 gcc
+            runner: ubuntu-latest
+            cxx: g++
+          - name: linux x64 clang
+            runner: ubuntu-latest
+            cxx: clang++
+          # -m32 on an x86-64 host: a real 32-bit (ILP32) build, which is
+          # where a pointer-sized type declared as `long long` and a DWORD
+          # widened to 64 bits would finally show up.
+          - name: linux x86 gcc
+            runner: ubuntu-latest
+            cxx: g++
+            flags: -m32
+            multilib: true
+          - name: linux x86 clang
+            runner: ubuntu-latest
+            cxx: clang++
+            flags: -m32
+            multilib: true
+          - name: linux arm64 gcc
+            runner: ubuntu-24.04-arm
+            cxx: g++
+          - name: linux arm64 clang
+            runner: ubuntu-24.04-arm
+            cxx: clang++
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the 32-bit toolchain
+        if: matrix.multilib
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++-multilib
+
+      - name: Configure
+        env:
+          CXX: ${{ matrix.cxx }}
+        run: >
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          -DSIMPLE_MFC_BUILD_PORTABILITY=ON
+          -DCMAKE_CXX_FLAGS="${{ matrix.flags }}"
+          -DCMAKE_EXE_LINKER_FLAGS="${{ matrix.flags }}"
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Run the instantiation probe
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Report what was actually built
+        run: |
+          file build/tests/portability/smfc_instantiate
+          ./build/tests/portability/smfc_instantiate
+
+  windows:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows x64 msvc
+            runner: windows-latest
+            arch: x64
+          # Win32 binaries run on the x64 runner under WOW64, so this one
+          # is executed, not just compiled.
+          - name: windows x86 msvc
+            runner: windows-latest
+            arch: Win32
+          # Native arm64 runner: target and host are the same machine, so
+          # this is a real run too rather than a cross-compile.
+          - name: windows arm64 msvc
+            runner: windows-11-arm
+            arch: ARM64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build -A ${{ matrix.arch }} -DSIMPLE_MFC_BUILD_PORTABILITY=ON
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Run the instantiation probe
+        run: ctest --test-dir build -C Release --output-on-failure
