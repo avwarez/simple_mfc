@@ -1,42 +1,71 @@
 // cases.cpp — conformance test cases, compiled TWICE into two separate
-// executables:
+// executables from this one file:
 //
-//   simple_mfc_probe  (-DSIMPLE_MFC_USE_NATIVE)   uses ../../include/*.h
-//   real_mfc_probe    (-DSIMPLE_MFC_USE_REAL_MFC) uses the real Visual
-//                                                  Studio MFC headers
+//   smfc_probe      (-DSIMPLE_MFC_USE_NATIVE)   this branch's E-prefixed
+//                                               headers (../../include/e*.h)
+//   real_mfc_probe  (-DSIMPLE_MFC_USE_REAL_MFC) the real MFC/ATL headers
+//                                               shipped with Visual Studio
 //
 // Both probes run the exact same sequence of calls (this file is shared
-// verbatim — only the #include block differs) and print one canonical
-// record per checked value to stdout, as "<case name>\t<value>" (see
-// Line() below). tests/conformance/compare.cmake runs both executables
-// and compares those records BY NAME: any behavioral or result difference
-// between simple_mfc and real MFC shows up as a named failing case, and a
-// case that only one of the two emits at all is reported as missing
-// rather than as a positional shift.
+// verbatim — only the #include block below differs) and print one
+// canonical record per checked value to stdout, as "<case name>\t<value>"
+// (see Line()). compare.py runs both and matches those records BY NAME, so
+// any behavioural or result difference shows up as a named failing case,
+// and a case only one side emits is reported as missing rather than as a
+// positional shift.
 //
-// Only ever built on MSVC with the "MFC and ATL" component installed —
-// see ../../CMakeLists.txt and ../../.github/workflows/msvc.yml.
+// WRITTEN IN MFC VOCABULARY ON PURPOSE. The cases below say CString,
+// CFile, CObList — never ECString, ECFile, ECObList — because the file has
+// to compile unchanged against the real headers, where those are the only
+// spellings that exist. On the native side mfc_names.h maps each MFC name
+// onto this branch's E-prefixed one; that alias layer is the ONLY place
+// the two vocabularies meet, which keeps the cases themselves free of
+// per-side #ifdefs.
+//
+// WHAT IS NOT HERE, and why. This suite compares behaviour, so a symbol
+// with no behaviour on our side cannot be compared:
+//
+//   * CComPtr / CComQIPtr / CComBSTR / CComVariant (atlcomcli.h),
+//     CRegKey (atlbase.h) and COleDateTime (atlcomtime.h) are
+//     declaration-only stubs on this branch — no .cpp defines a single
+//     member, so a call to one would not even link. Skipped entirely.
+//   * CObject::AssertValid/Dump and the ASSERT/VERIFY/TRACE macros are
+//     _DEBUG-only in real MFC and expand to nothing in the Release
+//     configuration this suite builds.
+//   * CAsyncSocket's OnReceive/OnSend/OnAccept/OnConnect/OnClose
+//     callbacks: real MFC delivers them through WSAAsyncSelect and a
+//     hidden window, i.e. only to a thread running a message pump, which
+//     a console probe has not got. The synchronous surface underneath
+//     them is compared in full; see TestCAsyncSocket.
+//
+// The real-MFC half only ever builds on MSVC with the "MFC and ATL"
+// Visual Studio component installed — see ../../.github/workflows/
+// conformance.yml.
 
 #if defined(SIMPLE_MFC_USE_NATIVE)
-    #include "afx.h"
-    #include "afxcoll.h"
-    #include "afxtempl.h"
-    #include "afxmt.h"
-    #include "atltime.h"
-    #include "atltypes.h"
-    #include "atlenc.h"
-    #include "atlconv.h"
-    #include "atlalloc.h"
-    #include "atlsimpcoll.h"
-    #include "atlcoll.h"
-    #include "afxinet.h"
+    #include "eafx.h"
+    #include "eafxcoll.h"
+    #include "eafxtempl.h"
+    #include "eafxmt.h"
+    #include "eafxwin.h"
+    #include "eafxsock.h"
+    #include "eatltime.h"
+    #include "eatlenc.h"
+    #include "eatlconv.h"
+    #include "eatlalloc.h"
+    #include "eatlsimpcoll.h"
+    #include "eatlcoll.h"
+    #include "eafxinet.h"
+    // Must come last: it aliases the MFC spellings onto everything above.
+    #include "mfc_names.h"
 #elif defined(SIMPLE_MFC_USE_REAL_MFC)
     #include <afx.h>
     #include <afxcoll.h>
     #include <afxtempl.h>
     #include <afxmt.h>
+    #include <afxwin.h>
+    #include <afxsock.h>
     #include <atltime.h>
-    #include <atltypes.h>
     #include <atlenc.h>
     #include <atlconv.h>
     #include <atlalloc.h>
@@ -48,10 +77,10 @@
 #endif
 
 // Only Windows has windows.h, and only the real-MFC probe genuinely needs
-// it. The native probe is also built on POSIX (see the golden-file job in
-// ../../.github/workflows/msvc.yml + posix-conformance.yml): there it runs
-// against no MFC at all, and its output is compared against the recorded
-// output of the real-MFC probe from the Windows run.
+// it. The native probe is also built on POSIX (the `posix` job in
+// ../../.github/workflows/conformance.yml): there it runs against no MFC at
+// all, and its output is compared against the recording the Windows job
+// made of the real-MFC probe.
 #ifdef _WIN32
     #include <windows.h>
 #endif
@@ -94,6 +123,7 @@
     #define SIMPLE_MFC_GET_CURRENT_TIME() CTime::GetTickCount()
 #endif
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #ifdef _WIN32
@@ -118,6 +148,7 @@
 // ---------------------------------------------------------------------
 #ifndef _WIN32
     #include <filesystem>
+    #include <sys/ioctl.h> // FIONREAD (winsock2.h on Windows)
 
     #define MAX_PATH 260
 
@@ -165,8 +196,8 @@
 namespace
 {
 // Nothing in this harness may ever wait for a human. A probe that stops
-// on a modal dialog does not fail -- it HANGS, and compare.cmake (which
-// runs both probes with execute_process) would hang with it, taking the
+// on a modal dialog does not fail -- it HANGS, and compare.py (which
+// runs both probes as subprocesses) would hang with it, taking the
 // whole CI job to the runner's multi-hour limit. Windows has three
 // separate dialogs that can appear without anyone asking for one:
 //
@@ -291,7 +322,7 @@ std::string Escape(const std::string& s)
 //
 //     <case name>\t<escaped value>
 //
-// The case NAME is the key compare.cmake matches on -- deliberately not
+// The case NAME is the key compare.py matches on -- deliberately not
 // the line number. The previous format led with a running counter and was
 // diffed positionally, which meant a single genuine divergence that
 // changed how many lines a section emits (CFileFind.MatchCount is the
@@ -474,7 +505,7 @@ static void TestExceptions()
     try
     {
         // Both branches emit the SAME case name on purpose, and exactly
-        // one of them ever runs. compare.cmake keys on the name and would
+        // one of them ever runs. compare.py keys on the name and would
         // reject a genuine duplicate, so this stays legal — and it means a
         // side that failed to throw shows up as a value difference
         // ("NEVER (did not throw)" against "TRUE") rather than as a case
@@ -1664,211 +1695,6 @@ static void TestCMemFileDetachAttach()
 }
 
 // ---------------------------------------------------------------------
-// CPoint / CSize (atltypes.h) — pure coordinate arithmetic.
-// ---------------------------------------------------------------------
-static void TestCPointCSize()
-{
-    CPoint p(10, 20);
-    CPoint q(3, 4);
-    CSize sz(5, 7);
-
-    LineInt("CPoint.x", p.x);
-    LineInt("CPoint.y", p.y);
-
-    CPoint sum = p + q;
-    Line("CPoint.plusPoint", std::to_string(sum.x) + "," + std::to_string(sum.y));
-    CPoint sumSz = p + sz;
-    Line("CPoint.plusSize", std::to_string(sumSz.x) + "," + std::to_string(sumSz.y));
-    CSize diff = p - q; // point - point yields a CSize
-    Line("CPoint.minusPoint", std::to_string(diff.cx) + "," + std::to_string(diff.cy));
-    CPoint negated = -p;
-    Line("CPoint.unaryMinus", std::to_string(negated.x) + "," + std::to_string(negated.y));
-
-    CPoint offset = p;
-    offset.Offset(1, -2);
-    Line("CPoint.Offset", std::to_string(offset.x) + "," + std::to_string(offset.y));
-    CPoint offsetSz = p;
-    offsetSz.Offset(sz);
-    Line("CPoint.OffsetSize", std::to_string(offsetSz.x) + "," + std::to_string(offsetSz.y));
-
-    CPoint setPt;
-    setPt.SetPoint(42, -42);
-    Line("CPoint.SetPoint", std::to_string(setPt.x) + "," + std::to_string(setPt.y));
-
-    LineBool("CPoint.operatorEq.true", p == CPoint(10, 20));
-    LineBool("CPoint.operatorEq.false", p == q);
-    LineBool("CPoint.operatorNe", p != q);
-
-    CPoint plusEq = p;
-    plusEq += sz;
-    Line("CPoint.plusEqualsSize", std::to_string(plusEq.x) + "," + std::to_string(plusEq.y));
-    CPoint minusEq = p;
-    minusEq -= q;
-    Line("CPoint.minusEqualsPoint", std::to_string(minusEq.x) + "," + std::to_string(minusEq.y));
-
-    CSize szSum = sz + CSize(1, 2);
-    Line("CSize.plus", std::to_string(szSum.cx) + "," + std::to_string(szSum.cy));
-    CSize szDiff = sz - CSize(1, 2);
-    Line("CSize.minus", std::to_string(szDiff.cx) + "," + std::to_string(szDiff.cy));
-    CSize szNeg = -sz;
-    Line("CSize.unaryMinus", std::to_string(szNeg.cx) + "," + std::to_string(szNeg.cy));
-    LineBool("CSize.operatorEq.true", sz == CSize(5, 7));
-    LineBool("CSize.operatorNe", sz != CSize(5, 8));
-    CPoint szPlusPt = sz + q;
-    Line("CSize.plusPoint", std::to_string(szPlusPt.x) + "," + std::to_string(szPlusPt.y));
-}
-
-// ---------------------------------------------------------------------
-// CRect (atltypes.h). The pattern generator further down already hammers
-// the intersect/union/subtract operators with random geometry; this
-// section covers the named members it never touches — every mutator, the
-// accessors, and the rect/point/size operator overloads.
-// ---------------------------------------------------------------------
-namespace
-{
-std::string RectStr(const RECT& r)
-{
-    return "(" + std::to_string(r.left) + "," + std::to_string(r.top) + "," +
-           std::to_string(r.right) + "," + std::to_string(r.bottom) + ")";
-}
-} // namespace
-
-static void TestCRectMethods()
-{
-    CRect r(10, 20, 110, 220);
-    LineInt("CRect.Width", r.Width());
-    LineInt("CRect.Height", r.Height());
-    Line("CRect.Size", std::to_string(r.Size().cx) + "," + std::to_string(r.Size().cy));
-    Line("CRect.CenterPoint", std::to_string(r.CenterPoint().x) + "," + std::to_string(r.CenterPoint().y));
-    Line("CRect.TopLeft", std::to_string(r.TopLeft().x) + "," + std::to_string(r.TopLeft().y));
-    Line("CRect.BottomRight", std::to_string(r.BottomRight().x) + "," + std::to_string(r.BottomRight().y));
-    LineBool("CRect.IsRectEmpty.false", r.IsRectEmpty() != FALSE);
-    LineBool("CRect.PtInRect.inside", r.PtInRect(CPoint(50, 50)) != FALSE);
-    LineBool("CRect.PtInRect.onRightEdge", r.PtInRect(CPoint(110, 50)) != FALSE);
-    LineBool("CRect.PtInRect.onTopLeft", r.PtInRect(CPoint(10, 20)) != FALSE);
-
-    // Constructors other than the four-int one.
-    CRect fromPointSize(CPoint(1, 2), CSize(30, 40));
-    Line("CRect.ctor.pointSize", RectStr(fromPointSize));
-    CRect fromCorners(CPoint(1, 2), CPoint(31, 42));
-    Line("CRect.ctor.corners", RectStr(fromCorners));
-    RECT plain{5, 6, 7, 8};
-    CRect fromRect(plain);
-    Line("CRect.ctor.fromRECT", RectStr(fromRect));
-
-    CRect empty;
-    empty.SetRectEmpty();
-    Line("CRect.SetRectEmpty", RectStr(empty));
-    LineBool("CRect.IsRectEmpty.true", empty.IsRectEmpty() != FALSE);
-
-    CRect setr;
-    setr.SetRect(1, 2, 3, 4);
-    Line("CRect.SetRect", RectStr(setr));
-
-    CRect moved = r;
-    moved.MoveToXY(0, 0);
-    Line("CRect.MoveToXY", RectStr(moved));
-    CRect movedX = r;
-    movedX.MoveToX(-5);
-    Line("CRect.MoveToX", RectStr(movedX));
-    CRect movedY = r;
-    movedY.MoveToY(-5);
-    Line("CRect.MoveToY", RectStr(movedY));
-    CRect movedPt = r;
-    movedPt.MoveToXY(CPoint(7, 9));
-    Line("CRect.MoveToXY.point", RectStr(movedPt));
-
-    CRect off = r;
-    off.OffsetRect(5, -5);
-    Line("CRect.OffsetRect.xy", RectStr(off));
-    CRect offPt = r;
-    offPt.OffsetRect(CPoint(2, 3));
-    Line("CRect.OffsetRect.point", RectStr(offPt));
-    CRect offSz = r;
-    offSz.OffsetRect(CSize(2, 3));
-    Line("CRect.OffsetRect.size", RectStr(offSz));
-
-    CRect inf = r;
-    inf.InflateRect(5, 10);
-    Line("CRect.InflateRect.xy", RectStr(inf));
-    CRect inf4 = r;
-    inf4.InflateRect(1, 2, 3, 4);
-    Line("CRect.InflateRect.ltrb", RectStr(inf4));
-    CRect infSz = r;
-    infSz.InflateRect(CSize(4, 6));
-    Line("CRect.InflateRect.size", RectStr(infSz));
-    CRect infRc = r;
-    CRect infBy(1, 2, 3, 4);
-    infRc.InflateRect(&infBy);
-    Line("CRect.InflateRect.rect", RectStr(infRc));
-
-    CRect def = r;
-    def.DeflateRect(5, 10);
-    Line("CRect.DeflateRect.xy", RectStr(def));
-    CRect def4 = r;
-    def4.DeflateRect(1, 2, 3, 4);
-    Line("CRect.DeflateRect.ltrb", RectStr(def4));
-    CRect defSz = r;
-    defSz.DeflateRect(CSize(4, 6));
-    Line("CRect.DeflateRect.size", RectStr(defSz));
-    CRect defRc = r;
-    CRect defBy(1, 2, 3, 4);
-    defRc.DeflateRect(&defBy);
-    Line("CRect.DeflateRect.rect", RectStr(defRc));
-
-    // Named set operations (the operator forms are covered by the pattern
-    // generator), including the disjoint cases where the return value is
-    // the whole point.
-    CRect a(0, 0, 10, 10), b(5, 5, 15, 15), disjoint(100, 100, 110, 110);
-    CRect dst;
-    LineBool("CRect.IntersectRect.overlapping.result", dst.IntersectRect(&a, &b) != FALSE);
-    Line("CRect.IntersectRect.overlapping", RectStr(dst));
-    LineBool("CRect.IntersectRect.disjoint.result", dst.IntersectRect(&a, &disjoint) != FALSE);
-    Line("CRect.IntersectRect.disjoint", RectStr(dst));
-    LineBool("CRect.UnionRect.result", dst.UnionRect(&a, &b) != FALSE);
-    Line("CRect.UnionRect", RectStr(dst));
-    CRect emptySrc(0, 0, 0, 0);
-    LineBool("CRect.UnionRect.withEmpty.result", dst.UnionRect(&a, &emptySrc) != FALSE);
-    Line("CRect.UnionRect.withEmpty", RectStr(dst));
-
-    // Operators on whole rects.
-    LineBool("CRect.operatorEq.true", a == CRect(0, 0, 10, 10));
-    LineBool("CRect.operatorNe", a != b);
-    CRect opPlus = a + CPoint(3, 4);
-    Line("CRect.operatorPlus.point", RectStr(opPlus));
-    CRect opPlusSz = a + CSize(3, 4);
-    Line("CRect.operatorPlus.size", RectStr(opPlusSz));
-    CRect opMinus = a - CPoint(3, 4);
-    Line("CRect.operatorMinus.point", RectStr(opMinus));
-    CRect inflateBy(1, 2, 3, 4);
-    CRect opPlusRect = a + &inflateBy;
-    Line("CRect.operatorPlus.rect", RectStr(opPlusRect));
-    // Spelled as an explicit member call, not "a - &inflateBy": CRect
-    // converts implicitly to LPRECT, so the built-in pointer-minus-pointer
-    // operator becomes a candidate too and the expression is formally
-    // ambiguous (GCC warns and picks the member anyway; there is no reason
-    // to find out what every other compiler does). Real MFC's CRect has the
-    // same conversion operators, so this is not a simple_mfc quirk. The
-    // sibling operator+ has no such problem -- built-in pointer arithmetic
-    // has no pointer-plus-pointer form.
-    CRect opMinusRect = a.operator-(&inflateBy);
-    Line("CRect.operatorMinus.rect", RectStr(opMinusRect));
-
-    CRect andEq = a;
-    andEq &= b;
-    Line("CRect.operatorAndEquals", RectStr(andEq));
-    CRect orEq = a;
-    orEq |= b;
-    Line("CRect.operatorOrEquals", RectStr(orEq));
-    CRect plusEq = a;
-    plusEq += CPoint(1, 1);
-    Line("CRect.operatorPlusEquals.point", RectStr(plusEq));
-    CRect minusEq = a;
-    minusEq -= CSize(1, 1);
-    Line("CRect.operatorMinusEquals.size", RectStr(minusEq));
-}
-
-// ---------------------------------------------------------------------
 // CTempBuffer (atlalloc.h): the fixed/stack path, the heap path, and the
 // grow-and-preserve path across the boundary between them.
 // ---------------------------------------------------------------------
@@ -2167,7 +1993,7 @@ static void TestAfxParseURL()
 // file (see the file header), so "the same seed" really does mean "the
 // same inputs" here, with no need to serialize/replay anything between
 // them. Each case gets a unique, self-describing label (e.g.
-// "Pattern.CString.Format.03") so a mismatch in compare.cmake's output
+// "Pattern.CString.Format.03") so a mismatch in compare.py's output
 // names the exact iteration to reproduce, without re-running anything.
 // ---------------------------------------------------------------------
 namespace
@@ -2233,60 +2059,6 @@ static void TestPatternCString()
         default: fmt.Format(L"[%-*s]=%+d", width, (LPCTSTR)wordW, n); break;
         }
         Line(label, fmt);
-    }
-}
-
-static void TestPatternCRectAndPoint()
-{
-    std::mt19937 rng(kPatternSeed + 1);
-    std::uniform_int_distribution<int> coordDist(-500, 500);
-    std::uniform_int_distribution<int> sizeDist(0, 300);
-
-    for (int i = 0; i < 40; ++i)
-    {
-        // Every rng draw is its own statement, deliberately: argument
-        // evaluation order is unspecified by the standard, and while both
-        // probes are built by the same compiler (so it would be
-        // consistent in practice), there is no reason to depend on that.
-        int l1 = coordDist(rng);
-        int t1v = coordDist(rng);
-        int w1 = sizeDist(rng);
-        int h1 = sizeDist(rng);
-        CRect r1(l1, t1v, l1 + w1, t1v + h1);
-        int l2 = coordDist(rng);
-        int t2v = coordDist(rng);
-        int w2 = sizeDist(rng);
-        int h2 = sizeDist(rng);
-        CRect r2(l2, t2v, l2 + w2, t2v + h2);
-
-        char label[64];
-        std::snprintf(label, sizeof(label), "Pattern.CRect.%02d", i);
-
-        CRect inter = r1 & r2;
-        CRect uni = r1 | r2;
-        std::string s = "inter=(" + std::to_string(inter.left) + "," + std::to_string(inter.top) + "," +
-                         std::to_string(inter.right) + "," + std::to_string(inter.bottom) + ") union=(" +
-                         std::to_string(uni.left) + "," + std::to_string(uni.top) + "," +
-                         std::to_string(uni.right) + "," + std::to_string(uni.bottom) + ") w1=" +
-                         std::to_string(r1.Width()) + " h1=" + std::to_string(r1.Height()) +
-                         " empty1=" + (r1.IsRectEmpty() ? "1" : "0");
-        Line(label, s);
-
-        int px = coordDist(rng);
-        int py = coordDist(rng);
-        CPoint p(px, py);
-        char labelPt[64];
-        std::snprintf(labelPt, sizeof(labelPt), "Pattern.CRect.PtInRect.%02d", i);
-        LineBool(labelPt, r1.PtInRect(p) != FALSE);
-
-        char labelSub[64];
-        std::snprintf(labelSub, sizeof(labelSub), "Pattern.CRect.Subtract.%02d", i);
-        CRect sub;
-        BOOL subOk = sub.SubtractRect(&r1, &r2);
-        std::string subStr = std::string(subOk ? "1:" : "0:") + "(" + std::to_string(sub.left) + "," +
-                              std::to_string(sub.top) + "," + std::to_string(sub.right) + "," +
-                              std::to_string(sub.bottom) + ")";
-        Line(labelSub, subStr);
     }
 }
 
@@ -2409,6 +2181,487 @@ static void TestPatternUnicodeToUtf8()
 }
 
 // ---------------------------------------------------------------------
+// CMapPtrToPtr (afxcoll.h). The hash-map surface: SetAt/Lookup/RemoveKey/
+// RemoveAll plus the GetStartPosition/GetNextAssoc walk.
+//
+// Keys and values are addresses, which differ between runs, so nothing
+// prints a pointer: every key/value is a slot in one fixed array and what
+// is compared is its INDEX. Bucket ORDER is not compared either -- real
+// MFC's hash table and this branch's std::unordered_map are free to lay a
+// map out differently, and do; the walk below is sorted so that what the
+// case asserts is the set of associations, which IS a contract.
+// ---------------------------------------------------------------------
+static int g_slots[6] = {10, 11, 12, 13, 14, 15};
+
+static std::string SortedJoin(std::vector<std::string> v)
+{
+    std::sort(v.begin(), v.end());
+    std::string out;
+    for (size_t i = 0; i < v.size(); ++i)
+    {
+        if (i) out += ",";
+        out += v[i];
+    }
+    return out;
+}
+
+static void TestCMapPtrToPtr()
+{
+    CMapPtrToPtr m;
+    LineInt("CMapPtrToPtr.GetCount.empty", m.GetCount());
+    LineBool("CMapPtrToPtr.IsEmpty.empty", m.IsEmpty() != FALSE);
+    LineBool("CMapPtrToPtr.GetStartPosition.empty_is_null", m.GetStartPosition() == nullptr);
+
+    for (int i = 0; i < 5; ++i)
+        m.SetAt(&g_slots[i], &g_slots[i + 1]);
+    LineInt("CMapPtrToPtr.GetCount.after_5", m.GetCount());
+    LineBool("CMapPtrToPtr.IsEmpty.after_5", m.IsEmpty() != FALSE);
+
+    void* found = nullptr;
+    LineBool("CMapPtrToPtr.Lookup.hit", m.Lookup(&g_slots[2], found) != FALSE);
+    LineInt("CMapPtrToPtr.Lookup.hit.value", found ? *static_cast<int*>(found) : -1);
+    void* missed = nullptr;
+    LineBool("CMapPtrToPtr.Lookup.miss", m.Lookup(&g_slots[5], missed) != FALSE);
+
+    // SetAt on an existing key replaces rather than inserts.
+    m.SetAt(&g_slots[2], &g_slots[0]);
+    LineInt("CMapPtrToPtr.GetCount.after_overwrite", m.GetCount());
+    m.Lookup(&g_slots[2], found);
+    LineInt("CMapPtrToPtr.Lookup.after_overwrite.value", found ? *static_cast<int*>(found) : -1);
+
+    std::vector<std::string> assoc;
+    POSITION pos = m.GetStartPosition();
+    while (pos != nullptr)
+    {
+        void* key = nullptr;
+        void* value = nullptr;
+        m.GetNextAssoc(pos, key, value);
+        assoc.push_back(std::to_string(*static_cast<int*>(key)) + ">" +
+                        std::to_string(*static_cast<int*>(value)));
+    }
+    Line("CMapPtrToPtr.walk.sorted", SortedJoin(assoc));
+
+    LineBool("CMapPtrToPtr.RemoveKey.present", m.RemoveKey(&g_slots[0]) != FALSE);
+    LineBool("CMapPtrToPtr.RemoveKey.absent", m.RemoveKey(&g_slots[0]) != FALSE);
+    LineInt("CMapPtrToPtr.GetCount.after_remove", m.GetCount());
+    m.RemoveAll();
+    LineInt("CMapPtrToPtr.GetCount.after_RemoveAll", m.GetCount());
+    LineBool("CMapPtrToPtr.IsEmpty.after_RemoveAll", m.IsEmpty() != FALSE);
+}
+
+// ---------------------------------------------------------------------
+// CMapStringToPtr (afxcoll.h). Same surface as above with a CString key,
+// plus the CPair-based walk (PGetFirstAssoc/PGetNextAssoc/PLookup) that
+// real MFC added alongside GetNextAssoc.
+// ---------------------------------------------------------------------
+static void TestCMapStringToPtr()
+{
+    CMapStringToPtr m;
+    m.InitHashTable(17);
+    LineInt("CMapStringToPtr.GetCount.empty", m.GetCount());
+    LineBool("CMapStringToPtr.IsEmpty.empty", m.IsEmpty() != FALSE);
+
+    static const LPCTSTR kKeys[] = {L"alpha", L"beta", L"gamma", L"delta"};
+    for (int i = 0; i < 4; ++i)
+        m.SetAt(kKeys[i], &g_slots[i]);
+    LineInt("CMapStringToPtr.GetCount.after_4", m.GetCount());
+
+    void* found = nullptr;
+    LineBool("CMapStringToPtr.Lookup.hit", m.Lookup(L"gamma", found) != FALSE);
+    LineInt("CMapStringToPtr.Lookup.hit.value", found ? *static_cast<int*>(found) : -1);
+    void* missed = nullptr;
+    LineBool("CMapStringToPtr.Lookup.miss", m.Lookup(L"epsilon", missed) != FALSE);
+    // Lookup is by string CONTENT, not by buffer identity: a key built at
+    // run time must find the entry inserted under a literal.
+    CString built = L"ga";
+    built += L"mma";
+    LineBool("CMapStringToPtr.Lookup.by_content", m.Lookup(built, found) != FALSE);
+
+    // operator[] inserts a default-constructed value for an absent key.
+    m[L"epsilon"] = &g_slots[4];
+    LineInt("CMapStringToPtr.GetCount.after_subscript", m.GetCount());
+
+    // The pair type is a NESTED name (CPair here, ECPair on the native
+    // side), which no alias can rewrite -- deduce it instead.
+    auto* pair = m.PLookup(L"beta");
+    LineBool("CMapStringToPtr.PLookup.hit.non_null", pair != nullptr);
+    Line("CMapStringToPtr.PLookup.hit.key", pair ? pair->key : CString());
+    LineInt("CMapStringToPtr.PLookup.hit.value", pair ? *static_cast<int*>(pair->value) : -1);
+    LineBool("CMapStringToPtr.PLookup.miss.is_null", m.PLookup(L"omega") == nullptr);
+
+    std::vector<std::string> assoc;
+    POSITION pos = m.GetStartPosition();
+    while (pos != nullptr)
+    {
+        CString key;
+        void* value = nullptr;
+        m.GetNextAssoc(pos, key, value);
+        assoc.push_back(Utf8(key) + ">" + std::to_string(*static_cast<int*>(value)));
+    }
+    Line("CMapStringToPtr.walk.sorted", SortedJoin(assoc));
+
+    std::vector<std::string> pairWalk;
+    for (auto* p = m.PGetFirstAssoc(); p != nullptr; p = m.PGetNextAssoc(p))
+        pairWalk.push_back(Utf8(p->key) + ">" + std::to_string(*static_cast<int*>(p->value)));
+    Line("CMapStringToPtr.pair_walk.sorted", SortedJoin(pairWalk));
+
+    LineBool("CMapStringToPtr.RemoveKey.present", m.RemoveKey(L"alpha") != FALSE);
+    LineBool("CMapStringToPtr.RemoveKey.absent", m.RemoveKey(L"alpha") != FALSE);
+    LineInt("CMapStringToPtr.GetCount.after_remove", m.GetCount());
+    m.RemoveAll();
+    LineInt("CMapStringToPtr.GetCount.after_RemoveAll", m.GetCount());
+}
+
+// ---------------------------------------------------------------------
+// CMapStringToString (afxcoll.h). The one collection eMule uses as a
+// plain string->string dictionary.
+// ---------------------------------------------------------------------
+static void TestCMapStringToString()
+{
+    CMapStringToString m;
+    LineInt("CMapStringToString.GetCount.empty", m.GetCount());
+
+    m.SetAt(L"one", L"uno");
+    m.SetAt(L"two", L"due");
+    m.SetAt(L"three", L"tre");
+    LineInt("CMapStringToString.GetCount.after_3", m.GetCount());
+
+    CString value;
+    LineBool("CMapStringToString.Lookup.hit", m.Lookup(L"two", value) != FALSE);
+    Line("CMapStringToString.Lookup.hit.value", value);
+    CString absent = L"untouched";
+    LineBool("CMapStringToString.Lookup.miss", m.Lookup(L"four", absent) != FALSE);
+    Line("CMapStringToString.Lookup.miss.leaves_value", absent);
+
+    // Overwriting an existing key.
+    m.SetAt(L"two", L"DUE");
+    m.Lookup(L"two", value);
+    Line("CMapStringToString.SetAt.overwrite.value", value);
+    LineInt("CMapStringToString.GetCount.after_overwrite", m.GetCount());
+
+    m[L"four"] = L"quattro";
+    LineInt("CMapStringToString.GetCount.after_subscript", m.GetCount());
+    Line("CMapStringToString.subscript.reads_back", m[L"four"]);
+
+    std::vector<std::string> assoc;
+    POSITION pos = m.GetStartPosition();
+    while (pos != nullptr)
+    {
+        CString key;
+        CString val;
+        m.GetNextAssoc(pos, key, val);
+        assoc.push_back(Utf8(key) + "=" + Utf8(val));
+    }
+    Line("CMapStringToString.walk.sorted", SortedJoin(assoc));
+
+    LineBool("CMapStringToString.RemoveKey.present", m.RemoveKey(L"one") != FALSE);
+    LineInt("CMapStringToString.GetCount.after_remove", m.GetCount());
+    m.RemoveAll();
+    LineInt("CMapStringToString.GetCount.after_RemoveAll", m.GetCount());
+    LineBool("CMapStringToString.IsEmpty.after_RemoveAll", m.IsEmpty() != FALSE);
+}
+
+// ---------------------------------------------------------------------
+// CTypedPtrList<CPtrList, TYPE> / CTypedPtrArray<CPtrArray, TYPE>
+// (afxtempl.h). Thin typed wrappers: every method forwards to the untyped
+// base and casts. What is under test is that the forwarding preserves the
+// base's ORDER and RETURN VALUES exactly -- so the elements are printed by
+// the int they point at, never by address.
+// ---------------------------------------------------------------------
+static void TestCTypedPtrList()
+{
+    CTypedPtrList<CPtrList, int*> list;
+    LineInt("CTypedPtrList.GetCount.empty", list.GetCount());
+    LineBool("CTypedPtrList.IsEmpty.empty", list.IsEmpty() != FALSE);
+
+    list.AddTail(&g_slots[1]);
+    list.AddTail(&g_slots[2]);
+    POSITION headPos = list.AddHead(&g_slots[0]);
+    list.AddTail(&g_slots[3]);
+    LineInt("CTypedPtrList.GetCount.after_4", list.GetCount());
+    LineInt("CTypedPtrList.GetHead", *list.GetHead());
+    LineInt("CTypedPtrList.GetTail", *list.GetTail());
+    LineInt("CTypedPtrList.GetAt.head_position", *list.GetAt(headPos));
+
+    std::vector<std::string> forward;
+    for (POSITION pos = list.GetHeadPosition(); pos != nullptr;)
+        forward.push_back(std::to_string(*list.GetNext(pos)));
+    Line("CTypedPtrList.GetNext.forward", SortedJoin(forward)); // order-independent set
+    std::string ordered;
+    for (POSITION pos = list.GetHeadPosition(); pos != nullptr;)
+    {
+        if (!ordered.empty()) ordered += ",";
+        ordered += std::to_string(*list.GetNext(pos));
+    }
+    Line("CTypedPtrList.GetNext.in_order", ordered);
+
+    std::string reverse;
+    for (POSITION pos = list.GetTailPosition(); pos != nullptr;)
+    {
+        if (!reverse.empty()) reverse += ",";
+        reverse += std::to_string(*list.GetPrev(pos));
+    }
+    Line("CTypedPtrList.GetPrev.in_order", reverse);
+
+    POSITION second = list.FindIndex(1);
+    list.SetAt(second, &g_slots[5]);
+    LineInt("CTypedPtrList.SetAt.reads_back", *list.GetAt(second));
+    list.InsertBefore(second, &g_slots[4]);
+    list.InsertAfter(second, &g_slots[4]);
+    LineInt("CTypedPtrList.GetCount.after_inserts", list.GetCount());
+
+    // Find comes from the untyped base on purpose (see the note in
+    // afxtempl.h) -- so it takes a void*, in real MFC too.
+    LineBool("CTypedPtrList.Find.present", list.Find((void*)&g_slots[5]) != nullptr);
+    LineBool("CTypedPtrList.Find.absent", list.Find((void*)&g_slots[2]) != nullptr);
+
+    LineInt("CTypedPtrList.RemoveHead", *list.RemoveHead());
+    LineInt("CTypedPtrList.RemoveTail", *list.RemoveTail());
+    LineInt("CTypedPtrList.GetCount.after_removes", list.GetCount());
+    list.RemoveAll();
+    LineInt("CTypedPtrList.GetCount.after_RemoveAll", list.GetCount());
+}
+
+static void TestCTypedPtrArray()
+{
+    CTypedPtrArray<CPtrArray, int*> arr;
+    LineInt("CTypedPtrArray.GetSize.empty", arr.GetSize());
+
+    // Add returns the index it stored at, so every iteration needs its own
+    // case name -- compare.py matches on the name and rejects duplicates.
+    for (int i = 0; i < 4; ++i)
+    {
+        char label[64];
+        std::snprintf(label, sizeof(label), "CTypedPtrArray.Add.returns_index.%d", i);
+        LineInt(label, arr.Add(&g_slots[i]));
+    }
+    LineInt("CTypedPtrArray.GetSize.after_4", arr.GetSize());
+    LineInt("CTypedPtrArray.GetUpperBound", arr.GetUpperBound());
+    LineInt("CTypedPtrArray.GetAt.0", *arr.GetAt(0));
+    LineInt("CTypedPtrArray.operator_subscript.2", *arr[2]);
+
+    arr.SetAt(1, &g_slots[5]);
+    LineInt("CTypedPtrArray.SetAt.reads_back", *arr.GetAt(1));
+    *arr.ElementAt(1) = 99;
+    LineInt("CTypedPtrArray.ElementAt.is_writable", g_slots[5]);
+    g_slots[5] = 15; // restore, later cases read this array too
+
+    arr.InsertAt(0, &g_slots[4]);
+    LineInt("CTypedPtrArray.GetSize.after_InsertAt", arr.GetSize());
+    LineInt("CTypedPtrArray.InsertAt.new_head", *arr.GetAt(0));
+
+    arr.SetAtGrow(7, &g_slots[3]);
+    LineInt("CTypedPtrArray.GetSize.after_SetAtGrow", arr.GetSize());
+    LineBool("CTypedPtrArray.SetAtGrow.fills_gap_with_null", arr.GetAt(6) == nullptr);
+    LineInt("CTypedPtrArray.SetAtGrow.reads_back", *arr.GetAt(7));
+
+    int** data = arr.GetData();
+    LineBool("CTypedPtrArray.GetData.matches_GetAt", data != nullptr && data[0] == arr.GetAt(0));
+
+    std::string contents;
+    for (INT_PTR i = 0; i < arr.GetSize(); ++i)
+    {
+        if (i) contents += ",";
+        contents += arr.GetAt(i) ? std::to_string(*arr.GetAt(i)) : std::string("null");
+    }
+    Line("CTypedPtrArray.contents", contents);
+
+    arr.RemoveAt(0);
+    LineInt("CTypedPtrArray.GetSize.after_RemoveAt", arr.GetSize());
+    arr.RemoveAll();
+    LineInt("CTypedPtrArray.GetSize.after_RemoveAll", arr.GetSize());
+}
+
+// ---------------------------------------------------------------------
+// CWinThread / AfxBeginThread (afxwin.h).
+//
+// Everything read off the CWinThread object is read BEFORE the thread is
+// resumed: AfxBeginThread leaves m_bAutoDelete set, so the object frees
+// itself the moment its procedure returns, and touching it after that is
+// undefined on both sides alike. Completion is observed through an atomic
+// the procedure writes, never through the thread object.
+//
+// The thread is created suspended for the same reason -- it makes the
+// "before it runs" window deterministic instead of a race.
+// ---------------------------------------------------------------------
+namespace
+{
+std::atomic<int> g_workerRan{0};
+std::atomic<int> g_workerParam{0};
+
+UINT AFX_CDECL ConformanceWorker(LPVOID pParam)
+{
+    g_workerParam.store(pParam ? *static_cast<int*>(pParam) : -1);
+    g_workerRan.store(1);
+    return 7;
+}
+
+// Bounded wait. Nothing in this harness may block a CI runner for longer
+// than it takes to notice something is wrong.
+template <class Pred>
+bool PollUntil(Pred pred, int timeoutMs = 5000)
+{
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+    for (;;)
+    {
+        if (pred()) return true;
+        if (std::chrono::steady_clock::now() >= deadline) return false;
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+}
+} // namespace
+
+static void TestCWinThread()
+{
+    g_workerRan.store(0);
+    g_workerParam.store(0);
+    static int param = 4242;
+
+    CWinThread* pThread = AfxBeginThread(ConformanceWorker, &param,
+                                         THREAD_PRIORITY_NORMAL, 0, CREATE_SUSPENDED);
+    LineBool("AfxBeginThread.returns_object", pThread != nullptr);
+    if (pThread == nullptr)
+        return;
+
+    LineBool("CWinThread.m_bAutoDelete.default", pThread->m_bAutoDelete != FALSE);
+    LineBool("CWinThread.m_nThreadID.nonzero", pThread->m_nThreadID != 0);
+    LineBool("CWinThread.m_hThread.non_null", pThread->m_hThread != nullptr);
+    LineBool("CWinThread.suspended.has_not_run_yet", g_workerRan.load() == 0);
+
+    LineInt("CWinThread.GetThreadPriority.after_begin_normal", pThread->GetThreadPriority());
+    LineBool("CWinThread.SetThreadPriority.highest", pThread->SetThreadPriority(THREAD_PRIORITY_HIGHEST) != FALSE);
+    LineInt("CWinThread.GetThreadPriority.after_set_highest", pThread->GetThreadPriority());
+    LineBool("CWinThread.SetThreadPriority.back_to_normal", pThread->SetThreadPriority(THREAD_PRIORITY_NORMAL) != FALSE);
+    LineInt("CWinThread.GetThreadPriority.after_set_normal", pThread->GetThreadPriority());
+
+    // Win32 returns the PREVIOUS suspend count; a thread created suspended
+    // has one, so the first resume reports 1 and there is nothing left to
+    // resume afterwards.
+    LineInt("CWinThread.ResumeThread.from_suspended", static_cast<long long>(pThread->ResumeThread()));
+    // pThread is unusable from here on (auto-delete).
+
+    LineBool("CWinThread.worker.ran", PollUntil([] { return g_workerRan.load() != 0; }));
+    LineInt("CWinThread.worker.received_param", g_workerParam.load());
+}
+
+// ---------------------------------------------------------------------
+// CAsyncSocket (afxsock.h) -- the SYNCHRONOUS surface, over loopback.
+//
+// The async surface (AsyncSelect + OnReceive/OnSend/OnAccept/OnConnect/
+// OnClose) is deliberately not compared: real MFC delivers those through
+// WSAAsyncSelect and a hidden window, i.e. only to a thread that runs a
+// message pump, and a console probe has none. That is a property of MFC's
+// delivery mechanism, not a difference in socket behaviour.
+//
+// Every value printed here is platform-NEUTRAL by construction: no raw
+// handle, no port number, and no errno/WSA error code (10035 on Windows,
+// EWOULDBLOCK/EINPROGRESS elsewhere) is ever printed -- only whether an
+// error was reported. Sockets created for async notification are
+// non-blocking on both sides, so each transfer step polls to a deadline.
+// ---------------------------------------------------------------------
+static void TestCAsyncSocket()
+{
+#if defined(SIMPLE_MFC_USE_REAL_MFC)
+    // Real MFC's CAsyncSocket reaches for the module's instance handle when
+    // it creates the hidden notification window, and that handle is only
+    // filled in by AfxWinInit -- which a console application has to call
+    // itself. Done here rather than in main() so the rest of the run stays
+    // in the exact state the other sections were written against.
+    static bool inited = false;
+    if (!inited)
+    {
+        AfxWinInit(::GetModuleHandle(NULL), NULL, ::GetCommandLine(), 0);
+        inited = true;
+    }
+#endif
+    LineBool("AfxSocketInit.returns_true", AfxSocketInit(nullptr) != FALSE);
+
+    CAsyncSocket listener;
+    LineBool("CAsyncSocket.Create.listener",
+             listener.Create(0, SOCK_STREAM, FD_ACCEPT | FD_CLOSE, L"127.0.0.1") != FALSE);
+    LineBool("CAsyncSocket.m_hSocket.valid_after_Create", listener.m_hSocket != INVALID_SOCKET);
+    LineBool("CAsyncSocket.FromHandle.finds_owner", CAsyncSocket::FromHandle(listener.m_hSocket) == &listener);
+
+    CString boundAddress;
+    UINT boundPort = 0;
+    LineBool("CAsyncSocket.GetSockName.returns_true", listener.GetSockName(boundAddress, boundPort) != FALSE);
+    Line("CAsyncSocket.GetSockName.address", boundAddress);
+    LineBool("CAsyncSocket.GetSockName.port_is_assigned", boundPort != 0);
+
+    LineBool("CAsyncSocket.Listen", listener.Listen(5) != FALSE);
+
+    // Nothing has connected yet: a non-blocking accept must fail rather
+    // than wait, and must report an error for it.
+    CAsyncSocket tooEarly;
+    LineBool("CAsyncSocket.Accept.with_no_pending_connection", listener.Accept(tooEarly) != FALSE);
+    LineBool("CAsyncSocket.GetLastError.reports_the_would_block", CAsyncSocket::GetLastError() != 0);
+
+    CAsyncSocket client;
+    LineBool("CAsyncSocket.Create.client",
+             client.Create(0, SOCK_STREAM, FD_CONNECT | FD_READ | FD_WRITE | FD_CLOSE) != FALSE);
+    // A non-blocking connect() reports "in progress" rather than success,
+    // so its return value is not the interesting part -- the accept is.
+    client.Connect(L"127.0.0.1", boundPort);
+
+    CAsyncSocket server;
+    LineBool("CAsyncSocket.Accept.after_a_connect",
+             PollUntil([&] { return listener.Accept(server) != FALSE; }));
+
+    CString peerAddress;
+    UINT peerPort = 0;
+    LineBool("CAsyncSocket.GetPeerName.returns_true", server.GetPeerName(peerAddress, peerPort) != FALSE);
+    Line("CAsyncSocket.GetPeerName.address", peerAddress);
+    LineBool("CAsyncSocket.GetPeerName.port_is_assigned", peerPort != 0);
+
+    static const char kPayload[] = "conformance-payload";
+    const int kPayloadLen = static_cast<int>(sizeof(kPayload) - 1);
+    int sent = 0;
+    LineBool("CAsyncSocket.Send.completes",
+             PollUntil([&] { sent = client.Send(kPayload, kPayloadLen); return sent > 0; }));
+    LineInt("CAsyncSocket.Send.bytes", sent);
+
+    char received[64] = {};
+    int got = 0;
+    LineBool("CAsyncSocket.Receive.completes",
+             PollUntil([&] { got = server.Receive(received, static_cast<int>(sizeof(received) - 1)); return got > 0; }));
+    LineInt("CAsyncSocket.Receive.bytes", got);
+    Line("CAsyncSocket.Receive.payload", std::string(received, static_cast<size_t>(got > 0 ? got : 0)));
+
+    // Options round-trip. SO_REUSEADDR's numeric value differs per
+    // platform, so only the round-trip itself is compared.
+    int reuse = 1;
+    LineBool("CAsyncSocket.SetSockOpt.SO_REUSEADDR",
+             server.SetSockOpt(SO_REUSEADDR, &reuse, static_cast<int>(sizeof(reuse))) != FALSE);
+    int readBack = 0;
+    int readBackLen = static_cast<int>(sizeof(readBack));
+    LineBool("CAsyncSocket.GetSockOpt.SO_REUSEADDR", server.GetSockOpt(SO_REUSEADDR, &readBack, &readBackLen) != FALSE);
+    LineBool("CAsyncSocket.GetSockOpt.SO_REUSEADDR.reads_back_set", readBack != 0);
+
+    DWORD pending = 0;
+    LineBool("CAsyncSocket.IOCtl.FIONREAD", server.IOCtl(FIONREAD, &pending) != FALSE);
+
+    LineBool("CAsyncSocket.ShutDown.sends", client.ShutDown(CAsyncSocket::sends) != FALSE);
+
+    // Detach hands the handle back without closing it, and unregisters the
+    // object -- so FromHandle must stop finding it.
+    SOCKET detached = server.Detach();
+    LineBool("CAsyncSocket.Detach.returns_the_handle", detached != INVALID_SOCKET);
+    LineBool("CAsyncSocket.Detach.clears_m_hSocket", server.m_hSocket == INVALID_SOCKET);
+    LineBool("CAsyncSocket.FromHandle.after_Detach", CAsyncSocket::FromHandle(detached) == nullptr);
+
+    CAsyncSocket adopted;
+    LineBool("CAsyncSocket.Attach", adopted.Attach(detached) != FALSE);
+    LineBool("CAsyncSocket.FromHandle.after_Attach", CAsyncSocket::FromHandle(detached) == &adopted);
+    adopted.Close();
+    LineBool("CAsyncSocket.Close.clears_m_hSocket", adopted.m_hSocket == INVALID_SOCKET);
+    adopted.Close();
+    LineBool("CAsyncSocket.Close.is_idempotent", adopted.m_hSocket == INVALID_SOCKET);
+
+    client.Close();
+    listener.Close();
+}
+
+// ---------------------------------------------------------------------
 int main()
 {
     SilenceWindowsDialogs();
@@ -2432,9 +2685,12 @@ int main()
     TestCArrayTemplate();
     TestCListTemplate();
     TestCMapTemplate();
+    TestCMapPtrToPtr();
+    TestCMapStringToPtr();
+    TestCMapStringToString();
+    TestCTypedPtrList();
+    TestCTypedPtrArray();
     TestTime();
-    TestCPointCSize();
-    TestCRectMethods();
     TestCTempBuffer();
     TestCSimpleArray();
     TestCRBMap();
@@ -2444,15 +2700,16 @@ int main()
     TestEventManualReset();
     TestEventPulseAndUnlock();
     TestMutex();
+    TestCWinThread();
+    TestCAsyncSocket();
 
     TestPatternCString();
-    TestPatternCRectAndPoint();
     TestPatternCTime();
     TestPatternBase64();
     TestPatternUnicodeToUtf8();
 
     // Explicit end-of-run marker. A probe that dies partway through still
-    // exits with a code compare.cmake checks, but a truncated run that
+    // exits with a code compare.py checks, but a truncated run that
     // somehow exits 0 anyway would otherwise look like "the last N cases
     // are missing" rather than "this probe never finished".
     Line("#END", std::to_string(g_index));

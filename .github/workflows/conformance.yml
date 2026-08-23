@@ -1,0 +1,123 @@
+# MFC/ATL conformance: does this branch behave like the real thing?
+#
+# One source file (tests/conformance/cases.cpp) is compiled twice — once
+# against the E-prefixed headers in include/, once against the real MFC/ATL
+# that ships with Visual Studio — and the two runs are compared case by
+# case. A method whose result differs is a conformance bug; a method this
+# branch does not implement simply has no case and is reported as skipped.
+#
+#   windows  the real comparison: both probes on the same machine, no
+#            exclusions, every difference is a real difference. It also
+#            publishes real MFC's output as a recording.
+#   posix    builds the native probe with GCC and with Clang and compares
+#            it against that recording, minus the handful of cases whose
+#            value is a platform fact (tests/conformance/platform_dependent.txt).
+name: conformance
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    name: native vs real MFC (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the MFC and ATL Visual Studio component
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installerDir = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
+          $vsPath = & "$installerDir\vswhere.exe" -latest -property installationPath
+          Write-Host "Visual Studio install path: $vsPath"
+          $proc = Start-Process -FilePath "$installerDir\vs_installer.exe" -ArgumentList @(
+            'modify',
+            '--installPath', "`"$vsPath`"",
+            '--add', 'Microsoft.VisualStudio.Component.VC.ATLMFC',
+            '--quiet', '--norestart'
+          ) -Wait -PassThru
+          # 3010 is "success, reboot required" — the component is installed
+          # and usable either way.
+          if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010) {
+            throw "vs_installer.exe failed with exit code $($proc.ExitCode)"
+          }
+
+      - name: Configure
+        run: >
+          cmake -S . -B build
+          -DSIMPLE_MFC_BUILD_CONFORMANCE=ON
+          -DSIMPLE_MFC_BUILD_REAL_MFC_PROBE=ON
+
+      - name: Build both probes
+        run: cmake --build build --config Release
+
+      - name: Compare
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      # Published even when the comparison fails: the recording is what the
+      # POSIX job compares against, and a failing Windows run is exactly when
+      # a reviewer most wants to read real MFC's own output.
+      - name: Publish real MFC's output as the reference recording
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-mfc-reference
+          path: build/tests/conformance/real_mfc.txt
+          if-no-files-found: warn
+
+  posix:
+    name: native vs the recording (${{ matrix.compiler }})
+    needs: windows
+    # The recording is the whole point of this job, but a failed comparison
+    # upstream must not hide a POSIX-only regression: run as long as the
+    # artifact was produced.
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - compiler: gcc
+            cc: gcc
+            cxx: g++
+          - compiler: clang
+            cc: clang
+            cxx: clang++
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download the reference recording
+        id: reference
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: real-mfc-reference
+          path: reference
+
+      - name: Configure
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: |
+          # With no recording (the Windows job never got far enough to make
+          # one) the suite still builds and runs the probe end to end — it
+          # just has nothing to compare against.
+          if [ -f reference/real_mfc.txt ]; then
+            REFERENCE="-DSIMPLE_MFC_REFERENCE_FILE=$PWD/reference/real_mfc.txt"
+          else
+            echo "::warning::no reference recording — running the probe without comparing"
+            REFERENCE=""
+          fi
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+                -DSIMPLE_MFC_BUILD_CONFORMANCE=ON $REFERENCE
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Compare
+        run: ctest --test-dir build --output-on-failure
