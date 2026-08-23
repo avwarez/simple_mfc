@@ -1,0 +1,71 @@
+# Coexistence: can simple_mfc and the real ATL/MFC share a translation unit?
+#
+# eMule's migration replaces one symbol occurrence at a time, so the two
+# libraries live in the same file for the whole length of it. That makes two
+# properties load-bearing that the conformance suite cannot see, because it
+# compiles the two sides into two separate binaries:
+#
+#   compiles   both header sets in one TU, in either include order
+#   inert      real MFC answers the same questions with or without
+#              simple_mfc's headers in the TU alongside it
+#
+# Windows only: real MFC exists nowhere else, so there is no degraded mode
+# here -- without it there is no coexistence to test.
+name: coexistence
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    name: both header sets in one TU
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the MFC and ATL Visual Studio component
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installerDir = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
+          $vsPath = & "$installerDir\vswhere.exe" -latest -property installationPath
+          Write-Host "Visual Studio install path: $vsPath"
+          $proc = Start-Process -FilePath "$installerDir\vs_installer.exe" -ArgumentList @(
+            'modify',
+            '--installPath', "`"$vsPath`"",
+            '--add', 'Microsoft.VisualStudio.Component.VC.ATLMFC',
+            '--quiet', '--norestart'
+          ) -Wait -PassThru
+          # 3010 is "success, reboot required" — the component is installed
+          # and usable either way.
+          if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010) {
+            throw "vs_installer.exe failed with exit code $($proc.ExitCode)"
+          }
+
+      - name: Configure
+        run: cmake -S . -B build -DSIMPLE_MFC_BUILD_COEXISTENCE=ON
+
+      # Split from the two coexisting probes on purpose: if the baseline
+      # itself does not build, nothing below it means anything.
+      - name: Build the baseline (real MFC alone)
+        run: cmake --build build --config Release --target coexist_mfc_only
+
+      - name: Build with real MFC first
+        run: cmake --build build --config Release --target coexist_mfc_first
+
+      - name: Build with simple_mfc first
+        run: cmake --build build --config Release --target coexist_smfc_first
+
+      - name: Compare
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Publish what real MFC answered on its own
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coexistence-baseline
+          path: build/tests/coexistence/mfc_only_Release.txt
+          if-no-files-found: warn

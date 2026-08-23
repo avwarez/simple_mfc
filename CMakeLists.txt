@@ -145,6 +145,17 @@ if (SIMPLE_MFC_BUILD_PORTABILITY)
     add_subdirectory(tests/portability)
 endif()
 
+# --- Coexistence suite ----------------------------------------------------
+# tests/coexistence puts BOTH header sets in one translation unit and asks
+# whether they can be there together, in either include order, without this
+# library changing what real MFC means around it. Windows/MSVC only, and
+# opt-in like the other two.
+option(SIMPLE_MFC_BUILD_COEXISTENCE "Build the simple_mfc/real-MFC coexistence probes" OFF)
+if (SIMPLE_MFC_BUILD_COEXISTENCE)
+    enable_testing()
+    add_subdirectory(tests/coexistence)
+endif()
+
 # --- Install (optional, for use as an external library) --------------------
 include(GNUInstallDirs)
 install(TARGETS simple_mfc
