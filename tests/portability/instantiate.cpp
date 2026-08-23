@@ -45,15 +45,26 @@
 // ---------------------------------------------------------------------
 // 1. The language standard.
 //
-// MSVC reports the real value in _MSVC_LANG; its __cplusplus stays at
-// 199711 unless /Zc:__cplusplus is passed, so asking __cplusplus alone
-// would silently pass on the one compiler most likely to be configured
-// with an older standard.
+// Two spellings have to be accepted, and neither is a compromise.
+//
+// MSVC reports the value in _MSVC_LANG, not __cplusplus: the latter stays
+// at 199711 unless /Zc:__cplusplus is passed, so asking __cplusplus alone
+// would pass silently on the one compiler most likely to be left on an
+// older standard.
+//
+// And 202302 is the value of the FINAL standard. A compiler whose C++23
+// support predates ratification spells the mode -std=c++2b and reports the
+// placeholder 202100 -- GCC 13, which is what ubuntu-latest still installs,
+// does exactly that. It is C++23 mode, and CMAKE_CXX_STANDARD 23 is what
+// asked for it; refusing it would only mean asserting the compiler's
+// release date. 202002 (C++20) and below are what this must reject, so the
+// floor sits just above it, and the probe prints the exact value it got so
+// each CI job says on the record which of the two it is compiling as.
 // ---------------------------------------------------------------------
 #if defined(_MSVC_LANG)
-static_assert(_MSVC_LANG >= 202302L, "simple_mfc is built as C++23 (MSVC: /std:c++latest)");
+static_assert(_MSVC_LANG > 202002L, "simple_mfc is built as C++23 (MSVC: /std:c++latest)");
 #else
-static_assert(__cplusplus >= 202302L, "simple_mfc is built as C++23 (-std=c++23)");
+static_assert(__cplusplus > 202002L, "simple_mfc is built as C++23 (-std=c++23 / -std=c++2b)");
 #endif
 
 // ---------------------------------------------------------------------
@@ -145,7 +156,7 @@ int main()
 
     EAFX_MODULE_THREAD_STATE* state = EAfxGetModuleThreadState();
 
-    std::printf("instantiation OK: standard %ld, pointer %d bytes, "
+    std::printf("instantiation OK: standard %ld (%s), pointer %d bytes, "
                 "Run() -> %d, module thread state %s\n",
                 static_cast<long>(
 #if defined(_MSVC_LANG)
@@ -154,6 +165,11 @@ int main()
                     __cplusplus
 #endif
                 ),
+#if defined(_MSVC_LANG)
+                _MSVC_LANG >= 202302L ? "C++23" : "C++2b",
+#else
+                __cplusplus >= 202302L ? "C++23" : "C++2b",
+#endif
                 static_cast<int>(sizeof(void*)), rc,
                 state != nullptr ? "resolved" : "null");
     return state != nullptr ? 0 : 1;
