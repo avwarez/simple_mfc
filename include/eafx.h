@@ -115,8 +115,23 @@ using BOOL = int;
 // it makes windows.h skip winsock.h and leaves the field to winsock2.h.
 #ifndef _WINSOCKAPI_
 #define _WINSOCKAPI_
+// ...and put it back afterwards, which is the half of the trick that
+// matters in a TU that also holds real MFC. afxwin.h hard-errors ("MFC
+// requires use of Winsock2.h") when it finds _WINSOCKAPI_ defined without
+// _WINSOCK2API_ alongside it -- i.e. when someone suppressed winsock.h and
+// then did not bring winsock2.h in. Real MFC's afxv_w32.h defines the macro
+// only for the duration of its own <windows.h> include and undefines it
+// again (its _AFX_NO_WINSOCK_UNDEF flag); leaving it defined, as this
+// header used to, broke every real MFC header included after ours. Found by
+// the per-header pair matrix, and only there: the umbrella coexistence probe
+// includes afxsock.h too, whose winsock2.h defines _WINSOCK2API_ and hides it.
+#define ESIMPLE_MFC_UNDEF_WINSOCKAPI
 #endif
 #include <windows.h>
+#ifdef ESIMPLE_MFC_UNDEF_WINSOCKAPI
+#undef _WINSOCKAPI_
+#undef ESIMPLE_MFC_UNDEF_WINSOCKAPI
+#endif
 // <windows.h> does NOT pull in <tchar.h>, so _T()/TCHAR/_tcs* would be
 // missing on a real Windows build too -- real MFC gets them because its own
 // afx.h includes <tchar.h>. Match that. Under the forced _UNICODE above,
