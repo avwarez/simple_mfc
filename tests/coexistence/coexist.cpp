@@ -426,6 +426,60 @@ static void ProbeSimpleMfc()
     ECString fromTheirs((LPCTSTR)fromOurs);
     REC("smfc.interop.CString_roundtrip", fromTheirs == s);
 
+    // Archive interop. eMule's file cluster is where the two libraries meet
+    // over BYTES rather than over types: a .met written by code that has
+    // already been converted has to stay readable by code that has not.
+    // Scalars are the whole of what eMule serializes; CString is NOT
+    // byte-compatible (simple_mfc uses a self-consistent 32-bit length
+    // prefix, real MFC a narrow/wide flag plus a variable-length count), so
+    // it is recorded as its own case rather than folded in with them.
+    {
+        ECString path = dir + _T("\\interop_mfc_to_smfc.bin");
+        CFile out;
+        out.Open((LPCTSTR)path, CFile::modeCreate | CFile::modeWrite);
+        CArchive store(&out, CArchive::store);
+        store << (BYTE)0xA5 << (WORD)0x1234 << (DWORD)0xDEADBEEFUL
+              << (int)-7 << (double)1.5 << (ULONGLONG)0x0102030405060708ULL;
+        store.Close();
+        out.Close();
+
+        ECFile in;
+        in.Open(path, ECFile::modeRead);
+        ECArchive load(&in, ECArchive::load);
+        BYTE by = 0; WORD w = 0; DWORD dw = 0; int i = 0;
+        double d = 0; ULONGLONG q = 0;
+        load >> by >> w >> dw >> i >> d >> q;
+        load.Close();
+        in.Close();
+        REC("smfc.interop.CArchive.mfc_to_smfc",
+            by == 0xA5 && w == 0x1234 && dw == 0xDEADBEEFUL && i == -7
+                && d == 1.5 && q == 0x0102030405060708ULL);
+        ::DeleteFileW((LPCTSTR)path);
+    }
+    {
+        ECString path = dir + _T("\\interop_smfc_to_mfc.bin");
+        ECFile out;
+        out.Open(path, ECFile::modeCreate | ECFile::modeWrite);
+        ECArchive store(&out, ECArchive::store);
+        store << (BYTE)0xA5 << (WORD)0x1234 << (DWORD)0xDEADBEEFUL
+              << (int)-7 << (double)1.5 << (ULONGLONG)0x0102030405060708ULL;
+        store.Close();
+        out.Close();
+
+        CFile in;
+        in.Open((LPCTSTR)path, CFile::modeRead);
+        CArchive load(&in, CArchive::load);
+        BYTE by = 0; WORD w = 0; DWORD dw = 0; int i = 0;
+        double d = 0; ULONGLONG q = 0;
+        load >> by >> w >> dw >> i >> d >> q;
+        load.Close();
+        in.Close();
+        REC("smfc.interop.CArchive.smfc_to_mfc",
+            by == 0xA5 && w == 0x1234 && dw == 0xDEADBEEFUL && i == -7
+                && d == 1.5 && q == 0x0102030405060708ULL);
+        ::DeleteFileW((LPCTSTR)path);
+    }
+
     ECObList list;
     ECFileException* held = new ECFileException(ECFileException::diskFull);
     list.AddTail(held);

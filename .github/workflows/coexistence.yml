@@ -59,6 +59,12 @@ jobs:
       - name: Build with simple_mfc first
         run: cmake --build build --config Release --target coexist_smfc_first
 
+      # Per-header, both orders: an umbrella TU that includes the whole
+      # surface hides a header that only parses because another one came
+      # first, which is exactly how a consumer meets it.
+      - name: Build each header next to its real-MFC counterpart
+        run: cmake --build build --config Release --target smfc_coexist_headers
+
       - name: Compare
         run: ctest --test-dir build -C Release --output-on-failure
 
