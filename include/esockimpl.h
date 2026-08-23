@@ -28,4 +28,7 @@ struct E_AFX_SOCK_STATE_HOLDER
 {
     E_AFX_SOCK_STATE* GetData();
 };
-extern E_AFX_SOCK_STATE_HOLDER _afxSockState;
+// E-prefixed like everything else here: _afxSockState is real MFC's own
+// name for this object, and a translation unit holding both libraries would
+// otherwise have two declarations of it with different types.
+extern E_AFX_SOCK_STATE_HOLDER E_afxSockState;

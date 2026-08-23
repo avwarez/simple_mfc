@@ -86,43 +86,13 @@
     #include <windows.h>
 #endif
 
-// windows.h #defines FindNextFile to FindNextFileW under UNICODE builds.
-// Real MFC's own headers include windows.h *before* declaring CFileFind,
-// so real MFC's method is itself compiled under the substituted name
-// (CFileFind::FindNextFileW) — the call site below must match that.
-// simple_mfc's afx.h deliberately never includes windows.h, so its
-// CFileFind keeps the literal FindNextFile name, and the call site must
-// NOT be macro-substituted there. Same source line, opposite requirement
-// per branch: dispatch through a macro instead of calling the method
-// name directly.
-#if defined(SIMPLE_MFC_USE_NATIVE)
-    // Macro expansion is rescanned for further substitution, so simply
-    // writing FindNextFile in the replacement text below would still get
-    // rewritten to FindNextFileW by the still-active windows.h macro.
-    // Remove it first: simple_mfc's own CFileFind keeps the literal name
-    // since afx.h never includes windows.h.
-    #ifdef FindNextFile
-        #undef FindNextFile
-    #endif
-    #define SIMPLE_MFC_FIND_NEXT_FILE(finder) (finder).FindNextFile()
-#else
-    #define SIMPLE_MFC_FIND_NEXT_FILE(finder) (finder).FindNextFileW()
-#endif
-
-// windows.h also #defines the zero-argument GetCurrentTime() to
-// GetTickCount() (a legacy 16-bit-Windows compatibility shim in
-// winuser.h). Exactly like FindNextFile above: real MFC's own
-// ATL::CTime::GetCurrentTime is ALSO declared under the substituted name
-// (confirmed by CI — a blanket #undef broke the real-MFC side instead),
-// so this needs the same per-branch dispatch, not a plain #undef.
-#if defined(SIMPLE_MFC_USE_NATIVE)
-    #ifdef GetCurrentTime
-        #undef GetCurrentTime
-    #endif
-    #define SIMPLE_MFC_GET_CURRENT_TIME() CTime::GetCurrentTime()
-#else
-    #define SIMPLE_MFC_GET_CURRENT_TIME() CTime::GetTickCount()
-#endif
+// windows.h #defines FindNextFile to FindNextFileW, and the zero-argument
+// GetCurrentTime() to GetTickCount(), under UNICODE builds. Both members
+// below are therefore compiled under the substituted name on Windows -- on
+// BOTH sides, since neither real MFC's headers nor this branch's undefine
+// those macros any more. So the call sites are written plainly and the
+// preprocessor rewrites them identically for both probes; off Windows there
+// is no macro and the literal names stand.
 
 #include <algorithm>
 #include <atomic>
@@ -915,7 +885,7 @@ static void TestCFileFind()
     BOOL working = finder.FindFile(dir + CString(L"*.txt"));
     while (working)
     {
-        working = SIMPLE_MFC_FIND_NEXT_FILE(finder);
+        working = finder.FindNextFile();
         if (finder.IsDots()) continue;
         if (matchCount < 8) matched[matchCount++] = finder.GetFileName();
     }
@@ -942,7 +912,7 @@ static void TestCFileFind()
     {
         CFileFind single;
         BOOL foundOne = single.FindFile(dir + CString(L"alpha.txt"));
-        BOOL hasMore = SIMPLE_MFC_FIND_NEXT_FILE(single);
+        BOOL hasMore = single.FindNextFile();
         (void)hasMore;
         LineBool("CFileFind.Single.foundOne", foundOne != FALSE);
         Line("CFileFind.Single.GetFilePath", single.GetFilePath());
@@ -1475,7 +1445,7 @@ static void TestTime()
     // GetCurrentTime(): the exact instant is inherently non-deterministic
     // (the two probes run moments apart, not simultaneously), so only a
     // structural property is compared, never the raw value.
-    CTime now = SIMPLE_MFC_GET_CURRENT_TIME();
+    CTime now = CTime::GetCurrentTime();
     LineBool("CTime.GetCurrentTime.plausibleYear", now.GetYear() >= 2020);
 
     // Default and explicit(long long) CTimeSpan constructors, plus
@@ -3160,7 +3130,7 @@ static void TestCFileFindAttributes()
     {
         CFileFind finder;
         BOOL found = finder.FindFile(plain);
-        BOOL more = SIMPLE_MFC_FIND_NEXT_FILE(finder);
+        BOOL more = finder.FindNextFile();
         (void)more;
         LineBool("CFileFind.Attr.found", found != FALSE);
         LineBool("CFileFind.Attr.IsHidden", finder.IsHidden() != FALSE);
@@ -3249,7 +3219,7 @@ static void TestCFileFindAttributes()
 
         CFileFind finder;
         BOOL found = finder.FindFile(ro);
-        BOOL more = SIMPLE_MFC_FIND_NEXT_FILE(finder);
+        BOOL more = finder.FindNextFile();
         (void)more;
         LineBool("CFileFind.ReadOnly.found", found != FALSE);
         LineBool("CFileFind.ReadOnly.IsReadOnly", finder.IsReadOnly() != FALSE);
@@ -3277,7 +3247,7 @@ static void TestCFileFindAttributes()
         int lastReturn = -1;
         while (working)
         {
-            working = SIMPLE_MFC_FIND_NEXT_FILE(finder);
+            working = finder.FindNextFile();
             lastReturn = working ? 1 : 0;
             ++seen;
             if (seen > 16) break; // never loop unboundedly in CI

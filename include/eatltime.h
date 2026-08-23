@@ -72,11 +72,12 @@ private:
     long long m_span;
 };
 
-// GetCurrentTime is also a real winuser.h macro (expands to GetTickCount())
-// -- undefined here for the same reason afx.h undefines FindNextFile
-// above: keeps the member's true name instead of a silent rewrite to a
-// method CTime doesn't have, consistently for every later call site too.
-#undef GetCurrentTime
+// GetCurrentTime is a winuser.h macro (expands to GetTickCount()), so on
+// Windows the member below is declared -- and every call to it compiled --
+// under that substituted name. Left alone for the same reason afx.h leaves
+// FindNextFile alone: real ATL's own CTime::GetCurrentTime goes through the
+// identical substitution, and undefining the macro here would silence it
+// for the whole rest of the translation unit.
 class ECTime
 {
 public:

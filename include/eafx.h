@@ -95,11 +95,17 @@ using BOOL = int;
 // resolves to the ANSI (char*) alias and every wide-char call site in
 // this library (wmemcpy, CDumpContext::operator<<...) stops matching.
 #ifdef _WIN32
-#ifndef UNICODE
-#define UNICODE
-#endif
-#ifndef _UNICODE
-#define _UNICODE
+// Required of the BUILD, never defined here. Defining a charset macro from
+// inside a header sets it for everything parsed after this point and leaves
+// everything parsed before it on the other setting -- in a translation unit
+// that also holds real MFC (which eMule's migration keeps for as long as it
+// runs, one replaced symbol at a time), that means afx.h parsed as ANSI and
+// afxwin.h parsed as Unicode, with CString a different type in each. The
+// library's own CMakeLists.txt puts these on the target as PUBLIC, so a
+// consumer inherits them; a consumer with its own build system is told here
+// rather than silently switched.
+#if !defined(UNICODE) || !defined(_UNICODE)
+#error "simple_mfc is unconditionally wide-char: build with UNICODE and _UNICODE defined."
 #endif
 // Stop <windows.h> from dragging in the legacy <winsock.h> (Winsock 1):
 // eMule/srchybrid (and our own afxsock.h) include <winsock2.h>, and the two
@@ -1190,25 +1196,16 @@ private:
 
 // ---------------------------------------------------------------------
 // CFileFind — built on std::filesystem (standard C++17, no FindFirstFile).
-// FindNextFile is also a real winbase.h macro (expands to FindNextFileW/A)
-// -- undefined here, the same way real MFC's own afx.h does it, so the
-// member keeps its true name instead of being silently rewritten to
-// something CFileFind doesn't have. Once undef'd it stays gone for the
-// rest of the translation unit, so later call sites (this file's own
-// afx.cpp, and any including code such as eMule's) see the same name too.
+//
+// FindNextFile is also a winbase.h macro (FindNextFileW under UNICODE), so
+// on Windows the member below is declared -- and every call to it compiled
+// -- under the substituted name. That substitution is left alone on
+// purpose: it is exactly what happens to real MFC's own CFileFind, whose
+// member is therefore CFileFind::FindNextFileW, and undefining the macro
+// here would silence it for the whole rest of the translation unit,
+// including any real-MFC header included after this one. Off Windows there
+// is no macro and the name stays literal.
 // ---------------------------------------------------------------------
-#undef FindNextFile
-#ifdef _WIN32
-// The #undef above dropped winbase.h's FindNextFile macro so CFileFind's
-// member below keeps its real name. eMule also calls the plain Win32
-// function under that name ("while (... && FindNextFile(hSearch, &fd))"),
-// so forward it explicitly to the W entry point the macro used to pick.
-inline BOOL FindNextFile(HANDLE hFindFile, LPWIN32_FIND_DATAW lpFindFileData)
-{
-    return ::FindNextFileW(hFindFile, lpFindFileData);
-}
-#endif
-
 class ECFileFind : public ECObject
 {
     EDECLARE_DYNAMIC(ECFileFind)

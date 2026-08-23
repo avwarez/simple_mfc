@@ -117,6 +117,16 @@ if (MSVC)
         _CRT_SECURE_NO_WARNINGS # std::localtime/mktime/vswprintf: MSVC flags these as "unsafe" by default
         NOMINMAX                # in anticipation of a future afxwin.h implementation on real Windows
         WIN32_LEAN_AND_MEAN
+        # This library is unconditionally wide-char (std::wstring-backed),
+        # so the whole translation unit has to be. It used to be afx.h that
+        # defined these, which set the charset from the middle of a header:
+        # everything parsed before it stayed on the other setting, and in a
+        # TU that also holds real MFC that means two of its headers
+        # disagreeing about what CString is. PUBLIC so a consumer inherits
+        # the setting for its own sources too; afx.h now #errors instead of
+        # defining them, so a consumer building by other means is told.
+        UNICODE
+        _UNICODE
     )
 else()
     target_compile_options(simple_mfc PUBLIC -Wall -Wextra -Wpedantic)

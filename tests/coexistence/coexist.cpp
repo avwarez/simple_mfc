@@ -135,6 +135,51 @@ static int Win32FindNextFileSpelling()
 #endif
 }
 
+// The members that the substitution renames, actually CALLED. The detection
+// idiom below asks the compiler which name a member carries; only a real
+// call odr-uses it, and a member declared under a name the library was not
+// built with is a link error, not a compile one -- which nothing that only
+// inspects the type would ever notice.
+static int MfcEnumerate()
+{
+    CFileFind finder;
+    BOOL working = finder.FindFile(_T("C:\\Windows\\*"));
+    int seen = 0;
+    while (working)
+    {
+        ++seen;
+        working = finder.FindNextFile();
+    }
+    finder.Close();
+    return seen;
+}
+
+static int MfcCurrentYear()
+{
+    return CTime::GetCurrentTime().GetYear();
+}
+
+#if SMFC_HAVE_SIMPLE_MFC
+static int SmfcEnumerate()
+{
+    ECFileFind finder;
+    BOOL working = finder.FindFile(_T("C:\\Windows\\*"));
+    int seen = 0;
+    while (working)
+    {
+        ++seen;
+        working = finder.FindNextFile();
+    }
+    finder.Close();
+    return seen;
+}
+
+static int SmfcCurrentYear()
+{
+    return ECTime::GetCurrentTime().GetYear();
+}
+#endif
+
 // --- which name does each member actually carry? ---------------------------
 // The substitution above rewrites member declarations too, so real MFC's
 // CFileFind::FindNextFile is compiled under whichever name was live when
@@ -220,6 +265,9 @@ static void ProbeRealMfc()
     REC("mfc.CTime.member.GetCurrentTime",    HasGetCurrentTime<CTime>::value);
     REC("mfc.CTime.member.GetTickCount",      HasGetTickCount<CTime>::value);
 
+    REC("mfc.CFileFind.enumerates", MfcEnumerate() > 0);
+    REC("mfc.CTime.GetCurrentTime.plausible_year", MfcCurrentYear() >= 2020);
+
     REC("mfc.sizeof.CString", (long long)sizeof(CString));
     REC("mfc.sizeof.CObject", (long long)sizeof(CObject));
     REC("mfc.sizeof.CTime",   (long long)sizeof(CTime));
@@ -296,6 +344,9 @@ static void ProbeSimpleMfc()
     REC("smfc.CFileFind.member.FindNextFileW", HasFindNextFileW<ECFileFind>::value);
     REC("smfc.CTime.member.GetCurrentTime",    HasGetCurrentTime<ECTime>::value);
     REC("smfc.CTime.member.GetTickCount",      HasGetTickCount<ECTime>::value);
+
+    REC("smfc.CFileFind.enumerates", SmfcEnumerate() > 0);
+    REC("smfc.CTime.GetCurrentTime.plausible_year", SmfcCurrentYear() >= 2020);
 
     ECString s(_T("Coexistence"));
     s.MakeUpper();
