@@ -19,10 +19,10 @@ int EAtlUnicodeToUTF8(LPCWSTR wszSrc, int nSrc, LPSTR szDest, int nDest) noexcep
     int nOut = 0;
     for (int i = 0; i < nChars; ++i)
     {
-        uint32_t cp = static_cast<uint16_t>(wszSrc[i]);
+        uint32_t cp = static_cast<uint32_t>(wszSrc[i]);
         if (cp >= 0xD800 && cp <= 0xDBFF && i + 1 < nChars)
         {
-            uint32_t lo = static_cast<uint16_t>(wszSrc[i + 1]);
+            uint32_t lo = static_cast<uint32_t>(wszSrc[i + 1]);
             if (lo >= 0xDC00 && lo <= 0xDFFF)
             {
                 cp = 0x10000u + ((cp - 0xD800u) << 10) + (lo - 0xDC00u);
