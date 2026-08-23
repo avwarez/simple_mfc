@@ -2596,6 +2596,79 @@ void CallAppendFormatV(CString& s, LPCTSTR fmt, ...)
 }
 }
 
+namespace
+{
+std::string CodeUnits(const CString& str)
+{
+    std::string out;
+    for (int i = 0; i < str.GetLength(); ++i)
+    {
+        char buf[24];
+        std::snprintf(buf, sizeof(buf), "%s%04lX", i ? " " : "",
+                      static_cast<unsigned long>(static_cast<unsigned int>(str.GetAt(i))));
+        out += buf;
+    }
+    return out;
+}
+}
+
+static void TestNonBMP()
+{
+    LineInt("NonBMP.sizeof.TCHAR", (long long)sizeof(TCHAR));
+
+    CString emoji(L"a\U0001F600b");
+    LineInt("NonBMP.emoji.GetLength", emoji.GetLength());
+    Line("NonBMP.emoji.code_units", CodeUnits(emoji));
+    LineInt("NonBMP.emoji.Find.a", emoji.Find(L'a'));
+    LineInt("NonBMP.emoji.Find.b", emoji.Find(L'b'));
+    LineInt("NonBMP.emoji.ReverseFind.b", emoji.ReverseFind(L'b'));
+    LineInt("NonBMP.emoji.GetAt.1", (long long)(unsigned long)(unsigned int)emoji.GetAt(1));
+    Line("NonBMP.emoji.Mid.1.1", CodeUnits(emoji.Mid(1, 1)));
+    Line("NonBMP.emoji.Mid.1.2", CodeUnits(emoji.Mid(1, 2)));
+    Line("NonBMP.emoji.Left.2", CodeUnits(emoji.Left(2)));
+    Line("NonBMP.emoji.Right.2", CodeUnits(emoji.Right(2)));
+
+    CString cjk(L"\U00020000\U0002A6DF");
+    LineInt("NonBMP.cjk.GetLength", cjk.GetLength());
+    Line("NonBMP.cjk.code_units", CodeUnits(cjk));
+
+    CString deseret(L"\U00010437");
+    LineInt("NonBMP.deseret.GetLength", deseret.GetLength());
+
+    CString mixed(L"é\U0001F600中");
+    LineInt("NonBMP.mixed.GetLength", mixed.GetLength());
+    Line("NonBMP.mixed.code_units", CodeUnits(mixed));
+
+    CString upper(L"a\U0001F600b");
+    upper.MakeUpper();
+    Line("NonBMP.MakeUpper.code_units", CodeUnits(upper));
+    CString lower(L"A\U0001F600B");
+    lower.MakeLower();
+    Line("NonBMP.MakeLower.code_units", CodeUnits(lower));
+
+    CString formatted;
+    formatted.Format(L"[%s]", emoji.GetString());
+    LineInt("NonBMP.Format.GetLength", formatted.GetLength());
+    Line("NonBMP.Format.code_units", CodeUnits(formatted));
+
+    CString concat = emoji + cjk;
+    LineInt("NonBMP.concat.GetLength", concat.GetLength());
+
+    LineInt("NonBMP.Compare.equal", emoji.Compare(L"a\U0001F600b"));
+    LineInt("NonBMP.Compare.ordering", emoji.Compare(L"a\U0001F601b") < 0 ? -1 : 1);
+
+    CString replaced(L"a\U0001F600b");
+    LineInt("NonBMP.Replace.count", replaced.Replace(L"\U0001F600", L"X"));
+    Line("NonBMP.Replace.result", CodeUnits(replaced));
+
+    const int srcChars = emoji.GetLength() + 1;
+    int needed = AtlUnicodeToUTF8(emoji.GetString(), srcChars, nullptr, 0);
+    std::vector<char> dst(static_cast<size_t>(needed > 0 ? needed : 1), 0);
+    int outLen = AtlUnicodeToUTF8(emoji.GetString(), srcChars, dst.data(), needed);
+    LineInt("NonBMP.AtlUnicodeToUTF8.length", outLen);
+    Line("NonBMP.AtlUnicodeToUTF8.hex", Hex(dst.data(), static_cast<size_t>(outLen > 0 ? outLen : 0)));
+}
+
 static void TestCStringGaps()
 {
     {
@@ -3423,6 +3496,7 @@ int main()
     TestExceptionGaps();
     TestCString();
     TestCStringGaps();
+    TestNonBMP();
     TestCFile();
     TestCStdioFile();
     TestCMemFile();
