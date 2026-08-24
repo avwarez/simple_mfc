@@ -76,6 +76,13 @@ using BOOL = int;
 #ifndef EDEBUG_ONLY
 #define EDEBUG_ONLY(f) (f)
 #endif
+#ifndef EASSERT_VALID
+#define EASSERT_VALID(pOb) (EAfxAssertValidObject(pOb, __FILE__, __LINE__))
+#endif
+#ifndef EASSERT_KINDOF
+#define EASSERT_KINDOF(class_name, object) \
+    EASSERT((object)->IsKindOf(ERUNTIME_CLASS(class_name)))
+#endif
 #else
 #ifndef EASSERT
 #define EASSERT(f) ((void)0)
@@ -86,12 +93,12 @@ using BOOL = int;
 #ifndef EDEBUG_ONLY
 #define EDEBUG_ONLY(f) ((void)0)
 #endif
-#endif
 #ifndef EASSERT_VALID
-#define EASSERT_VALID(p) ((void)0)
+#define EASSERT_VALID(pOb) ((void)0)
 #endif
 #ifndef EASSERT_KINDOF
 #define EASSERT_KINDOF(class_name, object) ((void)0)
+#endif
 #endif
 #ifndef ETRACE
 #ifdef _MSC_VER
@@ -173,6 +180,10 @@ public:
     virtual BOOL IsSerializable() const { return FALSE; }
     virtual ~ECObject() = default;
 };
+
+#ifdef _DEBUG
+void EAFXAPI EAfxAssertValidObject(const ECObject* pOb, const char* lpszFileName, int nLine);
+#endif
 
 class ECDumpContext
 {

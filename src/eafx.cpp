@@ -176,6 +176,15 @@ int OsErrorToCause(LONG lOsError)
     throw new ECFileException(OsErrorToCause(lOsError), lOsError, lpszFileName);
 }
 
+#ifdef _DEBUG
+void EAFXAPI EAfxAssertValidObject(const ECObject* pOb, const char*  , int  )
+{
+    EASSERT(pOb != nullptr);
+    if (pOb == nullptr) return;
+    pOb->AssertValid();
+}
+#endif
+
 [[noreturn]] void EAfxThrowFileException(int cause, LONG lOsError, LPCTSTR lpszFileName)
 {
     throw new ECFileException(cause, lOsError, lpszFileName);

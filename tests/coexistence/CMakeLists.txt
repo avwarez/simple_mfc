@@ -96,7 +96,6 @@ set(SMFC_HEADER_PAIRS
     "eatlsimpcoll.h|atlsimpcoll.h"
     "eatltime.h|atltime.h"
     "eatltypes.h|atltypes.h"
-    "esockimpl.h|afxsock.h"
     "etchar.h|tchar.h"
 )
 

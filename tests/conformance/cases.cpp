@@ -3600,10 +3600,61 @@ public:
     int value = 5;
 };
 IMPLEMENT_DYNAMIC(DumpSubject, CObject)
+
+int g_assertValidCalls = 0;
+
+class AssertValidSubject : public CObject
+{
+    DECLARE_DYNAMIC(AssertValidSubject)
+public:
+    void AssertValid() const override
+    {
+        ++g_assertValidCalls;
+        CObject::AssertValid();
+    }
+};
+IMPLEMENT_DYNAMIC(AssertValidSubject, CObject)
+
+class DerivedSubject : public AssertValidSubject
+{
+    DECLARE_DYNAMIC(DerivedSubject)
+};
+IMPLEMENT_DYNAMIC(DerivedSubject, AssertValidSubject)
 }
 
 static void TestDebugOnly()
 {
+    {
+        AssertValidSubject subject;
+        g_assertValidCalls = 0;
+        ASSERT_VALID(&subject);
+        LineInt("ASSERT_VALID.reaches_AssertValid", g_assertValidCalls);
+
+        g_assertValidCalls = 0;
+        const AssertValidSubject constSubject;
+        ASSERT_VALID(&constSubject);
+        LineInt("ASSERT_VALID.reaches_AssertValid.const", g_assertValidCalls);
+
+        g_assertValidCalls = 0;
+        DerivedSubject derived;
+        CObject* asBase = &derived;
+        ASSERT_VALID(asBase);
+        LineInt("ASSERT_VALID.dispatches_virtually", g_assertValidCalls);
+
+        g_assertValidCalls = 0;
+        ASSERT_VALID(&subject);
+        ASSERT_VALID(&subject);
+        ASSERT_VALID(&subject);
+        LineInt("ASSERT_VALID.once_per_invocation", g_assertValidCalls);
+
+        ASSERT_KINDOF(CObject, &derived);
+        LineBool("ASSERT_KINDOF.base_of_derived_passes", true);
+        ASSERT_KINDOF(AssertValidSubject, &derived);
+        LineBool("ASSERT_KINDOF.exact_type_passes", true);
+        ASSERT_KINDOF(DerivedSubject, &derived);
+        LineBool("ASSERT_KINDOF.most_derived_passes", true);
+    }
+
     {
         DumpSubject subject;
         subject.AssertValid();

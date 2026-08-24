@@ -14,7 +14,6 @@
 #include "eatlsimpcoll.h"
 #include "eatltime.h"
 #include "eatltypes.h"
-#include "esockimpl.h"
 
 #include <cstdio>
 #include <ctime>
