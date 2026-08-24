@@ -210,8 +210,12 @@ private:
 
 [[noreturn]] void EAfxThrowMemoryException();
 
+#define ESIMPLE_MFC_ERROR_SHARING_VIOLATION 32L
+
 namespace mfc_detail
 {
+void ReleaseShare(const void* owner);
+
 template <class Ch> struct StrTraits;
 
 template <>
@@ -1070,11 +1074,11 @@ public:
 
     ECFile() = default;
     ECFile(LPCTSTR lpszFileName, UINT nOpenFlags);
-    virtual ~ECFile() { if (m_stream.is_open()) m_stream.close(); }
+    virtual ~ECFile() { if (m_stream.is_open()) m_stream.close(); mfc_detail::ReleaseShare(this); }
 
     virtual BOOL Open(LPCTSTR lpszFileName, UINT nOpenFlags, ECFileException* pError = nullptr);
-    virtual void Abort() { if (m_stream.is_open()) m_stream.close(); }
-    virtual void Close() { if (m_stream.is_open()) m_stream.close(); }
+    virtual void Abort() { if (m_stream.is_open()) m_stream.close(); mfc_detail::ReleaseShare(this); }
+    virtual void Close() { if (m_stream.is_open()) m_stream.close(); mfc_detail::ReleaseShare(this); }
     virtual UINT Read(void* lpBuf, UINT nCount);
     virtual void Write(const void* lpBuf, UINT nCount);
     virtual ULONGLONG Seek(LONGLONG lOff, UINT nFrom);
@@ -1108,6 +1112,10 @@ public:
 
     FILE* m_pStream = nullptr;
 
+protected:
+    bool IsTextMode() const;
+
+public:
     virtual LPTSTR ReadString(LPTSTR lpsz, UINT nMax);
     virtual BOOL ReadString(ECString& rString);
     virtual void WriteString(LPCTSTR lpsz);

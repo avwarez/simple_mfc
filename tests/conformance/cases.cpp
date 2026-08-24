@@ -3454,6 +3454,121 @@ static void TestCFileOpenFlags()
                 | CFile::shareDenyNone);
 }
 
+static void TestCFileSharing()
+{
+    const CString dir = TempDir();
+    const CString path = dir + CString(_T("simple_mfc_share_4711.bin"));
+    {
+        CFile seed;
+        seed.Open(path, CFile::modeCreate | CFile::modeWrite | CFile::shareDenyNone);
+        const char payload[] = "share";
+        seed.Write(payload, sizeof(payload) - 1);
+        SafeClose(seed);
+    }
+
+    struct Combo { const char* label; UINT first; UINT second; };
+    const Combo combos[] = {
+        {"default_then_default",        CFile::modeRead,                          CFile::modeRead},
+        {"exclusive_then_read",         CFile::modeRead | CFile::shareExclusive,  CFile::modeRead | CFile::shareDenyNone},
+        {"denyNone_then_read",          CFile::modeRead | CFile::shareDenyNone,   CFile::modeRead | CFile::shareDenyNone},
+        {"denyNone_then_write",         CFile::modeRead | CFile::shareDenyNone,   CFile::modeWrite | CFile::shareDenyNone},
+        {"denyWrite_then_read",         CFile::modeRead | CFile::shareDenyWrite,  CFile::modeRead | CFile::shareDenyNone},
+        {"denyWrite_then_write",        CFile::modeRead | CFile::shareDenyWrite,  CFile::modeWrite | CFile::shareDenyNone},
+        {"denyRead_then_read",          CFile::modeWrite | CFile::shareDenyRead,  CFile::modeRead | CFile::shareDenyNone},
+        {"denyRead_then_write",         CFile::modeWrite | CFile::shareDenyRead,  CFile::modeWrite | CFile::shareDenyNone},
+        {"denyNone_then_exclusive",     CFile::modeRead | CFile::shareDenyNone,   CFile::modeRead | CFile::shareExclusive},
+        {"denyNone_then_denyWrite",     CFile::modeRead | CFile::shareDenyNone,   CFile::modeRead | CFile::shareDenyWrite},
+        {"writer_denyNone_then_denyWrite", CFile::modeWrite | CFile::shareDenyNone, CFile::modeRead | CFile::shareDenyWrite},
+    };
+
+    for (const Combo& c : combos)
+    {
+        CFile first;
+        const BOOL firstOk = first.Open(path, c.first);
+        CFile second;
+        CFileException ex;
+        const BOOL secondOk = second.Open(path, c.second, &ex);
+
+        const std::string tag = std::string("CFile.Share.") + c.label;
+        LineBool((tag + ".first_opens").c_str(), firstOk != FALSE);
+        LineBool((tag + ".second_opens").c_str(), secondOk != FALSE);
+        if (!secondOk)
+            LineInt((tag + ".second_cause").c_str(), ex.m_cause);
+
+        if (secondOk) SafeClose(second);
+        if (firstOk) SafeClose(first);
+
+        CFile afterClose;
+        const BOOL reopened = afterClose.Open(path, c.second);
+        LineBool((tag + ".reopens_after_close").c_str(), reopened != FALSE);
+        if (reopened) SafeClose(afterClose);
+    }
+
+    SafeRemoveFile(path);
+}
+
+static void TestCStdioFileTextMode()
+{
+    const CString dir = TempDir();
+
+    struct Mode { const char* label; UINT extra; };
+    const Mode modes[] = {{"binary", CFile::typeBinary}, {"text", CFile::typeText}};
+
+    for (const Mode& m : modes)
+    {
+        const CString path = dir + CString(_T("simple_mfc_textmode_"))
+                           + CString(m.label, static_cast<int>(std::strlen(m.label))) + CString(_T(".txt"));
+        {
+            CStdioFile out;
+            out.Open(path, CFile::modeCreate | CFile::modeWrite | CFile::shareDenyNone | m.extra);
+            out.WriteString(_T("alpha\n"));
+            out.WriteString(_T("beta\n"));
+            SafeClose(out);
+        }
+
+        const std::string tag = std::string("CStdioFile.") + m.label;
+
+        {
+            CFile raw;
+            raw.Open(path, CFile::modeRead | CFile::shareDenyNone);
+            LineInt((tag + ".bytes_on_disk").c_str(), static_cast<long long>(raw.GetLength()));
+            char bytes[64]{};
+            const UINT n = raw.Read(bytes, sizeof(bytes));
+            Line((tag + ".raw").c_str(), Hex(bytes, n));
+            SafeClose(raw);
+        }
+
+        {
+            CStdioFile in;
+            in.Open(path, CFile::modeRead | CFile::shareDenyNone | m.extra);
+            CString line;
+            int i = 0;
+            while (in.ReadString(line))
+            {
+                Line((tag + ".line" + std::to_string(i)).c_str(), line);
+                LineInt((tag + ".line" + std::to_string(i) + ".length").c_str(), line.GetLength());
+                ++i;
+            }
+            LineInt((tag + ".lines").c_str(), i);
+            SafeClose(in);
+        }
+
+        {
+            CStdioFile in;
+            in.Open(path, CFile::modeRead | CFile::shareDenyNone | m.extra);
+            TCHAR buf[64]{};
+            LPTSTR got = in.ReadString(buf, 64);
+            LineBool((tag + ".buffered.non_null").c_str(), got != nullptr);
+            Line((tag + ".buffered.first").c_str(), CString(buf));
+            LineInt((tag + ".buffered.first.length").c_str(),
+                    static_cast<long long>(std::char_traits<TCHAR>::length(buf)));
+            SafeClose(in);
+        }
+
+        SafeRemoveFile(path);
+    }
+}
+
 static void TestCFileErrorPaths()
 {
     const CString dir = TempDir();
@@ -3892,6 +4007,8 @@ int main()
     TestPatternUnicodeToUtf8();
     TestCStringBufferSemantics();
     TestCFileOpenFlags();
+    TestCFileSharing();
+    TestCStdioFileTextMode();
     TestCFileErrorPaths();
     TestRemainingGaps();
 

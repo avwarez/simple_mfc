@@ -8,6 +8,11 @@
 #include <cstdint>
 #include <cstring>
 #include <cerrno>
+#include <map>
+#include <mutex>
+#ifdef _MSC_VER
+#include <share.h>
+#endif
 #ifndef _WIN32
 #include <sys/stat.h>
 #endif
@@ -198,6 +203,71 @@ void EAFXAPI EAfxAssertValidObject(const ECObject* pOb, const char*  , int  )
 
 namespace mfc_detail
 {
+struct ShareEntry
+{
+    const void* owner;
+    bool reads;
+    bool writes;
+    bool permitsRead;
+    bool permitsWrite;
+};
+
+class ShareRegistry
+{
+public:
+    static ShareRegistry& Instance()
+    {
+        static ShareRegistry instance;
+        return instance;
+    }
+
+    bool Acquire(const std::basic_string<TCHAR>& key, const ShareEntry& want)
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        const auto it = m_open.find(key);
+        if (it != m_open.end())
+            for (const ShareEntry& held : it->second)
+            {
+                if (want.reads && !held.permitsRead) return false;
+                if (want.writes && !held.permitsWrite) return false;
+                if (held.reads && !want.permitsRead) return false;
+                if (held.writes && !want.permitsWrite) return false;
+            }
+        m_open[key].push_back(want);
+        return true;
+    }
+
+    void Release(const void* owner)
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        for (auto it = m_open.begin(); it != m_open.end();)
+        {
+            std::vector<ShareEntry>& held = it->second;
+            held.erase(std::remove_if(held.begin(), held.end(),
+                                      [owner](const ShareEntry& e) { return e.owner == owner; }),
+                       held.end());
+            if (held.empty()) it = m_open.erase(it);
+            else ++it;
+        }
+    }
+
+private:
+    std::mutex m_mutex;
+    std::map<std::basic_string<TCHAR>, std::vector<ShareEntry>> m_open;
+};
+
+std::basic_string<TCHAR> ShareKey(const std::filesystem::path& path)
+{
+    std::error_code ec;
+    const std::filesystem::path resolved = std::filesystem::weakly_canonical(path, ec);
+    return (ec ? path : resolved).string<TCHAR>();
+}
+
+void ReleaseShare(const void* owner)
+{
+    ShareRegistry::Instance().Release(owner);
+}
+
 int FileOpenCause(int err, const std::filesystem::path& path)
 {
     if (err == EACCES || err == EPERM || err == EROFS || err == EISDIR)
@@ -244,6 +314,8 @@ BOOL ECFile::Open(LPCTSTR lpszFileName, UINT nOpenFlags, ECFileException* pError
         if (!(nOpenFlags & modeNoTruncate)) mode |= std::ios::trunc;
     }
 
+    mfc_detail::ReleaseShare(this);
+
     m_path = lpszFileName ? lpszFileName : _T("");
     const std::filesystem::path path(m_path);
 
@@ -256,13 +328,36 @@ BOOL ECFile::Open(LPCTSTR lpszFileName, UINT nOpenFlags, ECFileException* pError
         return FALSE;
     }
 
+    const UINT access = nOpenFlags & 3;
+    const UINT share = nOpenFlags & 0x70;
+    mfc_detail::ShareEntry want;
+    want.owner = this;
+    want.reads = access == modeRead || access == modeReadWrite;
+    want.writes = access == modeWrite || access == modeReadWrite;
+    want.permitsRead = share == shareDenyWrite || share == shareDenyNone;
+    want.permitsWrite = share == shareDenyRead || share == shareDenyNone;
+
+    const std::basic_string<TCHAR> key = mfc_detail::ShareKey(path);
+    if (!mfc_detail::ShareRegistry::Instance().Acquire(key, want))
+    {
+        if (pError)
+            *pError = ECFileException(ECFileException::sharingViolation,
+                                      ESIMPLE_MFC_ERROR_SHARING_VIOLATION, lpszFileName);
+        return FALSE;
+    }
+
     errno = 0;
     m_stream.clear();
+#ifdef _MSC_VER
+    m_stream.open(path, mode, share == shareCompat ? _SH_DENYRW : static_cast<int>(share));
+#else
     m_stream.open(path, mode);
+#endif
     if (!m_stream.is_open())
     {
         const int err = errno;
         const int cause = mfc_detail::FileOpenCause(err, path);
+        mfc_detail::ReleaseShare(this);
         if (pError)
             *pError = ECFileException(cause, mfc_detail::FileOsError(err, cause), lpszFileName);
         return FALSE;
@@ -398,39 +493,102 @@ void ECFile::Rename(LPCTSTR lpszOldName, LPCTSTR lpszNewName)
     }
 }
 
+bool ECStdioFile::IsTextMode() const
+{
+    return (m_nOpenFlags & typeText) != 0;
+}
+
 LPTSTR ECStdioFile::ReadString(LPTSTR lpsz, UINT nMax)
 {
+    const bool text = IsTextMode();
     TCHAR ch;
+    TCHAR pending = _T('\0');
+    bool hasPending = false;
     UINT count = 0;
     bool any = false;
     while (count + 1 < nMax && m_stream.read(reinterpret_cast<char*>(&ch), sizeof(TCHAR)))
     {
         any = true;
+        if (text)
+        {
+            if (hasPending)
+            {
+                hasPending = false;
+                if (ch != _T('\n'))
+                    lpsz[count++] = pending;
+                if (count + 1 >= nMax)
+                    break;
+            }
+            if (ch == _T('\r'))
+            {
+                pending = ch;
+                hasPending = true;
+                continue;
+            }
+        }
         lpsz[count++] = ch;
         if (ch == _T('\n')) break;
     }
+    if (text && hasPending && count + 1 < nMax)
+        lpsz[count++] = pending;
     lpsz[count] = _T('\0');
     return any ? lpsz : nullptr;
 }
 
 BOOL ECStdioFile::ReadString(ECString& rString)
 {
+    const bool text = IsTextMode();
     TCHAR ch;
     std::basic_string<TCHAR> line;
     bool any = false;
+    bool hasPending = false;
     while (m_stream.read(reinterpret_cast<char*>(&ch), sizeof(TCHAR)))
     {
         any = true;
+        if (text)
+        {
+            if (hasPending)
+            {
+                hasPending = false;
+                if (ch != _T('\n'))
+                    line += _T('\r');
+            }
+            if (ch == _T('\r'))
+            {
+                hasPending = true;
+                continue;
+            }
+        }
         if (ch == _T('\n')) break;
         line += ch;
     }
+    if (text && hasPending)
+        line += _T('\r');
     rString = line.c_str();
     return any ? TRUE : FALSE;
 }
 
 void ECStdioFile::WriteString(LPCTSTR lpsz)
 {
-    m_stream.write(reinterpret_cast<const char*>(lpsz), static_cast<std::streamsize>(std::char_traits<TCHAR>::length(lpsz) * sizeof(TCHAR)));
+    if (!lpsz) return;
+    const size_t length = std::char_traits<TCHAR>::length(lpsz);
+    if (!IsTextMode())
+    {
+        m_stream.write(reinterpret_cast<const char*>(lpsz),
+                       static_cast<std::streamsize>(length * sizeof(TCHAR)));
+        return;
+    }
+
+    std::basic_string<TCHAR> translated;
+    translated.reserve(length + 8);
+    for (size_t i = 0; i < length; ++i)
+    {
+        if (lpsz[i] == _T('\n') && (i == 0 || lpsz[i - 1] != _T('\r')))
+            translated += _T('\r');
+        translated += lpsz[i];
+    }
+    m_stream.write(reinterpret_cast<const char*>(translated.data()),
+                   static_cast<std::streamsize>(translated.size() * sizeof(TCHAR)));
 }
 
 UINT ECMemFile::Read(void* lpBuf, UINT nCount)
