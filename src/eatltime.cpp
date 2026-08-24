@@ -14,7 +14,7 @@ ECTime::ECTime(int nYear, int nMonth, int nDay, int nHour, int nMin, int nSec, i
     m_time = static_cast<__time64_t>(std::mktime(&t));
 }
 
-ECString ECTime::Format(LPCTSTR pszFormat) const
+ECString ECTime::Format(const TCHAR* pszFormat) const
 {
     std::tm t = Tm();
     const std::wstring fmt = mfc_detail::WideToWide<wchar_t>(
@@ -38,11 +38,11 @@ ECString ECTimeSpan::Format(const char* pszFormat) const
     return Format(strFormat.GetString());
 }
 
-ECString ECTimeSpan::Format(LPCTSTR pszFormat) const
+ECString ECTimeSpan::Format(const TCHAR* pszFormat) const
 {
     long long span = m_span < 0 ? -m_span : m_span;
     ECString result;
-    for (LPCTSTR p = pszFormat; p && *p; ++p) {
+    for (const TCHAR* p = pszFormat; p && *p; ++p) {
         if (*p != _T('%')) {
             result += *p;
             continue;
