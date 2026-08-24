@@ -3427,6 +3427,33 @@ static void TestCStringBufferSemantics()
     }
 }
 
+static void TestCFileOpenFlags()
+{
+    LineInt("CFile.OpenFlags.modeRead", CFile::modeRead);
+    LineInt("CFile.OpenFlags.modeWrite", CFile::modeWrite);
+    LineInt("CFile.OpenFlags.modeReadWrite", CFile::modeReadWrite);
+    LineInt("CFile.OpenFlags.shareCompat", CFile::shareCompat);
+    LineInt("CFile.OpenFlags.shareExclusive", CFile::shareExclusive);
+    LineInt("CFile.OpenFlags.shareDenyWrite", CFile::shareDenyWrite);
+    LineInt("CFile.OpenFlags.shareDenyRead", CFile::shareDenyRead);
+    LineInt("CFile.OpenFlags.shareDenyNone", CFile::shareDenyNone);
+    LineInt("CFile.OpenFlags.modeNoInherit", CFile::modeNoInherit);
+    LineInt("CFile.OpenFlags.modeCreate", CFile::modeCreate);
+    LineInt("CFile.OpenFlags.modeNoTruncate", CFile::modeNoTruncate);
+    LineInt("CFile.OpenFlags.typeText", CFile::typeText);
+    LineInt("CFile.OpenFlags.typeBinary", CFile::typeBinary);
+    LineInt("CFile.OpenFlags.osNoBuffer", CFile::osNoBuffer);
+    LineInt("CFile.OpenFlags.osWriteThrough", CFile::osWriteThrough);
+    LineInt("CFile.OpenFlags.osRandomAccess", CFile::osRandomAccess);
+    LineInt("CFile.OpenFlags.osSequentialScan", CFile::osSequentialScan);
+
+    LineBool("CFile.OpenFlags.share_is_a_field_not_bits",
+             (CFile::shareDenyRead & CFile::shareDenyWrite) == CFile::shareDenyWrite);
+    LineInt("CFile.OpenFlags.share_field_mask",
+            CFile::shareExclusive | CFile::shareDenyWrite | CFile::shareDenyRead
+                | CFile::shareDenyNone);
+}
+
 static void TestCFileErrorPaths()
 {
     const CString dir = TempDir();
@@ -3864,6 +3891,7 @@ int main()
     TestPatternBase64();
     TestPatternUnicodeToUtf8();
     TestCStringBufferSemantics();
+    TestCFileOpenFlags();
     TestCFileErrorPaths();
     TestRemainingGaps();
 

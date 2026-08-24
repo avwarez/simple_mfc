@@ -1058,10 +1058,13 @@ public:
     enum OpenFlags
     {
         modeRead = 0x0000, modeWrite = 0x0001, modeReadWrite = 0x0002,
+        shareCompat = 0x0000, shareExclusive = 0x0010, shareDenyWrite = 0x0020,
+        shareDenyRead = 0x0030, shareDenyNone = 0x0040,
+        modeNoInherit = 0x0080,
         modeCreate = 0x1000, modeNoTruncate = 0x2000,
-        shareDenyWrite = 0x0020, shareDenyNone = 0x0040,
-        osSequentialScan = 0x80000,
-        typeBinary = 0x0000, typeText = 0x4000
+        typeText = 0x4000, typeBinary = 0x8000,
+        osNoBuffer = 0x10000, osWriteThrough = 0x20000,
+        osRandomAccess = 0x40000, osSequentialScan = 0x80000
     };
     enum SeekPosition { begin = 0, current = 1, end = 2 };
 
