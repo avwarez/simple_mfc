@@ -3496,7 +3496,7 @@ static void TestCFileErrorPaths()
         CFile f;
         const BOOL ok = f.Open(path, CFile::modeRead);
         LineBool("CFile.Open.existing.returns_true", ok != FALSE);
-        LineBool("CFile.m_strFileName.set_by_Open", f.m_strFileName.IsEmpty() == FALSE);
+        LineBool("CFile.GetFilePath.nonempty_after_Open", f.GetFilePath().IsEmpty() == FALSE);
 
         char buf[16]{};
         LineInt("CFile.Read.more_than_available.count",

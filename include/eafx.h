@@ -1041,8 +1041,6 @@ class ECFile : public ECObject
 {
     EDECLARE_DYNAMIC(ECFile)
 public:
-    ECString m_strFileName;
-
     HANDLE m_hFile = nullptr;
     operator HANDLE() const { return m_hFile; }
 
@@ -1080,6 +1078,7 @@ public:
     static void Rename(LPCTSTR lpszOldName, LPCTSTR lpszNewName);
 
 protected:
+    ECString m_strFileName;
     std::fstream m_stream;
     std::basic_string<TCHAR> m_path;
     UINT m_nOpenFlags = 0;
