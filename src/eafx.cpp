@@ -242,7 +242,7 @@ BOOL ECFile::Open(LPCTSTR lpszFileName, UINT nOpenFlags, ECFileException* pError
     if (std::filesystem::is_directory(path, ec))
     {
         if (pError)
-            *pError = ECFileException(ECFileException::accessDenied,
+            *pError = ECFileException(ECFileException::badPath,
                                       static_cast<LONG>(EISDIR), lpszFileName);
         return FALSE;
     }
