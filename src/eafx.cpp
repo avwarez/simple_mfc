@@ -500,70 +500,68 @@ bool ECStdioFile::IsTextMode() const
 
 LPTSTR ECStdioFile::ReadString(LPTSTR lpsz, UINT nMax)
 {
-    const bool text = IsTextMode();
-    TCHAR ch;
-    TCHAR pending = _T('\0');
-    bool hasPending = false;
+    if (nMax == 0) return nullptr;
+
     UINT count = 0;
     bool any = false;
+    if (IsTextMode())
+    {
+        char c;
+        while (count + 1 < nMax && m_stream.read(&c, 1))
+        {
+            any = true;
+            if (c == '\r' && m_stream.peek() == '\n') continue;
+            lpsz[count++] = static_cast<TCHAR>(static_cast<unsigned char>(c));
+            if (c == '\n') break;
+        }
+        lpsz[count] = _T('\0');
+        return any ? lpsz : nullptr;
+    }
+
+    TCHAR ch;
     while (count + 1 < nMax && m_stream.read(reinterpret_cast<char*>(&ch), sizeof(TCHAR)))
     {
         any = true;
-        if (text)
-        {
-            if (hasPending)
-            {
-                hasPending = false;
-                if (ch != _T('\n'))
-                    lpsz[count++] = pending;
-                if (count + 1 >= nMax)
-                    break;
-            }
-            if (ch == _T('\r'))
-            {
-                pending = ch;
-                hasPending = true;
-                continue;
-            }
-        }
         lpsz[count++] = ch;
         if (ch == _T('\n')) break;
     }
-    if (text && hasPending && count + 1 < nMax)
-        lpsz[count++] = pending;
     lpsz[count] = _T('\0');
     return any ? lpsz : nullptr;
 }
 
 BOOL ECStdioFile::ReadString(ECString& rString)
 {
-    const bool text = IsTextMode();
+    if (IsTextMode())
+    {
+        std::string line;
+        char c;
+        bool any = false;
+        while (m_stream.read(&c, 1))
+        {
+            any = true;
+            if (c == '\r')
+            {
+                if (m_stream.peek() == '\n') continue;
+                line += c;
+                continue;
+            }
+            if (c == '\n') break;
+            line += c;
+        }
+        const std::basic_string<TCHAR> wide = mfc_detail::Widen<TCHAR>(line.data(), line.size());
+        rString = wide.c_str();
+        return any ? TRUE : FALSE;
+    }
+
     TCHAR ch;
     std::basic_string<TCHAR> line;
     bool any = false;
-    bool hasPending = false;
     while (m_stream.read(reinterpret_cast<char*>(&ch), sizeof(TCHAR)))
     {
         any = true;
-        if (text)
-        {
-            if (hasPending)
-            {
-                hasPending = false;
-                if (ch != _T('\n'))
-                    line += _T('\r');
-            }
-            if (ch == _T('\r'))
-            {
-                hasPending = true;
-                continue;
-            }
-        }
         if (ch == _T('\n')) break;
         line += ch;
     }
-    if (text && hasPending)
-        line += _T('\r');
     rString = line.c_str();
     return any ? TRUE : FALSE;
 }
@@ -579,16 +577,16 @@ void ECStdioFile::WriteString(LPCTSTR lpsz)
         return;
     }
 
-    std::basic_string<TCHAR> translated;
-    translated.reserve(length + 8);
-    for (size_t i = 0; i < length; ++i)
+    const std::string narrow = mfc_detail::Narrow(lpsz, length);
+    std::string translated;
+    translated.reserve(narrow.size() + 8);
+    for (size_t i = 0; i < narrow.size(); ++i)
     {
-        if (lpsz[i] == _T('\n') && (i == 0 || lpsz[i - 1] != _T('\r')))
-            translated += _T('\r');
-        translated += lpsz[i];
+        if (narrow[i] == '\n' && (i == 0 || narrow[i - 1] != '\r'))
+            translated += '\r';
+        translated += narrow[i];
     }
-    m_stream.write(reinterpret_cast<const char*>(translated.data()),
-                   static_cast<std::streamsize>(translated.size() * sizeof(TCHAR)));
+    m_stream.write(translated.data(), static_cast<std::streamsize>(translated.size()));
 }
 
 UINT ECMemFile::Read(void* lpBuf, UINT nCount)
