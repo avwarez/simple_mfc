@@ -278,7 +278,7 @@ struct CStringContentHash
     std::size_t operator()(const ECString& s) const
     {
         UINT nHash = 0;
-        for (const wchar_t* p = s.GetString(); p && *p; ++p)
+        for (LPCTSTR p = s.GetString(); p && *p; ++p)
             nHash = (nHash << 5) + nHash + static_cast<UINT>(*p);
         return static_cast<std::size_t>(nHash);
     }

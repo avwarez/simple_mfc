@@ -89,7 +89,7 @@ static int Win32FindNextFileSpelling()
 {
 #if SMFC_MACRO_FIND_NEXT_FILE
     WIN32_FIND_DATAW data;
-    HANDLE search = ::FindFirstFileW(L"C:\\Windows\\*", &data);
+    HANDLE search = ::FindFirstFileW(_T("C:\\Windows\\*"), &data);
     if (search == INVALID_HANDLE_VALUE) return -1;
     int seen = 0;
     while (FindNextFile(search, &data)) ++seen;
@@ -190,10 +190,10 @@ struct Counted
 
 CStringW ScratchDir()
 {
-    wchar_t temp[MAX_PATH] = {0};
+    TCHAR temp[MAX_PATH] = {0};
     ::GetTempPathW(MAX_PATH, temp);
     CStringW dir(temp);
-    dir += L"smfc_coexist";
+    dir += _T("smfc_coexist");
     ::CreateDirectoryW(dir, nullptr);
     return dir;
 }

@@ -9,7 +9,7 @@ BOOL EAfxParseURL(LPCTSTR pstrURL, DWORD& dwServiceType, ECString& strServer,
     if (url.IsEmpty())
         return FALSE;
 
-    int nSchemeEnd = url.Find(L"://");
+    int nSchemeEnd = url.Find(_T("://"));
     if (nSchemeEnd < 0)
         return FALSE;
     ECString scheme = url.Left(nSchemeEnd);
@@ -17,17 +17,17 @@ BOOL EAfxParseURL(LPCTSTR pstrURL, DWORD& dwServiceType, ECString& strServer,
     ECString rest = url.Mid(nSchemeEnd + 3);
 
     INTERNET_PORT nDefaultPort;
-    if (scheme == ECString(L"https")) { dwServiceType = EAFX_INET_SERVICE_HTTPS; nDefaultPort = 443; }
-    else if (scheme == ECString(L"ftp")) { dwServiceType = EAFX_INET_SERVICE_FTP; nDefaultPort = 21; }
+    if (scheme == ECString(_T("https"))) { dwServiceType = EAFX_INET_SERVICE_HTTPS; nDefaultPort = 443; }
+    else if (scheme == ECString(_T("ftp"))) { dwServiceType = EAFX_INET_SERVICE_FTP; nDefaultPort = 21; }
     else { dwServiceType = EAFX_INET_SERVICE_HTTP; nDefaultPort = 80; }
 
-    int nSlash = rest.Find(L'/');
+    int nSlash = rest.Find(_T('/'));
     ECString hostPort = (nSlash >= 0) ? rest.Left(nSlash) : rest;
-    strObject = (nSlash >= 0) ? rest.Mid(nSlash) : ECString(L"/");
+    strObject = (nSlash >= 0) ? rest.Mid(nSlash) : ECString(_T("/"));
     if (strObject.IsEmpty())
-        strObject = L"/";
+        strObject = _T("/");
 
-    int nColon = hostPort.ReverseFind(L':');
+    int nColon = hostPort.ReverseFind(_T(':'));
     if (nColon >= 0)
     {
         strServer = hostPort.Left(nColon);
@@ -36,9 +36,9 @@ BOOL EAfxParseURL(LPCTSTR pstrURL, DWORD& dwServiceType, ECString& strServer,
         bool bValid = !portStr.IsEmpty();
         for (int i = 0; i < portStr.GetLength() && bValid; ++i)
         {
-            wchar_t c = portStr[i];
-            if (c < L'0' || c > L'9') { bValid = false; break; }
-            nParsedPort = nParsedPort * 10 + (c - L'0');
+            TCHAR c = portStr[i];
+            if (c < _T('0') || c > _T('9')) { bValid = false; break; }
+            nParsedPort = nParsedPort * 10 + (c - _T('0'));
         }
         nPort = (bValid && nParsedPort > 0) ? static_cast<INTERNET_PORT>(nParsedPort) : nDefaultPort;
     }

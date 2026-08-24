@@ -211,7 +211,7 @@ std::string ToNarrow(LPCTSTR s)
 {
     if (s == nullptr)
         return std::string();
-    return mfc_detail::Narrow(s, std::char_traits<wchar_t>::length(s));
+    return mfc_detail::Narrow(s, std::char_traits<TCHAR>::length(s));
 }
 
 bool ResolveV4(const std::string& host, unsigned short port, int socktype,
@@ -239,7 +239,7 @@ void FormatV4(const sockaddr_in& sa, ECString& addr, UINT& port)
 {
     char ip[INET_ADDRSTRLEN] = {0};
     ::inet_ntop(AF_INET, &sa.sin_addr, ip, sizeof(ip));
-    addr = ECString(mfc_detail::Widen<wchar_t>(ip, std::strlen(ip)).c_str());
+    addr = ECString(mfc_detail::Widen<TCHAR>(ip, std::strlen(ip)).c_str());
     port = ntohs(sa.sin_port);
 }
 

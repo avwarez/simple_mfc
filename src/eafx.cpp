@@ -39,7 +39,12 @@ ECDumpContext& ECDumpContext::operator<<(const char* lpsz)
     if (lpsz) m_os << mfc_detail::Widen<wchar_t>(lpsz, std::strlen(lpsz));
     return *this;
 }
-ECDumpContext& ECDumpContext::operator<<(LPCTSTR lpsz) { if (lpsz) m_os << lpsz; return *this; }
+ECDumpContext& ECDumpContext::operator<<(LPCTSTR lpsz)
+{
+    if (lpsz)
+        m_os << mfc_detail::WideToWide<wchar_t>(lpsz, std::char_traits<TCHAR>::length(lpsz));
+    return *this;
+}
 ECDumpContext& ECDumpContext::operator<<(const ECObject* pOb) { if (pOb) pOb->Dump(*this); else m_os << L"NULL"; return *this; }
 ECDumpContext& ECDumpContext::operator<<(int n) { m_os << DumpFormat(L"%d", n); return *this; }
 ECDumpContext& ECDumpContext::operator<<(unsigned int u) { m_os << DumpFormat(L"%u", u); return *this; }
@@ -88,10 +93,10 @@ BOOL ECNotSupportedException::GetErrorMessage(LPTSTR lpszError, UINT nMaxError, 
 {
     if (pnHelpContext) *pnHelpContext = 0;
     if (!lpszError || nMaxError == 0) return FALSE;
-    const wchar_t* msg = L"Unsupported operation.";
-    size_t n = std::min<size_t>(nMaxError - 1, std::char_traits<wchar_t>::length(msg));
-    std::wmemcpy(lpszError, msg, n);
-    lpszError[n] = L'\0';
+    LPCTSTR msg = _T("Unsupported operation.");
+    size_t n = std::min<size_t>(nMaxError - 1, std::char_traits<TCHAR>::length(msg));
+    std::char_traits<TCHAR>::copy(lpszError, msg, n);
+    lpszError[n] = _T('\0');
     return TRUE;
 }
 
@@ -99,10 +104,10 @@ BOOL ECMemoryException::GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* 
 {
     if (pnHelpContext) *pnHelpContext = 0;
     if (!lpszError || nMaxError == 0) return FALSE;
-    const wchar_t* msg = L"Out of memory.";
-    size_t n = std::min<size_t>(nMaxError - 1, std::char_traits<wchar_t>::length(msg));
-    std::wmemcpy(lpszError, msg, n);
-    lpszError[n] = L'\0';
+    LPCTSTR msg = _T("Out of memory.");
+    size_t n = std::min<size_t>(nMaxError - 1, std::char_traits<TCHAR>::length(msg));
+    std::char_traits<TCHAR>::copy(lpszError, msg, n);
+    lpszError[n] = _T('\0');
     return TRUE;
 }
 
@@ -110,27 +115,27 @@ BOOL ECFileException::GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pn
 {
     if (pnHelpContext) *pnHelpContext = 0;
     if (!lpszError || nMaxError == 0) return FALSE;
-    std::wstring msg;
+    std::basic_string<TCHAR> msg;
     switch (m_cause)
     {
-        case fileNotFound: msg = L"File not found."; break;
-        case badPath: msg = L"Invalid path."; break;
-        case tooManyOpenFiles: msg = L"Too many open files."; break;
-        case accessDenied: msg = L"Access denied."; break;
-        case diskFull: msg = L"Disk full."; break;
-        case endOfFile: msg = L"Unexpected end of file."; break;
-        case sharingViolation: msg = L"Sharing violation."; break;
-        default: msg = L"File error."; break;
+        case fileNotFound: msg = _T("File not found."); break;
+        case badPath: msg = _T("Invalid path."); break;
+        case tooManyOpenFiles: msg = _T("Too many open files."); break;
+        case accessDenied: msg = _T("Access denied."); break;
+        case diskFull: msg = _T("Disk full."); break;
+        case endOfFile: msg = _T("Unexpected end of file."); break;
+        case sharingViolation: msg = _T("Sharing violation."); break;
+        default: msg = _T("File error."); break;
     }
     if (!m_strFileName.IsEmpty())
     {
-        msg += L" (";
+        msg += _T(" (");
         msg += m_strFileName.GetString();
-        msg += L")";
+        msg += _T(")");
     }
     size_t n = std::min<size_t>(nMaxError - 1, msg.size());
-    std::wmemcpy(lpszError, msg.c_str(), n);
-    lpszError[n] = L'\0';
+    std::char_traits<TCHAR>::copy(lpszError, msg.c_str(), n);
+    lpszError[n] = _T('\0');
     return TRUE;
 }
 
@@ -193,7 +198,7 @@ BOOL ECFile::Open(LPCTSTR lpszFileName, UINT nOpenFlags, ECFileException* pError
         if (!(nOpenFlags & modeNoTruncate)) mode |= std::ios::trunc;
     }
 
-    m_path = lpszFileName ? lpszFileName : L"";
+    m_path = lpszFileName ? lpszFileName : _T("");
     m_stream.open(std::filesystem::path(m_path), mode);
     if (!m_stream.is_open())
     {
@@ -273,28 +278,28 @@ void ECFile::Rename(LPCTSTR lpszOldName, LPCTSTR lpszNewName)
 
 LPTSTR ECStdioFile::ReadString(LPTSTR lpsz, UINT nMax)
 {
-    wchar_t ch;
+    TCHAR ch;
     UINT count = 0;
     bool any = false;
-    while (count + 1 < nMax && m_stream.read(reinterpret_cast<char*>(&ch), sizeof(wchar_t)))
+    while (count + 1 < nMax && m_stream.read(reinterpret_cast<char*>(&ch), sizeof(TCHAR)))
     {
         any = true;
         lpsz[count++] = ch;
-        if (ch == L'\n') break;
+        if (ch == _T('\n')) break;
     }
-    lpsz[count] = L'\0';
+    lpsz[count] = _T('\0');
     return any ? lpsz : nullptr;
 }
 
 BOOL ECStdioFile::ReadString(ECString& rString)
 {
-    wchar_t ch;
-    std::wstring line;
+    TCHAR ch;
+    std::basic_string<TCHAR> line;
     bool any = false;
-    while (m_stream.read(reinterpret_cast<char*>(&ch), sizeof(wchar_t)))
+    while (m_stream.read(reinterpret_cast<char*>(&ch), sizeof(TCHAR)))
     {
         any = true;
-        if (ch == L'\n') break;
+        if (ch == _T('\n')) break;
         line += ch;
     }
     rString = line.c_str();
@@ -303,7 +308,7 @@ BOOL ECStdioFile::ReadString(ECString& rString)
 
 void ECStdioFile::WriteString(LPCTSTR lpsz)
 {
-    m_stream.write(reinterpret_cast<const char*>(lpsz), static_cast<std::streamsize>(std::char_traits<wchar_t>::length(lpsz) * sizeof(wchar_t)));
+    m_stream.write(reinterpret_cast<const char*>(lpsz), static_cast<std::streamsize>(std::char_traits<TCHAR>::length(lpsz) * sizeof(TCHAR)));
 }
 
 UINT ECMemFile::Read(void* lpBuf, UINT nCount)
@@ -359,30 +364,32 @@ void ECMemFile::Attach(BYTE* lpBuffer, UINT nBufferSize, UINT  )
 
 namespace
 {
-bool WildcardMatch(const std::wstring& pattern, const std::wstring& name)
+using TString = std::basic_string<TCHAR>;
+
+bool WildcardMatch(const TString& pattern, const TString& name)
 {
-    size_t p = 0, n = 0, star = std::wstring::npos, mark = 0;
+    size_t p = 0, n = 0, star = TString::npos, mark = 0;
     while (n < name.size())
     {
-        if (p < pattern.size() && (pattern[p] == L'?' || pattern[p] == name[n])) { ++p; ++n; }
-        else if (p < pattern.size() && pattern[p] == L'*') { star = p++; mark = n; }
-        else if (star != std::wstring::npos) { p = star + 1; n = ++mark; }
+        if (p < pattern.size() && (pattern[p] == _T('?') || pattern[p] == name[n])) { ++p; ++n; }
+        else if (p < pattern.size() && pattern[p] == _T('*')) { star = p++; mark = n; }
+        else if (star != TString::npos) { p = star + 1; n = ++mark; }
         else return false;
     }
-    while (p < pattern.size() && pattern[p] == L'*') ++p;
+    while (p < pattern.size() && pattern[p] == _T('*')) ++p;
     return p == pattern.size();
 }
 }
 
 BOOL ECFileFind::FindFile(LPCTSTR pstrName, DWORD  )
 {
-    std::filesystem::path spec = pstrName && *pstrName ? std::filesystem::path(pstrName) : std::filesystem::path(L"*");
-    m_dir = spec.has_parent_path() ? spec.parent_path() : std::filesystem::path(L".");
-    std::wstring pattern = spec.filename().wstring();
-    if (pattern.empty()) pattern = L"*";
+    std::filesystem::path spec = pstrName && *pstrName ? std::filesystem::path(pstrName) : std::filesystem::path(_T("*"));
+    m_dir = spec.has_parent_path() ? spec.parent_path() : std::filesystem::path(_T("."));
+    std::basic_string<TCHAR> pattern = spec.filename().string<TCHAR>();
+    if (pattern.empty()) pattern = _T("*");
 
-    std::wstring specStr = spec.wstring();
-    std::wstring fname = spec.filename().wstring();
+    std::basic_string<TCHAR> specStr = spec.string<TCHAR>();
+    std::basic_string<TCHAR> fname = spec.filename().string<TCHAR>();
     m_root = specStr.substr(0, specStr.size() - fname.size());
 
     std::error_code ec;
@@ -409,7 +416,7 @@ bool ECFileFind::AdvanceToNextMatch()
     {
         auto entry = *m_it;
         ++m_it;
-        if (WildcardMatch(m_pattern, entry.path().filename().wstring()))
+        if (WildcardMatch(m_pattern, entry.path().filename().string<TCHAR>()))
         {
             m_pending = entry;
             return true;
@@ -570,12 +577,12 @@ BOOL ECFileFind::IsReadOnly() const
 
 BOOL ECFileFind::IsDots() const
 {
-    auto name = m_current.path().filename().wstring();
-    return (name == L"." || name == L"..") ? TRUE : FALSE;
+    auto name = m_current.path().filename().string<TCHAR>();
+    return (name == _T(".") || name == _T("..")) ? TRUE : FALSE;
 }
 
-ECString ECFileFind::GetFileName() const { return ECString(m_current.path().filename().wstring().c_str()); }
-ECString ECFileFind::GetFilePath() const { return ECString(m_current.path().wstring().c_str()); }
+ECString ECFileFind::GetFileName() const { return ECString(m_current.path().filename().string<TCHAR>().c_str()); }
+ECString ECFileFind::GetFilePath() const { return ECString(m_current.path().string<TCHAR>().c_str()); }
 
 ULONGLONG ECFileFind::GetLength() const
 {
@@ -657,8 +664,8 @@ ECArchive& ECArchive::operator>>(ECString& str)
     UINT nLen = 0;
     Read(&nLen, sizeof(nLen));
     if (nLen == 0) { str.Empty(); return *this; }
-    std::vector<wchar_t> buf(nLen);
-    Read(buf.data(), static_cast<UINT>(nLen * sizeof(wchar_t)));
+    std::vector<TCHAR> buf(nLen);
+    Read(buf.data(), static_cast<UINT>(nLen * sizeof(TCHAR)));
     str.SetString(buf.data(), static_cast<int>(nLen));
     return *this;
 }
@@ -668,11 +675,11 @@ ECArchive& ECArchive::operator<<(const ECString& str)
     UINT nLen = static_cast<UINT>(str.GetLength());
     Write(&nLen, sizeof(nLen));
     if (nLen > 0)
-        Write(str.GetString(), static_cast<UINT>(nLen * sizeof(wchar_t)));
+        Write(str.GetString(), static_cast<UINT>(nLen * sizeof(TCHAR)));
     return *this;
 }
 
 ECArchiveException::ECArchiveException(int cause, LPCTSTR lpszArchiveName)
-    : ECException(TRUE), m_cause(cause), m_strFileName(lpszArchiveName ? lpszArchiveName : L"")
+    : ECException(TRUE), m_cause(cause), m_strFileName(lpszArchiveName ? lpszArchiveName : _T(""))
 {
 }

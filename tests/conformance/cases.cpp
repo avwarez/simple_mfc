@@ -63,26 +63,26 @@
     #define ERROR_DISK_FULL      112L
     #define ERROR_BAD_PATHNAME   161L
 
-    static void wcscpy_s(wchar_t* dst, size_t n, const wchar_t* src)
+    static void wcscpy_s(TCHAR* dst, size_t n, const TCHAR* src)
     {
         if (!dst || n == 0) return;
         size_t i = 0;
         for (; src && src[i] && i + 1 < n; ++i) dst[i] = src[i];
-        dst[i] = L'\0';
+        dst[i] = _T('\0');
     }
 
-    static void GetTempPathW(unsigned long n, wchar_t* buf)
+    static void GetTempPathW(unsigned long n, TCHAR* buf)
     {
-        wcscpy_s(buf, n, L"/tmp/");
+        wcscpy_s(buf, n, _T("/tmp/"));
     }
 
-    static void CreateDirectoryW(const wchar_t* path, void*)
+    static void CreateDirectoryW(const TCHAR* path, void*)
     {
         std::error_code ec;
         std::filesystem::create_directories(std::filesystem::path(path), ec);
     }
 
-    static void RemoveDirectoryW(const wchar_t* path)
+    static void RemoveDirectoryW(const TCHAR* path)
     {
         std::error_code ec;
         std::filesystem::remove(std::filesystem::path(path), ec);
@@ -90,9 +90,9 @@
 #endif
 
 #ifdef _WIN32
-    #define SMFC_SEP L"\\"
+    #define SMFC_SEP _T("\\")
 #else
-    #define SMFC_SEP L"/"
+    #define SMFC_SEP _T("/")
 #endif
 
 namespace
@@ -116,7 +116,8 @@ namespace
 
 int g_index = 0;
 
-std::string Utf8(const wchar_t* w)
+template <class Ch>
+std::string Utf8(const Ch* w)
 {
     if (!w) return {};
 #ifdef _WIN32
@@ -127,7 +128,7 @@ std::string Utf8(const wchar_t* w)
     return out;
 #else
     std::string out;
-    for (const wchar_t* p = w; *p; ++p)
+    for (const Ch* p = w; *p; ++p)
     {
         unsigned long cp = static_cast<unsigned long>(*p);
         if (cp >= 0xD800 && cp <= 0xDBFF && p[1] >= 0xDC00 && p[1] <= 0xDFFF)
@@ -160,6 +161,8 @@ std::string Utf8(const wchar_t* w)
 #endif
 }
 
+std::string Utf8(const CString& s) { return Utf8(s.GetString()); }
+
 std::string Escape(const std::string& s)
 {
     std::string out;
@@ -184,7 +187,7 @@ void Line(const char* name, const std::string& value)
     std::printf("%s\t%s\n", name, Escape(value).c_str());
     std::fflush(stdout);
 }
-void Line(const char* name, const wchar_t* value) { Line(name, Utf8(value)); }
+void Line(const char* name, const TCHAR* value) { Line(name, Utf8(value)); }
 void Line(const char* name, const CString& value) { Line(name, Utf8((LPCTSTR)value)); }
 void LineBool(const char* name, bool value) { Line(name, std::string(value ? "TRUE" : "FALSE")); }
 void LineInt(const char* name, long long value) { Line(name, std::to_string(value)); }
@@ -232,7 +235,7 @@ void SafeRemoveFile(LPCTSTR path)
 
 CString TempDir()
 {
-    wchar_t buf[MAX_PATH]{};
+    TCHAR buf[MAX_PATH]{};
     GetTempPathW(MAX_PATH, buf);
     return CString(buf);
 }
@@ -288,8 +291,8 @@ static void TestRTTI()
 
 static void TestExceptions()
 {
-    CFileException fe(CFileException::fileNotFound, ERROR_FILE_NOT_FOUND, L"missing_file.dat");
-    wchar_t buf[256]{};
+    CFileException fe(CFileException::fileNotFound, ERROR_FILE_NOT_FOUND, _T("missing_file.dat"));
+    TCHAR buf[256]{};
     BOOL ok = fe.GetErrorMessage(buf, 256);
     LineBool("CFileException.GetErrorMessage.returns_true", ok != FALSE);
     LineInt("CFileException.m_cause", fe.m_cause);
@@ -297,16 +300,16 @@ static void TestExceptions()
     Line("CFileException.m_strFileName", fe.m_strFileName);
 
     CMemoryException me;
-    wchar_t mbuf[256]{};
+    TCHAR mbuf[256]{};
     me.GetErrorMessage(mbuf, 256);
 
-    CFileException* heapEx = new CFileException(CFileException::badPath, ERROR_BAD_PATHNAME, L"x");
+    CFileException* heapEx = new CFileException(CFileException::badPath, ERROR_BAD_PATHNAME, _T("x"));
     LineInt("CFileException.Delete.m_cause_before", heapEx->m_cause);
     heapEx->Delete();
 
     try
     {
-        AfxThrowFileException(CFileException::diskFull, ERROR_DISK_FULL, L"y.dat");
+        AfxThrowFileException(CFileException::diskFull, ERROR_DISK_FULL, _T("y.dat"));
         Line("AfxThrowFileException.caught", std::string("NEVER (did not throw)"));
     }
     catch (CFileException* e)
@@ -328,7 +331,7 @@ static void TestExceptions()
 
 static void TestCString()
 {
-    CString s = L"  Hello, World!  ";
+    CString s = _T("  Hello, World!  ");
     LineBool("CString.IsEmpty.initial", s.IsEmpty() != FALSE);
     LineInt("CString.GetLength.initial", s.GetLength());
 
@@ -344,17 +347,17 @@ static void TestCString()
     lower.MakeLower();
     Line("CString.MakeLower.result", lower);
 
-    LineInt("CString.Find.substr", trimmed.Find(L"World"));
-    LineInt("CString.Find.missing", trimmed.Find(L"xyz"));
-    LineInt("CString.Find.char", trimmed.Find(L'W'));
-    LineInt("CString.ReverseFind", trimmed.ReverseFind(L'o'));
+    LineInt("CString.Find.substr", trimmed.Find(_T("World")));
+    LineInt("CString.Find.missing", trimmed.Find(_T("xyz")));
+    LineInt("CString.Find.char", trimmed.Find(_T('W')));
+    LineInt("CString.ReverseFind", trimmed.ReverseFind(_T('o')));
 
     CString fmt;
-    fmt.Format(L"%d-%s-%02d", 2026, L"Jul", 9);
+    fmt.Format(_T("%d-%s-%02d"), 2026, _T("Jul"), 9);
     Line("CString.Format.result", fmt);
 
-    CString app = L"base";
-    app.AppendFormat(L"+%d=%s", 42, L"done");
+    CString app = _T("base");
+    app.AppendFormat(_T("+%d=%s"), 42, _T("done"));
     Line("CString.AppendFormat.result", app);
 
     Line("CString.Left5", trimmed.Left(5));
@@ -363,123 +366,123 @@ static void TestCString()
     Line("CString.Mid7_NoCount", trimmed.Mid(7));
 
     CString rep = trimmed;
-    int nrep = rep.Replace(L"o", L"0");
+    int nrep = rep.Replace(_T("o"), _T("0"));
     LineInt("CString.Replace.count", nrep);
     Line("CString.Replace.result", rep);
 
     CString repChar = trimmed;
-    int nrepChar = repChar.Replace(L'l', L'L');
+    int nrepChar = repChar.Replace(_T('l'), _T('L'));
     LineInt("CString.ReplaceChar.count", nrepChar);
     Line("CString.ReplaceChar.result", repChar);
 
-    LineInt("CString.Compare.equal", Sign(CString(L"abc").Compare(L"abc")));
-    LineInt("CString.Compare.less", Sign(CString(L"abc").Compare(L"abd")));
-    LineInt("CString.Compare.greater", Sign(CString(L"abd").Compare(L"abc")));
-    LineInt("CString.CompareNoCase.equal", Sign(CString(L"ABC").CompareNoCase(L"abc")));
-    LineInt("CString.CompareNoCase.less", Sign(CString(L"ABC").CompareNoCase(L"abd")));
+    LineInt("CString.Compare.equal", Sign(CString(_T("abc")).Compare(_T("abc"))));
+    LineInt("CString.Compare.less", Sign(CString(_T("abc")).Compare(_T("abd"))));
+    LineInt("CString.Compare.greater", Sign(CString(_T("abd")).Compare(_T("abc"))));
+    LineInt("CString.CompareNoCase.equal", Sign(CString(_T("ABC")).CompareNoCase(_T("abc"))));
+    LineInt("CString.CompareNoCase.less", Sign(CString(_T("ABC")).CompareNoCase(_T("abd"))));
 
     CString del = trimmed;
     del.Delete(0, 6);
     Line("CString.Delete.result", del);
     LineInt("CString.Delete.returned_length", del.GetLength());
 
-    CString ins = CString(L"Hello World");
-    ins.Insert(5, L",");
+    CString ins = CString(_T("Hello World"));
+    ins.Insert(5, _T(","));
     Line("CString.Insert.string.result", ins);
-    CString insCh = CString(L"ac");
-    insCh.Insert(1, L'b');
+    CString insCh = CString(_T("ac"));
+    insCh.Insert(1, _T('b'));
     Line("CString.Insert.char.result", insCh);
 
-    Line("CString.SpanExcluding", CString(L"12345abc").SpanExcluding(L"abcdefg"));
+    Line("CString.SpanExcluding", CString(_T("12345abc")).SpanExcluding(_T("abcdefg")));
 
-    CString tok = L"a,b,,c";
+    CString tok = _T("a,b,,c");
     int start = 0;
-    Line("CString.Tokenize.1", tok.Tokenize(L",", start));
+    Line("CString.Tokenize.1", tok.Tokenize(_T(","), start));
     LineInt("CString.Tokenize.pos_after_1", start);
-    Line("CString.Tokenize.2", tok.Tokenize(L",", start));
+    Line("CString.Tokenize.2", tok.Tokenize(_T(","), start));
     LineInt("CString.Tokenize.pos_after_2", start);
-    Line("CString.Tokenize.3_empty", tok.Tokenize(L",", start));
+    Line("CString.Tokenize.3_empty", tok.Tokenize(_T(","), start));
 
-    CString trimChar = L"xxhelloxx";
-    trimChar.Trim(L'x');
+    CString trimChar = _T("xxhelloxx");
+    trimChar.Trim(_T('x'));
     Line("CString.TrimChar", trimChar);
 
-    CString trimSet = L"##--hello--##";
-    trimSet.Trim(L"#-");
+    CString trimSet = _T("##--hello--##");
+    trimSet.Trim(_T("#-"));
     Line("CString.TrimSet", trimSet);
 
-    CString trimRightDefault = L"hello   ";
+    CString trimRightDefault = _T("hello   ");
     trimRightDefault.TrimRight();
     Line("CString.TrimRight.default", trimRightDefault);
 
-    CString trimRightChar = L"helloxxx";
-    trimRightChar.TrimRight(L'x');
+    CString trimRightChar = _T("helloxxx");
+    trimRightChar.TrimRight(_T('x'));
     Line("CString.TrimRight.char", trimRightChar);
 
-    CString getset = L"abc";
+    CString getset = _T("abc");
     LineInt("CString.GetAt1", getset.GetAt(1));
-    getset.SetAt(1, L'Z');
+    getset.SetAt(1, _T('Z'));
     Line("CString.SetAt.result", getset);
 
-    CString cat = CString(L"foo") + CString(L"bar");
+    CString cat = CString(_T("foo")) + CString(_T("bar"));
     Line("CString.operatorPlus", cat);
-    LineBool("CString.operatorEq.true", CString(L"x") == CString(L"x"));
-    LineBool("CString.operatorEq.false", CString(L"x") == CString(L"y"));
-    LineBool("CString.operatorNe", CString(L"x") != CString(L"y"));
+    LineBool("CString.operatorEq.true", CString(_T("x")) == CString(_T("x")));
+    LineBool("CString.operatorEq.false", CString(_T("x")) == CString(_T("y")));
+    LineBool("CString.operatorNe", CString(_T("x")) != CString(_T("y")));
 
     CString buf;
-    wchar_t* p = buf.GetBuffer(32);
-    wcscpy_s(p, 32, L"buffered");
+    TCHAR* p = buf.GetBuffer(32);
+    wcscpy_s(p, 32, _T("buffered"));
     buf.ReleaseBuffer();
     Line("CString.GetBuffer_ReleaseBuffer.result", buf);
     LineInt("CString.GetBuffer_ReleaseBuffer.length", buf.GetLength());
 
-    CString emptied = L"not empty";
+    CString emptied = _T("not empty");
     emptied.Empty();
     LineBool("CString.Empty.IsEmptyAfter", emptied.IsEmpty() != FALSE);
 
-    CString repeated(L'x', 5);
+    CString repeated(_T('x'), 5);
     Line("CString.CharRepeatCtor", repeated);
 
-    CString noarg = L"abc";
-    wchar_t* pna = noarg.GetBuffer();
+    CString noarg = _T("abc");
+    TCHAR* pna = noarg.GetBuffer();
     Line("CString.GetBuffer_NoArg", CString(pna));
 
-    CString trimRightSet = L"hello##--";
-    trimRightSet.TrimRight(L"#-");
+    CString trimRightSet = _T("hello##--");
+    trimRightSet.TrimRight(_T("#-"));
     Line("CString.TrimRight.set", trimRightSet);
 
-    CString idx = L"index";
+    CString idx = _T("index");
     LineInt("CString.operatorIndex2", idx[2]);
 
-    CString plusEqStr = L"foo";
-    plusEqStr += CString(L"bar");
+    CString plusEqStr = _T("foo");
+    plusEqStr += CString(_T("bar"));
     Line("CString.operatorPlusEqString", plusEqStr);
-    CString plusEqChar = L"foo";
-    plusEqChar += L'!';
+    CString plusEqChar = _T("foo");
+    plusEqChar += _T('!');
     Line("CString.operatorPlusEqChar", plusEqChar);
 
-    LineBool("CString.operatorLess.true", CString(L"a") < CString(L"b"));
-    LineBool("CString.operatorLess.false", CString(L"b") < CString(L"a"));
+    LineBool("CString.operatorLess.true", CString(_T("a")) < CString(_T("b")));
+    LineBool("CString.operatorLess.false", CString(_T("b")) < CString(_T("a")));
 
-    CString fmtHex; fmtHex.Format(L"%08X", 0xDEADu);
+    CString fmtHex; fmtHex.Format(_T("%08X"), 0xDEADu);
     Line("CString.Format.hex", fmtHex);
-    CString fmtChar; fmtChar.Format(L"%c|%c", L'Z', L'9');
+    CString fmtChar; fmtChar.Format(_T("%c|%c"), _T('Z'), _T('9'));
     Line("CString.Format.char", fmtChar);
-    CString fmtFloat; fmtFloat.Format(L"%.3f", 3.14159265);
+    CString fmtFloat; fmtFloat.Format(_T("%.3f"), 3.14159265);
     Line("CString.Format.float", fmtFloat);
-    CString fmtWidth; fmtWidth.Format(L"[%5d][%-5d][%+d]", 42, 42, 42);
+    CString fmtWidth; fmtWidth.Format(_T("[%5d][%-5d][%+d]"), 42, 42, 42);
     Line("CString.Format.width", fmtWidth);
-    CString fmtPercent; fmtPercent.Format(L"100%% done");
+    CString fmtPercent; fmtPercent.Format(_T("100%% done"));
     Line("CString.Format.percent", fmtPercent);
 
     CString empty;
     empty.Trim();
     LineBool("CString.Empty.TrimStaysEmpty", empty.IsEmpty() != FALSE);
-    LineInt("CString.Empty.FindMissing", empty.Find(L"x"));
+    LineInt("CString.Empty.FindMissing", empty.Find(_T("x")));
     LineInt("CString.Empty.Length", empty.GetLength());
 
-    CString abc = L"abc";
+    CString abc = _T("abc");
     Line("CString.Left0", abc.Left(0));
     Line("CString.LeftBeyond", abc.Left(100));
     Line("CString.Right0", abc.Right(0));
@@ -487,14 +490,14 @@ static void TestCString()
     Line("CString.MidAtEnd", abc.Mid(3));
     Line("CString.MidBeyondCount", abc.Mid(1, 100));
 
-    CString haystack = L"abcabcabc";
-    LineInt("CString.Find.fromIndex", haystack.Find(L"abc", 1));
-    LineInt("CString.ReverseFind.missing", haystack.ReverseFind(L'z'));
+    CString haystack = _T("abcabcabc");
+    LineInt("CString.Find.fromIndex", haystack.Find(_T("abc"), 1));
+    LineInt("CString.ReverseFind.missing", haystack.ReverseFind(_T('z')));
 }
 
 static void TestCFile()
 {
-    CString path = TempDir() + CString(L"simple_mfc_conformance_file.bin");
+    CString path = TempDir() + CString(_T("simple_mfc_conformance_file.bin"));
 
     CFile f;
     BOOL opened = f.Open(path, CFile::modeCreate | CFile::modeWrite);
@@ -543,7 +546,7 @@ static void TestCFile()
     LineBool("CFile.GetStatus.static.ok", statusOk != FALSE);
     LineInt("CFile.GetStatus.static.size", static_cast<long long>(status.m_size));
 
-    CString renamedPath = TempDir() + CString(L"simple_mfc_conformance_file_renamed.bin");
+    CString renamedPath = TempDir() + CString(_T("simple_mfc_conformance_file_renamed.bin"));
     CFile::Rename(path, renamedPath);
     CFileStatus statusAfterRename{};
     LineBool("CFile.Rename.thenGetStatus.ok", CFile::GetStatus(renamedPath, statusAfterRename) != FALSE);
@@ -552,7 +555,7 @@ static void TestCFile()
     CFileStatus statusAfterRemove{};
     LineBool("CFile.Remove.thenGetStatus.fails", CFile::GetStatus(renamedPath, statusAfterRemove) == FALSE);
 
-    CString path2 = TempDir() + CString(L"simple_mfc_conformance_file2.bin");
+    CString path2 = TempDir() + CString(_T("simple_mfc_conformance_file2.bin"));
     {
         CFile ctorFile(path2, CFile::modeCreate | CFile::modeWrite);
         const char data2[] = "ctor-opened-file";
@@ -568,12 +571,12 @@ static void TestCFile()
 
 static void TestCStdioFile()
 {
-    CString path = TempDir() + CString(L"simple_mfc_conformance_stdio.txt");
+    CString path = TempDir() + CString(_T("simple_mfc_conformance_stdio.txt"));
 
     CStdioFile wf;
     wf.Open(path, CFile::modeCreate | CFile::modeWrite);
-    wf.WriteString(L"first line\r\n");
-    wf.WriteString(L"second line\r\n");
+    wf.WriteString(_T("first line\r\n"));
+    wf.WriteString(_T("second line\r\n"));
     SafeClose(wf);
 
     CStdioFile rf;
@@ -592,15 +595,15 @@ static void TestCStdioFile()
 
     SafeRemoveFile(path);
 
-    CString path2 = TempDir() + CString(L"simple_mfc_conformance_stdio2.txt");
+    CString path2 = TempDir() + CString(_T("simple_mfc_conformance_stdio2.txt"));
     {
         CStdioFile ctorWrite(path2, CFile::modeCreate | CFile::modeWrite);
-        ctorWrite.WriteString(L"buffer overload line\r\n");
+        ctorWrite.WriteString(_T("buffer overload line\r\n"));
         SafeClose(ctorWrite);
 
         CStdioFile bufRead;
         bufRead.Open(path2, CFile::modeRead);
-        wchar_t lineBuf[128]{};
+        TCHAR lineBuf[128]{};
         LPTSTR got = bufRead.ReadString(lineBuf, 64);
         LineBool("CStdioFile.ReadString.buffer.nonNull", got != nullptr);
         Line("CStdioFile.ReadString.buffer.content", lineBuf);
@@ -639,11 +642,11 @@ static void TestCMemFile()
 
 static void TestCFileFind()
 {
-    CString dir = TempDir() + CString(L"simple_mfc_conformance_find" SMFC_SEP);
+    CString dir = TempDir() + CString(_T("simple_mfc_conformance_find") SMFC_SEP);
     CreateDirectoryW(dir, nullptr);
 
-    const wchar_t* names[] = {L"alpha.txt", L"beta.txt", L"gamma.dat"};
-    for (const wchar_t* name : names)
+    const TCHAR* names[] = {_T("alpha.txt"), _T("beta.txt"), _T("gamma.dat")};
+    for (const TCHAR* name : names)
     {
         CFile f;
         f.Open(dir + CString(name), CFile::modeCreate | CFile::modeWrite);
@@ -655,7 +658,7 @@ static void TestCFileFind()
     CString matched[8];
     int matchCount = 0;
     CFileFind finder;
-    BOOL working = finder.FindFile(dir + CString(L"*.txt"));
+    BOOL working = finder.FindFile(dir + CString(_T("*.txt")));
     while (working)
     {
         working = finder.FindNextFile();
@@ -680,7 +683,7 @@ static void TestCFileFind()
 
     {
         CFileFind single;
-        BOOL foundOne = single.FindFile(dir + CString(L"alpha.txt"));
+        BOOL foundOne = single.FindFile(dir + CString(_T("alpha.txt")));
         BOOL hasMore = single.FindNextFile();
         (void)hasMore;
         LineBool("CFileFind.Single.foundOne", foundOne != FALSE);
@@ -691,7 +694,7 @@ static void TestCFileFind()
         SafeClose(single);
     }
 
-    for (const wchar_t* name : names)
+    for (const TCHAR* name : names)
         SafeRemoveFile(dir + CString(name));
     RemoveDirectoryW(dir);
 }
@@ -826,9 +829,9 @@ static void TestCPtrList()
 static void TestCStringList()
 {
     CStringList list;
-    list.AddTail(L"one");
-    list.AddTail(L"two");
-    list.AddHead(L"zero");
+    list.AddTail(_T("one"));
+    list.AddTail(_T("two"));
+    list.AddHead(_T("zero"));
 
     LineInt("CStringList.GetCount", list.GetCount());
     LineBool("CStringList.IsEmpty", list.IsEmpty() != FALSE);
@@ -845,8 +848,8 @@ static void TestCStringList()
     }
     Line("CStringList.IterationOrder", order);
 
-    LineBool("CStringList.Find.found", list.Find(L"one") != nullptr);
-    LineBool("CStringList.Find.notFound", list.Find(L"missing") != nullptr);
+    LineBool("CStringList.Find.found", list.Find(_T("one")) != nullptr);
+    LineBool("CStringList.Find.notFound", list.Find(_T("missing")) != nullptr);
 
     Line("CStringList.RemoveHead.value", list.RemoveHead());
     LineInt("CStringList.CountAfterRemoveHead", list.GetCount());
@@ -900,12 +903,12 @@ static void TestCPtrArray()
 static void TestCStringArray()
 {
     CStringArray arr;
-    arr.Add(L"aa");
-    arr.Add(L"bb");
-    arr.Add(L"cc");
+    arr.Add(_T("aa"));
+    arr.Add(_T("bb"));
+    arr.Add(_T("cc"));
     LineInt("CStringArray.GetCount", arr.GetCount());
     Line("CStringArray.GetAt1", arr.GetAt(1));
-    arr.SetAt(1, L"BB");
+    arr.SetAt(1, _T("BB"));
     Line("CStringArray.SetAt1", arr.GetAt(1));
     arr.RemoveAt(0);
     LineInt("CStringArray.CountAfterRemoveAt0", arr.GetCount());
@@ -913,7 +916,7 @@ static void TestCStringArray()
     LineInt("CStringArray.GetSize", static_cast<long long>(arr.GetSize()));
     LineBool("CStringArray.IsEmpty", arr.IsEmpty() != FALSE);
 
-    arr.InsertAt(0, L"zz");
+    arr.InsertAt(0, _T("zz"));
     LineInt("CStringArray.CountAfterInsertAt0", arr.GetCount());
     Line("CStringArray.GetAt0AfterInsert", arr.GetAt(0));
 
@@ -995,9 +998,9 @@ static void TestCArrayTemplate()
 static void TestCListTemplate()
 {
     CList<CString, const CString&> list;
-    list.AddTail(L"x");
-    list.AddTail(L"y");
-    list.AddHead(L"w");
+    list.AddTail(_T("x"));
+    list.AddTail(_T("y"));
+    list.AddHead(_T("w"));
     LineInt("CList_CString.GetCount", list.GetCount());
     LineBool("CList_CString.IsEmpty", list.IsEmpty() != FALSE);
     Line("CList_CString.GetHead", list.GetHead());
@@ -1013,8 +1016,8 @@ static void TestCListTemplate()
     }
     Line("CList_CString.IterationOrder", order);
 
-    LineBool("CList_CString.Find.found", list.Find(L"x") != nullptr);
-    LineBool("CList_CString.Find.notFound", list.Find(L"missing") != nullptr);
+    LineBool("CList_CString.Find.found", list.Find(_T("x")) != nullptr);
+    LineBool("CList_CString.Find.notFound", list.Find(_T("missing")) != nullptr);
     POSITION idxPos = list.FindIndex(1);
     Line("CList_CString.FindIndex1.value", list.GetAt(idxPos));
 
@@ -1023,12 +1026,12 @@ static void TestCListTemplate()
     Line("CList_CString.GetPrev.value", list.GetPrev(tailPos));
 
     POSITION headPos = list.GetHeadPosition();
-    list.SetAt(headPos, L"W2");
+    list.SetAt(headPos, _T("W2"));
     Line("CList_CString.SetAt.value", list.GetHead());
 
-    list.InsertAfter(list.GetHeadPosition(), L"inserted");
+    list.InsertAfter(list.GetHeadPosition(), _T("inserted"));
     LineInt("CList_CString.CountAfterInsertAfter", list.GetCount());
-    list.InsertBefore(list.FindIndex(2), L"beforeThird");
+    list.InsertBefore(list.FindIndex(2), _T("beforeThird"));
     LineInt("CList_CString.CountAfterInsertBefore", list.GetCount());
 
     std::string order2;
@@ -1056,19 +1059,19 @@ static void TestCListTemplate()
 static void TestCMapTemplate()
 {
     CMap<CString, LPCTSTR, int, int> map;
-    map.SetAt(L"one", 1);
-    map.SetAt(L"two", 2);
-    map.SetAt(L"three", 3);
+    map.SetAt(_T("one"), 1);
+    map.SetAt(_T("two"), 2);
+    map.SetAt(_T("three"), 3);
 
     LineInt("CMap.GetCount", map.GetCount());
 
     int v = 0;
-    LineBool("CMap.Lookup.found", map.Lookup(L"two", v) != FALSE);
+    LineBool("CMap.Lookup.found", map.Lookup(_T("two"), v) != FALSE);
     LineInt("CMap.Lookup.value", v);
-    LineBool("CMap.Lookup.notFound", map.Lookup(L"missing", v) != FALSE);
+    LineBool("CMap.Lookup.notFound", map.Lookup(_T("missing"), v) != FALSE);
 
-    LineBool("CMap.RemoveKey.existing", map.RemoveKey(L"one") != FALSE);
-    LineBool("CMap.RemoveKey.missing", map.RemoveKey(L"one") != FALSE);
+    LineBool("CMap.RemoveKey.existing", map.RemoveKey(_T("one")) != FALSE);
+    LineBool("CMap.RemoveKey.missing", map.RemoveKey(_T("one")) != FALSE);
     LineInt("CMap.CountAfterRemoveKey", map.GetCount());
 
     int sum = 0;
@@ -1085,8 +1088,8 @@ static void TestCMapTemplate()
     LineInt("CMap.IterationCount", count);
     LineInt("CMap.IterationSum", sum);
 
-    LineBool("CMap.PLookup.found", map.PLookup(L"three") != nullptr);
-    if (const auto* pair = map.PLookup(L"three"))
+    LineBool("CMap.PLookup.found", map.PLookup(_T("three")) != nullptr);
+    if (const auto* pair = map.PLookup(_T("three")))
         LineInt("CMap.PLookup.value", pair->value);
 
     LineInt("CMap.GetSize", static_cast<long long>(map.GetSize()));
@@ -1095,7 +1098,7 @@ static void TestCMapTemplate()
     CMap<CString, LPCTSTR, int, int> freshMap;
     freshMap.InitHashTable(64);
     LineBool("CMap.GetHashTableSize.nonZero", freshMap.GetHashTableSize() > 0);
-    freshMap.SetAt(L"k", 1);
+    freshMap.SetAt(_T("k"), 1);
     LineInt("CMap.CountAfterInitHashTableThenSetAt", freshMap.GetCount());
 
     int pCount = 0;
@@ -1108,26 +1111,26 @@ static void TestCMapTemplate()
     LineInt("CMap.PIteration.count", pCount);
     LineInt("CMap.PIteration.sum", pSum);
 
-    const auto* hit = map.PLookup(L"two");
+    const auto* hit = map.PLookup(_T("two"));
     LineBool("CMap.PLookup.hit.non_null", hit != nullptr);
     Line("CMap.PLookup.hit.key", hit ? hit->key : CString());
     LineInt("CMap.PLookup.hit.value", hit ? hit->value : -1);
-    LineBool("CMap.PLookup.miss.is_null", map.PLookup(L"nosuchkey") == nullptr);
+    LineBool("CMap.PLookup.miss.is_null", map.PLookup(_T("nosuchkey")) == nullptr);
 
     map.RemoveAll();
     LineBool("CMap.IsEmptyAfterRemoveAll", map.IsEmpty() != FALSE);
     LineInt("CMap.CountAfterRemoveAll", map.GetCount());
 
     CMap<CString, LPCTSTR, int, int> map2(20);
-    map2.SetAt(L"only", 1);
+    map2.SetAt(_T("only"), 1);
     LineInt("CMap.ExplicitBlockSizeCtor.GetCount", map2.GetCount());
 
     CMap<CString, LPCTSTR, int, int> ov;
-    ov.SetAt(L"k", 1);
-    ov.SetAt(L"k", 99);
+    ov.SetAt(_T("k"), 1);
+    ov.SetAt(_T("k"), 99);
     LineInt("CMap.SetAt.overwrite.count", ov.GetCount());
     int ovv = 0;
-    ov.Lookup(L"k", ovv);
+    ov.Lookup(_T("k"), ovv);
     LineInt("CMap.SetAt.overwrite.value", ovv);
 }
 
@@ -1406,7 +1409,7 @@ static void TestTime()
     LineInt("CTimeSpan.ctor.GetTotalHours", static_cast<long long>(span.GetTotalHours()));
     LineInt("CTimeSpan.ctor.GetTotalMinutes", static_cast<long long>(span.GetTotalMinutes()));
 
-    Line("CTime.Format", t1.Format(L"%Y-%m-%d %H:%M:%S"));
+    Line("CTime.Format", t1.Format(_T("%Y-%m-%d %H:%M:%S")));
     LineInt("CTime.GetTime", static_cast<long long>(t1.GetTime()));
 
     CTime defaultTime;
@@ -1435,13 +1438,13 @@ static void TestTime()
     LineInt("CTime.2000.GetMonth", t2000.GetMonth());
     LineInt("CTime.2000.GetDay", t2000.GetDay());
     LineInt("CTime.2000.GetDayOfWeek", t2000.GetDayOfWeek());
-    Line("CTime.2000.Format", t2000.Format(L"%Y/%m/%d %H:%M:%S day%j"));
+    Line("CTime.2000.Format", t2000.Format(_T("%Y/%m/%d %H:%M:%S day%j")));
 
     CTime tLeap(2024, 2, 29, 23, 59, 59);
     LineInt("CTime.Leap.GetMonth", tLeap.GetMonth());
     LineInt("CTime.Leap.GetDay", tLeap.GetDay());
     LineInt("CTime.Leap.GetDayOfWeek", tLeap.GetDayOfWeek());
-    Line("CTime.Leap.Format", tLeap.Format(L"%y-%m-%dT%H:%M:%S"));
+    Line("CTime.Leap.Format", tLeap.Format(_T("%y-%m-%dT%H:%M:%S")));
 
     CTimeSpan neg = t1 - t2;
     LineInt("CTimeSpan.negative.GetTotalSeconds", static_cast<long long>(neg.GetTotalSeconds()));
@@ -1588,7 +1591,7 @@ static void TestCArchive()
     CMemFile mfs;
     {
         CArchive ar(&mfs, CArchive::store);
-        ar << CString(L"archived string");
+        ar << CString(_T("archived string"));
         ar.Close();
     }
     mfs.SeekToBegin();
@@ -1797,17 +1800,17 @@ static void TestAfxParseURL()
         LPCTSTR url;
     };
     const Case kCases[] = {
-        {"http.explicitPort", L"http://example.com:8080/path/to/file"},
-        {"https.defaultPort", L"https://example.com/index.html"},
-        {"https.explicitPort", L"https://secure.example.com:8443/a"},
-        {"http.defaultPort", L"http://example.com/"},
-        {"http.noObject", L"http://example.com"},
-        {"ftp.explicitPort", L"ftp://files.example.com:2121/pub/readme.txt"},
-        {"ftp.defaultPort", L"ftp://files.example.com/pub/"},
-        {"http.query", L"http://example.com/search?q=mfc&lang=en"},
-        {"http.deepPath", L"http://example.com/a/b/c/d.html"},
-        {"schemeless.fails", L"example.com/path"},
-        {"empty.fails", L""},
+        {"http.explicitPort", _T("http://example.com:8080/path/to/file")},
+        {"https.defaultPort", _T("https://example.com/index.html")},
+        {"https.explicitPort", _T("https://secure.example.com:8443/a")},
+        {"http.defaultPort", _T("http://example.com/")},
+        {"http.noObject", _T("http://example.com")},
+        {"ftp.explicitPort", _T("ftp://files.example.com:2121/pub/readme.txt")},
+        {"ftp.defaultPort", _T("ftp://files.example.com/pub/")},
+        {"http.query", _T("http://example.com/search?q=mfc&lang=en")},
+        {"http.deepPath", _T("http://example.com/a/b/c/d.html")},
+        {"schemeless.fails", _T("example.com/path")},
+        {"empty.fails", _T("")},
     };
 
     for (const Case& c : kCases)
@@ -1881,11 +1884,11 @@ static void TestPatternCString()
         CString fmt;
         switch (i % 5)
         {
-        case 0: fmt.Format(L"%d|%s", n, (LPCTSTR)wordW); break;
-        case 1: fmt.Format(L"%*d", width, n); break;
-        case 2: fmt.Format(L"%.*f", prec, d); break;
-        case 3: fmt.Format(L"%08X", static_cast<unsigned int>(n)); break;
-        default: fmt.Format(L"[%-*s]=%+d", width, (LPCTSTR)wordW, n); break;
+        case 0: fmt.Format(_T("%d|%s"), n, (LPCTSTR)wordW); break;
+        case 1: fmt.Format(_T("%*d"), width, n); break;
+        case 2: fmt.Format(_T("%.*f"), prec, d); break;
+        case 3: fmt.Format(_T("%08X"), static_cast<unsigned int>(n)); break;
+        default: fmt.Format(_T("[%-*s]=%+d"), width, (LPCTSTR)wordW, n); break;
         }
         Line(label, fmt);
     }
@@ -2019,18 +2022,18 @@ static void TestPatternUnicodeToUtf8()
     for (int i = 0; i < 30; ++i)
     {
         int n = lenDist(rng);
-        std::wstring w;
+        std::basic_string<TCHAR> w;
         w.reserve(static_cast<size_t>(n) * 2);
         for (int c = 0; c < n; ++c)
         {
             switch (kindDist(rng))
             {
-            case 0: w.push_back(static_cast<wchar_t>(asciiDist(rng))); break;
-            case 1: w.push_back(static_cast<wchar_t>(latin1Dist(rng))); break;
-            case 2: w.push_back(static_cast<wchar_t>(bmpDist(rng))); break;
+            case 0: w.push_back(static_cast<TCHAR>(asciiDist(rng))); break;
+            case 1: w.push_back(static_cast<TCHAR>(latin1Dist(rng))); break;
+            case 2: w.push_back(static_cast<TCHAR>(bmpDist(rng))); break;
             default:
-                w.push_back(static_cast<wchar_t>(highSurrDist(rng)));
-                w.push_back(static_cast<wchar_t>(lowSurrDist(rng)));
+                w.push_back(static_cast<TCHAR>(highSurrDist(rng)));
+                w.push_back(static_cast<TCHAR>(lowSurrDist(rng)));
                 break;
             }
         }
@@ -2112,21 +2115,21 @@ static void TestCMapStringToPtr()
     LineInt("CMapStringToPtr.GetCount.empty", m.GetCount());
     LineBool("CMapStringToPtr.IsEmpty.empty", m.IsEmpty() != FALSE);
 
-    static const LPCTSTR kKeys[] = {L"alpha", L"beta", L"gamma", L"delta"};
+    static const LPCTSTR kKeys[] = {_T("alpha"), _T("beta"), _T("gamma"), _T("delta")};
     for (int i = 0; i < 4; ++i)
         m.SetAt(kKeys[i], &g_slots[i]);
     LineInt("CMapStringToPtr.GetCount.after_4", m.GetCount());
 
     void* found = nullptr;
-    LineBool("CMapStringToPtr.Lookup.hit", m.Lookup(L"gamma", found) != FALSE);
+    LineBool("CMapStringToPtr.Lookup.hit", m.Lookup(_T("gamma"), found) != FALSE);
     LineInt("CMapStringToPtr.Lookup.hit.value", found ? *static_cast<int*>(found) : -1);
     void* missed = nullptr;
-    LineBool("CMapStringToPtr.Lookup.miss", m.Lookup(L"epsilon", missed) != FALSE);
-    CString built = L"ga";
-    built += L"mma";
+    LineBool("CMapStringToPtr.Lookup.miss", m.Lookup(_T("epsilon"), missed) != FALSE);
+    CString built = _T("ga");
+    built += _T("mma");
     LineBool("CMapStringToPtr.Lookup.by_content", m.Lookup(built, found) != FALSE);
 
-    m[L"epsilon"] = &g_slots[4];
+    m[_T("epsilon")] = &g_slots[4];
     LineInt("CMapStringToPtr.GetCount.after_subscript", m.GetCount());
 
     std::vector<std::string> assoc;
@@ -2140,8 +2143,8 @@ static void TestCMapStringToPtr()
     }
     Line("CMapStringToPtr.walk.sorted", SortedJoin(assoc));
 
-    LineBool("CMapStringToPtr.RemoveKey.present", m.RemoveKey(L"alpha") != FALSE);
-    LineBool("CMapStringToPtr.RemoveKey.absent", m.RemoveKey(L"alpha") != FALSE);
+    LineBool("CMapStringToPtr.RemoveKey.present", m.RemoveKey(_T("alpha")) != FALSE);
+    LineBool("CMapStringToPtr.RemoveKey.absent", m.RemoveKey(_T("alpha")) != FALSE);
     LineInt("CMapStringToPtr.GetCount.after_remove", m.GetCount());
     m.RemoveAll();
     LineInt("CMapStringToPtr.GetCount.after_RemoveAll", m.GetCount());
@@ -2152,26 +2155,26 @@ static void TestCMapStringToString()
     CMapStringToString m;
     LineInt("CMapStringToString.GetCount.empty", m.GetCount());
 
-    m.SetAt(L"one", L"uno");
-    m.SetAt(L"two", L"due");
-    m.SetAt(L"three", L"tre");
+    m.SetAt(_T("one"), _T("uno"));
+    m.SetAt(_T("two"), _T("due"));
+    m.SetAt(_T("three"), _T("tre"));
     LineInt("CMapStringToString.GetCount.after_3", m.GetCount());
 
     CString value;
-    LineBool("CMapStringToString.Lookup.hit", m.Lookup(L"two", value) != FALSE);
+    LineBool("CMapStringToString.Lookup.hit", m.Lookup(_T("two"), value) != FALSE);
     Line("CMapStringToString.Lookup.hit.value", value);
-    CString absent = L"untouched";
-    LineBool("CMapStringToString.Lookup.miss", m.Lookup(L"four", absent) != FALSE);
+    CString absent = _T("untouched");
+    LineBool("CMapStringToString.Lookup.miss", m.Lookup(_T("four"), absent) != FALSE);
     Line("CMapStringToString.Lookup.miss.leaves_value", absent);
 
-    m.SetAt(L"two", L"DUE");
-    m.Lookup(L"two", value);
+    m.SetAt(_T("two"), _T("DUE"));
+    m.Lookup(_T("two"), value);
     Line("CMapStringToString.SetAt.overwrite.value", value);
     LineInt("CMapStringToString.GetCount.after_overwrite", m.GetCount());
 
-    m[L"four"] = L"quattro";
+    m[_T("four")] = _T("quattro");
     LineInt("CMapStringToString.GetCount.after_subscript", m.GetCount());
-    Line("CMapStringToString.subscript.reads_back", m[L"four"]);
+    Line("CMapStringToString.subscript.reads_back", m[_T("four")]);
 
     std::vector<std::string> assoc;
     POSITION pos = m.GetStartPosition();
@@ -2184,7 +2187,7 @@ static void TestCMapStringToString()
     }
     Line("CMapStringToString.walk.sorted", SortedJoin(assoc));
 
-    LineBool("CMapStringToString.RemoveKey.present", m.RemoveKey(L"one") != FALSE);
+    LineBool("CMapStringToString.RemoveKey.present", m.RemoveKey(_T("one")) != FALSE);
     LineInt("CMapStringToString.GetCount.after_remove", m.GetCount());
     m.RemoveAll();
     LineInt("CMapStringToString.GetCount.after_RemoveAll", m.GetCount());
@@ -2359,7 +2362,7 @@ static void TestCAsyncSocket()
 
     CAsyncSocket listener;
     LineBool("CAsyncSocket.Create.listener",
-             listener.Create(0, SOCK_STREAM, FD_ACCEPT | FD_CLOSE, L"127.0.0.1") != FALSE);
+             listener.Create(0, SOCK_STREAM, FD_ACCEPT | FD_CLOSE, _T("127.0.0.1")) != FALSE);
     LineBool("CAsyncSocket.m_hSocket.valid_after_Create", listener.m_hSocket != INVALID_SOCKET);
     LineBool("CAsyncSocket.FromHandle.finds_owner", CAsyncSocket::FromHandle(listener.m_hSocket) == &listener);
 
@@ -2378,7 +2381,7 @@ static void TestCAsyncSocket()
     CAsyncSocket client;
     LineBool("CAsyncSocket.Create.client",
              client.Create(0, SOCK_STREAM, FD_CONNECT | FD_READ | FD_WRITE | FD_CLOSE) != FALSE);
-    client.Connect(L"127.0.0.1", boundPort);
+    client.Connect(_T("127.0.0.1"), boundPort);
 
     CAsyncSocket server;
     LineBool("CAsyncSocket.Accept.after_a_connect",
@@ -2503,7 +2506,7 @@ static void TestExceptionGaps()
     LineBool("CNotSupportedException.IsKindOf.CMemoryException",
              nse.IsKindOf(RUNTIME_CLASS(CMemoryException)) != FALSE);
 
-    CArchiveException ae(CArchiveException::badIndex, L"stream.dat");
+    CArchiveException ae(CArchiveException::badIndex, _T("stream.dat"));
     LineInt("CArchiveException.m_cause", ae.m_cause);
     LineBool("CArchiveException.IsKindOf.CException",
              ae.IsKindOf(RUNTIME_CLASS(CException)) != FALSE);
@@ -2514,16 +2517,16 @@ static void TestExceptionGaps()
         const UINT sizes[] = {1, 2, 8, 64, 255};
         for (UINT n : sizes)
         {
-            wchar_t buf[300];
-            for (wchar_t& c : buf) c = L'#';
-            CFileException fe(CFileException::fileNotFound, ERROR_FILE_NOT_FOUND, L"nope.dat");
+            TCHAR buf[300];
+            for (TCHAR& c : buf) c = _T('#');
+            CFileException fe(CFileException::fileNotFound, ERROR_FILE_NOT_FOUND, _T("nope.dat"));
             fe.GetErrorMessage(buf, n);
             std::string name = "CFileException.GetErrorMessage.respects_nMaxError." + std::to_string(n);
-            LineBool(name.c_str(), buf[n] == L'#');
+            LineBool(name.c_str(), buf[n] == _T('#'));
             std::string term = "CFileException.GetErrorMessage.nul_terminates." + std::to_string(n);
             bool terminated = false;
             for (UINT i = 0; i < n; ++i)
-                if (buf[i] == L'\0') { terminated = true; break; }
+                if (buf[i] == _T('\0')) { terminated = true; break; }
             LineBool(term.c_str(), terminated);
         }
     }
@@ -2558,7 +2561,7 @@ static void TestExceptionGaps()
         {
             try
             {
-                CFileException::ThrowOsError(c.osError, L"probe.dat");
+                CFileException::ThrowOsError(c.osError, _T("probe.dat"));
 #if defined(SIMPLE_MFC_USE_REAL_MFC)
                 Line((std::string("CFileException.ThrowOsError.") + c.label).c_str(),
                      std::string("NEVER (did not throw)"));
@@ -2616,49 +2619,49 @@ static void TestNonBMP()
 {
     LineInt("NonBMP.sizeof.TCHAR", (long long)sizeof(TCHAR));
 
-    CString emoji(L"a\U0001F600b");
+    CString emoji(_T("a\U0001F600b"));
     LineInt("NonBMP.emoji.GetLength", emoji.GetLength());
     Line("NonBMP.emoji.code_units", CodeUnits(emoji));
-    LineInt("NonBMP.emoji.Find.a", emoji.Find(L'a'));
-    LineInt("NonBMP.emoji.Find.b", emoji.Find(L'b'));
-    LineInt("NonBMP.emoji.ReverseFind.b", emoji.ReverseFind(L'b'));
+    LineInt("NonBMP.emoji.Find.a", emoji.Find(_T('a')));
+    LineInt("NonBMP.emoji.Find.b", emoji.Find(_T('b')));
+    LineInt("NonBMP.emoji.ReverseFind.b", emoji.ReverseFind(_T('b')));
     LineInt("NonBMP.emoji.GetAt.1", (long long)(unsigned long)(unsigned int)emoji.GetAt(1));
     Line("NonBMP.emoji.Mid.1.1", CodeUnits(emoji.Mid(1, 1)));
     Line("NonBMP.emoji.Mid.1.2", CodeUnits(emoji.Mid(1, 2)));
     Line("NonBMP.emoji.Left.2", CodeUnits(emoji.Left(2)));
     Line("NonBMP.emoji.Right.2", CodeUnits(emoji.Right(2)));
 
-    CString cjk(L"\U00020000\U0002A6DF");
+    CString cjk(_T("\U00020000\U0002A6DF"));
     LineInt("NonBMP.cjk.GetLength", cjk.GetLength());
     Line("NonBMP.cjk.code_units", CodeUnits(cjk));
 
-    CString deseret(L"\U00010437");
+    CString deseret(_T("\U00010437"));
     LineInt("NonBMP.deseret.GetLength", deseret.GetLength());
 
-    CString mixed(L"é\U0001F600中");
+    CString mixed(_T("é\U0001F600中"));
     LineInt("NonBMP.mixed.GetLength", mixed.GetLength());
     Line("NonBMP.mixed.code_units", CodeUnits(mixed));
 
-    CString upper(L"a\U0001F600b");
+    CString upper(_T("a\U0001F600b"));
     upper.MakeUpper();
     Line("NonBMP.MakeUpper.code_units", CodeUnits(upper));
-    CString lower(L"A\U0001F600B");
+    CString lower(_T("A\U0001F600B"));
     lower.MakeLower();
     Line("NonBMP.MakeLower.code_units", CodeUnits(lower));
 
     CString formatted;
-    formatted.Format(L"[%s]", emoji.GetString());
+    formatted.Format(_T("[%s]"), emoji.GetString());
     LineInt("NonBMP.Format.GetLength", formatted.GetLength());
     Line("NonBMP.Format.code_units", CodeUnits(formatted));
 
     CString concat = emoji + cjk;
     LineInt("NonBMP.concat.GetLength", concat.GetLength());
 
-    LineInt("NonBMP.Compare.equal", emoji.Compare(L"a\U0001F600b"));
-    LineInt("NonBMP.Compare.ordering", emoji.Compare(L"a\U0001F601b") < 0 ? -1 : 1);
+    LineInt("NonBMP.Compare.equal", emoji.Compare(_T("a\U0001F600b")));
+    LineInt("NonBMP.Compare.ordering", emoji.Compare(_T("a\U0001F601b")) < 0 ? -1 : 1);
 
-    CString replaced(L"a\U0001F600b");
-    LineInt("NonBMP.Replace.count", replaced.Replace(L"\U0001F600", L"X"));
+    CString replaced(_T("a\U0001F600b"));
+    LineInt("NonBMP.Replace.count", replaced.Replace(_T("\U0001F600"), _T("X")));
     Line("NonBMP.Replace.result", CodeUnits(replaced));
 
     const int srcChars = emoji.GetLength() + 1;
@@ -2674,14 +2677,14 @@ static void TestCStringGaps()
     {
         struct Case { const char* label; LPCTSTR a; LPCTSTR b; };
         const Case cases[] = {
-            {"equal",        L"alpha",  L"alpha"},
-            {"less",         L"alpha",  L"beta"},
-            {"greater",      L"beta",   L"alpha"},
-            {"prefix",       L"alph",   L"alpha"},
-            {"case_differs", L"Alpha",  L"alpha"},
-            {"empty_vs_x",   L"",       L"x"},
-            {"both_empty",   L"",       L""},
-            {"digits",       L"file10", L"file9"},
+            {"equal",        _T("alpha"),  _T("alpha")},
+            {"less",         _T("alpha"),  _T("beta")},
+            {"greater",      _T("beta"),   _T("alpha")},
+            {"prefix",       _T("alph"),   _T("alpha")},
+            {"case_differs", _T("Alpha"),  _T("alpha")},
+            {"empty_vs_x",   _T(""),       _T("x")},
+            {"both_empty",   _T(""),       _T("")},
+            {"digits",       _T("file10"), _T("file9")},
         };
         for (const Case& c : cases)
         {
@@ -2695,13 +2698,13 @@ static void TestCStringGaps()
     {
         struct Case { const char* label; LPCTSTR s; LPCTSTR set; };
         const Case cases[] = {
-            {"first_char",   L"abcdef",      L"a"},
-            {"middle",       L"abcdef",      L"dc"},
-            {"none",         L"abcdef",      L"xyz"},
-            {"empty_set",    L"abcdef",      L""},
-            {"empty_string", L"",            L"abc"},
-            {"separators",   L"host:8080/p", L"/:"},
-            {"non_ascii",    L"café au lait", L"é"},
+            {"first_char",   _T("abcdef"),      _T("a")},
+            {"middle",       _T("abcdef"),      _T("dc")},
+            {"none",         _T("abcdef"),      _T("xyz")},
+            {"empty_set",    _T("abcdef"),      _T("")},
+            {"empty_string", _T(""),            _T("abc")},
+            {"separators",   _T("host:8080/p"), _T("/:")},
+            {"non_ascii",    _T("café au lait"), _T("é")},
         };
         for (const Case& c : cases)
         {
@@ -2714,7 +2717,7 @@ static void TestCStringGaps()
         const int lengths[] = {0, 1, 3, 6};
         for (int n : lengths)
         {
-            CString s(L"abcdef");
+            CString s(_T("abcdef"));
             s.Truncate(n);
             Line((std::string("CString.Truncate.") + std::to_string(n)).c_str(), s);
             LineInt((std::string("CString.Truncate.") + std::to_string(n) + ".GetLength").c_str(),
@@ -2725,14 +2728,14 @@ static void TestCStringGaps()
     {
         struct Case { const char* label; LPCTSTR src; };
         const Case cases[] = {
-            {"plain",     L"replacement"},
-            {"empty",     L""},
-            {"embedded",  L"a\tb"},
-            {"non_ascii", L"äöü"},
+            {"plain",     _T("replacement")},
+            {"empty",     _T("")},
+            {"embedded",  _T("a\tb")},
+            {"non_ascii", _T("äöü")},
         };
         for (const Case& c : cases)
         {
-            CString s(L"original value");
+            CString s(_T("original value"));
             s.SetString(c.src);
             Line((std::string("CString.SetString.psz.") + c.label).c_str(), s);
             LineInt((std::string("CString.SetString.psz.") + c.label + ".GetLength").c_str(),
@@ -2741,8 +2744,8 @@ static void TestCStringGaps()
         const int counts[] = {0, 1, 4, 11};
         for (int n : counts)
         {
-            CString s(L"original value");
-            s.SetString(L"replacement", n);
+            CString s(_T("original value"));
+            s.SetString(_T("replacement"), n);
             Line((std::string("CString.SetString.psz_n.") + std::to_string(n)).c_str(), s);
             LineInt((std::string("CString.SetString.psz_n.") + std::to_string(n) + ".GetLength").c_str(),
                     s.GetLength());
@@ -2750,40 +2753,40 @@ static void TestCStringGaps()
     }
 
     {
-        const wchar_t* inputs[] = {L"", L"x", L"a longer value with spaces", L"éè"};
+        const TCHAR* inputs[] = {_T(""), _T("x"), _T("a longer value with spaces"), _T("éè")};
         int i = 0;
-        for (const wchar_t* in : inputs)
+        for (const TCHAR* in : inputs)
         {
             CString s(in);
             LPCTSTR p = s.GetString();
             Line((std::string("CString.GetString.") + std::to_string(i)).c_str(), p);
             LineBool((std::string("CString.GetString.") + std::to_string(i) + ".nul_terminated").c_str(),
-                     p[s.GetLength()] == L'\0');
+                     p[s.GetLength()] == _T('\0'));
             ++i;
         }
     }
 
     {
         CString s;
-        const wchar_t chars[] = {L'a', L'B', L'0', L' ', L'é'};
-        for (wchar_t c : chars) s.AppendChar(c);
+        const TCHAR chars[] = {_T('a'), _T('B'), _T('0'), _T(' '), _T('é')};
+        for (TCHAR c : chars) s.AppendChar(c);
         Line("CString.AppendChar.accumulated", s);
         LineInt("CString.AppendChar.GetLength", s.GetLength());
     }
 
     {
         CString s;
-        CallFormatV(s, L"%d/%s/%c", 42, L"mid", L'z');
+        CallFormatV(s, _T("%d/%s/%c"), 42, _T("mid"), _T('z'));
         Line("CString.FormatV.mixed", s);
-        CallAppendFormatV(s, L" + %u", 7u);
+        CallAppendFormatV(s, _T(" + %u"), 7u);
         Line("CString.AppendFormatV.appended", s);
 
         CString empty;
-        CallFormatV(empty, L"%s", L"");
+        CallFormatV(empty, _T("%s"), _T(""));
         LineInt("CString.FormatV.empty_result_length", empty.GetLength());
 
         CString wide;
-        CallFormatV(wide, L"%08.3f|%X", 3.14159, 48879u);
+        CallFormatV(wide, _T("%08.3f|%X"), 3.14159, 48879u);
         Line("CString.FormatV.numeric_flags", wide);
     }
 
@@ -2793,8 +2796,8 @@ static void TestCStringGaps()
         {
             CString s;
             LPTSTR buf = s.GetBuffer(16);
-            for (int i = 0; i < 8; ++i) buf[i] = static_cast<wchar_t>(L'a' + i);
-            buf[3] = L'\0';
+            for (int i = 0; i < 8; ++i) buf[i] = static_cast<TCHAR>(_T('a') + i);
+            buf[3] = _T('\0');
             s.ReleaseBufferSetLength(n);
             LineInt((std::string("CString.ReleaseBufferSetLength.") + std::to_string(n)).c_str(),
                     s.GetLength());
@@ -2806,26 +2809,26 @@ static void TestCStringGaps()
         const UINT ids[] = {1u, 100u, 61472u};
         for (UINT id : ids)
         {
-            CString s(L"previous content");
+            CString s(_T("previous content"));
             BOOL ok = s.LoadString(id);
             LineBool(("CString.LoadString.id." + std::to_string(id)).c_str(), ok != FALSE);
             LineBool(("CString.LoadString.id." + std::to_string(id) + ".empties_on_miss").c_str(),
                      s.IsEmpty() != FALSE);
 
-            CString h(L"previous content");
+            CString h(_T("previous content"));
             BOOL okh = h.LoadString(::GetModuleHandleW(nullptr), id);
             LineBool(("CString.LoadString.hinstance." + std::to_string(id)).c_str(), okh != FALSE);
 
-            CString l(L"previous content");
+            CString l(_T("previous content"));
             BOOL okl = l.LoadString(::GetModuleHandleW(nullptr), id, 0x0409);
             LineBool(("CString.LoadString.langid." + std::to_string(id)).c_str(), okl != FALSE);
         }
     }
 
     {
-        const wchar_t* inputs[] = {L"", L"x", L"a BSTR value", L"é中"};
+        const TCHAR* inputs[] = {_T(""), _T("x"), _T("a BSTR value"), _T("é中")};
         int i = 0;
-        for (const wchar_t* in : inputs)
+        for (const TCHAR* in : inputs)
         {
             CString s(in);
             BSTR b = s.AllocSysString();
@@ -2833,7 +2836,7 @@ static void TestCStringGaps()
             LineInt(("CString.AllocSysString." + std::to_string(i) + ".SysStringLen").c_str(),
                     b ? static_cast<long long>(::SysStringLen(b)) : -1);
             Line(("CString.AllocSysString." + std::to_string(i) + ".content").c_str(),
-                 b ? b : L"(null)");
+                 b ? b : _T("(null)"));
             if (b) ::SysFreeString(b);
             ++i;
         }
@@ -2843,10 +2846,10 @@ static void TestCStringGaps()
 
 static void TestCFileFindAttributes()
 {
-    CString dir = TempDir() + CString(L"simple_mfc_conformance_attr" SMFC_SEP);
+    CString dir = TempDir() + CString(_T("simple_mfc_conformance_attr") SMFC_SEP);
     CreateDirectoryW(dir, nullptr);
 
-    CString plain = dir + CString(L"plain.bin");
+    CString plain = dir + CString(_T("plain.bin"));
     {
         CFile f;
         f.Open(plain, CFile::modeCreate | CFile::modeWrite);
@@ -2915,7 +2918,7 @@ static void TestCFileFindAttributes()
     }
 
     {
-        CString ro = dir + CString(L"readonly.bin");
+        CString ro = dir + CString(_T("readonly.bin"));
         {
             CFile f;
             f.Open(ro, CFile::modeCreate | CFile::modeWrite);
@@ -2939,15 +2942,15 @@ static void TestCFileFindAttributes()
     }
 
     {
-        const wchar_t* extra[] = {L"one.seq", L"two.seq", L"three.seq"};
-        for (const wchar_t* n : extra)
+        const TCHAR* extra[] = {_T("one.seq"), _T("two.seq"), _T("three.seq")};
+        for (const TCHAR* n : extra)
         {
             CFile f;
             f.Open(dir + CString(n), CFile::modeCreate | CFile::modeWrite);
             SafeClose(f);
         }
         CFileFind finder;
-        BOOL working = finder.FindFile(dir + CString(L"*.seq"));
+        BOOL working = finder.FindFile(dir + CString(_T("*.seq")));
         LineBool("CFileFind.FindFile.wildcard_found", working != FALSE);
         int seen = 0;
         int lastReturn = -1;
@@ -2961,7 +2964,7 @@ static void TestCFileFindAttributes()
         LineInt("CFileFind.FindNextFile.iterations", seen);
         LineInt("CFileFind.FindNextFile.last_return", lastReturn);
         finder.Close();
-        for (const wchar_t* n : extra) SafeRemoveFile(dir + CString(n));
+        for (const TCHAR* n : extra) SafeRemoveFile(dir + CString(n));
     }
 
     SafeRemoveFile(plain);
@@ -3060,7 +3063,7 @@ static void TestCAsyncSocketDatagram()
     CAsyncSocket receiver;
     LineBool("CAsyncSocket.Bind.Attach", receiver.Attach(raw) != FALSE);
     LineBool("CAsyncSocket.Bind.to_loopback_ephemeral",
-             receiver.Bind(0, L"127.0.0.1") != FALSE);
+             receiver.Bind(0, _T("127.0.0.1")) != FALSE);
 
     CString boundAddress;
     UINT boundPort = 0;
@@ -3069,18 +3072,18 @@ static void TestCAsyncSocketDatagram()
     Line("CAsyncSocket.Bind.address", boundAddress);
     LineBool("CAsyncSocket.Bind.port_is_assigned", boundPort != 0);
 
-    LineBool("CAsyncSocket.Bind.second_bind_fails", receiver.Bind(0, L"127.0.0.1") != FALSE);
+    LineBool("CAsyncSocket.Bind.second_bind_fails", receiver.Bind(0, _T("127.0.0.1")) != FALSE);
 
     CAsyncSocket sender;
     LineBool("CAsyncSocket.SendTo.sender_created",
-             sender.Create(0, SOCK_DGRAM, FD_READ | FD_WRITE, L"127.0.0.1") != FALSE);
+             sender.Create(0, SOCK_DGRAM, FD_READ | FD_WRITE, _T("127.0.0.1")) != FALSE);
 
     const char* payloads[] = {"a", "datagram", "0123456789012345678901234567890123456789"};
     int idx = 0;
     for (const char* payload : payloads)
     {
         const int len = static_cast<int>(std::strlen(payload));
-        const int sent = sender.SendTo(payload, len, boundPort, L"127.0.0.1");
+        const int sent = sender.SendTo(payload, len, boundPort, _T("127.0.0.1"));
         LineInt(("CAsyncSocket.SendTo." + std::to_string(idx) + ".returns_length").c_str(), sent);
 
         char buf[128]{};
@@ -3239,21 +3242,21 @@ static void TestRemainingGaps()
         {
             CMapStringToPtr m(hint);
             int a = 1, b = 2;
-            m.SetAt(L"first", &a);
-            m.SetAt(L"second", &b);
+            m.SetAt(_T("first"), &a);
+            m.SetAt(_T("second"), &b);
             void* found = nullptr;
             const std::string tag = std::to_string(static_cast<long long>(hint));
             LineBool(("CMapStringToPtr.sized_ctor." + tag + ".lookup").c_str(),
-                     m.Lookup(L"second", found) != FALSE);
+                     m.Lookup(_T("second"), found) != FALSE);
             LineBool(("CMapStringToPtr.sized_ctor." + tag + ".value").c_str(), found == &b);
             LineInt(("CMapStringToPtr.sized_ctor." + tag + ".count").c_str(),
                     static_cast<long long>(m.GetCount()));
 
             CMapStringToString ms(hint);
-            ms.SetAt(L"key", L"value");
+            ms.SetAt(_T("key"), _T("value"));
             CString out;
             LineBool(("CMapStringToString.sized_ctor." + tag + ".lookup").c_str(),
-                     ms.Lookup(L"key", out) != FALSE);
+                     ms.Lookup(_T("key"), out) != FALSE);
             Line(("CMapStringToString.sized_ctor." + tag + ".value").c_str(), out);
         }
     }
@@ -3265,9 +3268,9 @@ static void TestRemainingGaps()
     }
 
     {
-        const wchar_t* keys[] = {L"", L"a", L"abc", L"a longer key value", L"éè"};
+        const TCHAR* keys[] = {_T(""), _T("a"), _T("abc"), _T("a longer key value"), _T("éè")};
         int i = 0;
-        for (const wchar_t* k : keys)
+        for (const TCHAR* k : keys)
         {
             LineInt(("HashKey.LPCTSTR." + std::to_string(i)).c_str(),
                     static_cast<long long>(HashKey<LPCTSTR>(k)));
@@ -3306,7 +3309,7 @@ public:
         m_file.Flush();
         const ULONGLONG bytes = m_file.GetLength();
         if (bytes == 0) return {};
-        std::wstring text(static_cast<size_t>(bytes / sizeof(wchar_t)), L'\0');
+        std::basic_string<TCHAR> text(static_cast<size_t>(bytes / sizeof(TCHAR)), _T('\0'));
         m_file.SeekToBegin();
         m_file.Read(&text[0], static_cast<UINT>(bytes));
         return Utf8(text.c_str());
@@ -3339,11 +3342,11 @@ static void TestDebugOnly()
         subject.AssertValid();
         LineBool("CObject.AssertValid.plain_object_returns", true);
 
-        CFileException fe(CFileException::none, 0, L"x");
+        CFileException fe(CFileException::none, 0, _T("x"));
         fe.AssertValid();
         LineBool("CObject.AssertValid.library_object_returns", true);
 
-        CString s(L"value");
+        CString s(_T("value"));
         CFile file;
         file.AssertValid();
         LineBool("CObject.AssertValid.CFile_returns", true);
@@ -3358,7 +3361,7 @@ static void TestDebugOnly()
 
         DumpBuffer b;
         CDumpContext dcb = b.Context();
-        CFileException fe(CFileException::none, 0, L"x");
+        CFileException fe(CFileException::none, 0, _T("x"));
         fe.Dump(dcb);
         const std::string dumpedException = b.Take();
 
@@ -3387,9 +3390,9 @@ static void TestDebugOnly()
     }
 
     {
-        const wchar_t* wides[] = {L"", L"wide", L"with spaces", L"éè"};
+        const TCHAR* wides[] = {_T(""), _T("wide"), _T("with spaces"), _T("éè")};
         int i = 0;
-        for (const wchar_t* w : wides)
+        for (const TCHAR* w : wides)
         {
             DumpBuffer buf;
             CDumpContext dc = buf.Context();

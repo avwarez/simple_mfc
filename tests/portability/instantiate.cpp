@@ -67,7 +67,7 @@ template class ECTypedPtrList<ECObList, Element*>;
 template class ECTypedPtrArray<ECPtrArray, Element*>;
 
 template class ECTempBuffer<BYTE>;
-template class ECTempBuffer<wchar_t, 8>;
+template class ECTempBuffer<TCHAR, 8>;
 
 template class ECSimpleArray<int>;
 template class ECSimpleArray<Element*>;

@@ -1,7 +1,9 @@
 #pragma once
 
+#include "etchar.h"
+
 template <class BaseType, class> class ECStringT;
-using ECStringW = ECStringT<wchar_t, void>;
+using ECStringW = ECStringT<EWCHAR, void>;
 using ECString = ECStringW;
 
 #include <chrono>
@@ -25,7 +27,7 @@ public:
     long long GetTotalHours() const noexcept { return m_span / 3600; }
     long long GetTotalMinutes() const noexcept { return m_span / 60; }
 
-    ECString Format(const wchar_t* pszFormat) const;
+    ECString Format(LPCTSTR pszFormat) const;
     ECString Format(const char* pszFormat) const;
 
     ECTimeSpan operator+(const ECTimeSpan& o) const { return ECTimeSpan(m_span + o.m_span); }
@@ -50,7 +52,7 @@ public:
 
     static ECTime GetCurrentTime() noexcept { return ECTime(static_cast<__time64_t>(std::time(nullptr))); }
 
-    ECString Format(const wchar_t* pszFormat) const;
+    ECString Format(LPCTSTR pszFormat) const;
     ECString Format(const char* pszFormat) const;
 
     std::tm* GetLocalTm(std::tm* ptm) const noexcept

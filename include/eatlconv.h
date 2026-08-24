@@ -2,7 +2,7 @@
 #include "eafx.h"
 
 #ifndef _WIN32
-using LPCWSTR = const wchar_t*;
+using LPCWSTR = const EWCHAR*;
 using LPSTR = char*;
 #endif
 

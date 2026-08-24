@@ -14,12 +14,16 @@ ECTime::ECTime(int nYear, int nMonth, int nDay, int nHour, int nMin, int nSec, i
     m_time = static_cast<__time64_t>(std::mktime(&t));
 }
 
-ECString ECTime::Format(const wchar_t* pszFormat) const
+ECString ECTime::Format(LPCTSTR pszFormat) const
 {
     std::tm t = Tm();
+    const std::wstring fmt = mfc_detail::WideToWide<wchar_t>(
+        pszFormat, pszFormat ? std::char_traits<TCHAR>::length(pszFormat) : 0);
     wchar_t buf[256];
-    size_t n = std::wcsftime(buf, sizeof(buf) / sizeof(buf[0]), pszFormat, &t);
-    return ECString(n > 0 ? buf : L"");
+    size_t n = std::wcsftime(buf, sizeof(buf) / sizeof(buf[0]), fmt.c_str(), &t);
+    if (n == 0) return ECString();
+    const std::basic_string<TCHAR> text = mfc_detail::WideToWide<TCHAR>(buf, n);
+    return ECString(text.c_str(), static_cast<int>(text.size()));
 }
 
 ECString ECTime::Format(const char* pszFormat) const
@@ -34,40 +38,40 @@ ECString ECTimeSpan::Format(const char* pszFormat) const
     return Format(strFormat.GetString());
 }
 
-ECString ECTimeSpan::Format(const wchar_t* pszFormat) const
+ECString ECTimeSpan::Format(LPCTSTR pszFormat) const
 {
     long long span = m_span < 0 ? -m_span : m_span;
     ECString result;
-    for (const wchar_t* p = pszFormat; p && *p; ++p) {
-        if (*p != L'%') {
+    for (LPCTSTR p = pszFormat; p && *p; ++p) {
+        if (*p != _T('%')) {
             result += *p;
             continue;
         }
-        wchar_t buf[32];
+        char buf[32];
         switch (*++p) {
-        case L'D':
-            std::swprintf(buf, 32, L"%lld", span / 86400);
-            result += buf;
+        case _T('D'):
+            std::snprintf(buf, sizeof buf, "%lld", span / 86400);
+            result += ECString(buf);
             break;
-        case L'H':
-            std::swprintf(buf, 32, L"%02lld", (span / 3600) % 24);
-            result += buf;
+        case _T('H'):
+            std::snprintf(buf, sizeof buf, "%02lld", (span / 3600) % 24);
+            result += ECString(buf);
             break;
-        case L'M':
-            std::swprintf(buf, 32, L"%02lld", (span / 60) % 60);
-            result += buf;
+        case _T('M'):
+            std::snprintf(buf, sizeof buf, "%02lld", (span / 60) % 60);
+            result += ECString(buf);
             break;
-        case L'S':
-            std::swprintf(buf, 32, L"%02lld", span % 60);
-            result += buf;
+        case _T('S'):
+            std::snprintf(buf, sizeof buf, "%02lld", span % 60);
+            result += ECString(buf);
             break;
-        case L'%':
-            result += L'%';
+        case _T('%'):
+            result += _T('%');
             break;
-        case L'\0':
+        case _T('\0'):
             return result;
         default:
-            result += L'%';
+            result += _T('%');
             result += *p;
             break;
         }

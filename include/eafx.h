@@ -62,16 +62,9 @@ using BOOL = int;
 #undef _WINSOCKAPI_
 #undef ESIMPLE_MFC_UNDEF_WINSOCKAPI
 #endif
-#include <tchar.h>
 #include <oleauto.h>
-#else
-using LPCTSTR = const wchar_t*;
-using LPTSTR = wchar_t*;
-#ifndef _T
-#define _T(x) L##x
 #endif
-using TCHAR = wchar_t;
-#endif
+#include "etchar.h"
 
 #ifdef _DEBUG
 #ifndef EASSERT
@@ -572,7 +565,7 @@ public:
     using XCHAR = BaseType;
     using PXSTR = XCHAR*;
     using PCXSTR = const XCHAR*;
-    using YCHAR = std::conditional_t<std::is_same_v<XCHAR, char>, wchar_t, char>;
+    using YCHAR = std::conditional_t<std::is_same_v<XCHAR, char>, EWCHAR, char>;
     using PCYSTR = const YCHAR*;
 
     ECStringT() = default;
@@ -934,7 +927,7 @@ private:
 };
 
 using ECStringA = ECStringT<char>;
-using ECStringW = ECStringT<wchar_t>;
+using ECStringW = ECStringT<EWCHAR>;
 using ECString = ECStringW;
 
 namespace std
@@ -1003,7 +996,7 @@ public:
 
     explicit ECFileException(int cause = none, LONG lOsError = -1, LPCTSTR lpszFileName = nullptr)
         : ECException(TRUE), m_cause(cause), m_lOsError(lOsError),
-          m_strFileName(lpszFileName ? lpszFileName : L"") {}
+          m_strFileName(lpszFileName ? lpszFileName : _T("")) {}
 
     BOOL GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pnHelpContext = nullptr) const override;
 
@@ -1058,7 +1051,7 @@ public:
     virtual void SetLength(ULONGLONG dwNewLen);
     virtual ULONGLONG GetPosition() const;
     virtual void Flush() { m_stream.flush(); }
-    virtual ECString GetFileName() const { return ECString(std::filesystem::path(m_path).filename().wstring().c_str()); }
+    virtual ECString GetFileName() const { return ECString(std::filesystem::path(m_path).filename().string<TCHAR>().c_str()); }
     virtual ECString GetFilePath() const { return ECString(m_path.c_str()); }
     BOOL GetStatus(ECFileStatus& rStatus) const;
     static BOOL GetStatus(LPCTSTR lpszFileName, ECFileStatus& rStatus);
@@ -1067,7 +1060,7 @@ public:
 
 protected:
     std::fstream m_stream;
-    std::wstring m_path;
+    std::basic_string<TCHAR> m_path;
 };
 
 class ECStdioFile : public ECFile
@@ -1146,8 +1139,8 @@ private:
     bool AdvanceToNextMatch();
 
     std::filesystem::path m_dir;
-    std::wstring m_root;
-    std::wstring m_pattern;
+    std::basic_string<TCHAR> m_root;
+    std::basic_string<TCHAR> m_pattern;
     std::filesystem::directory_iterator m_it;
     std::optional<std::filesystem::directory_entry> m_pending;
     std::filesystem::directory_entry m_current;
