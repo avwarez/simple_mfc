@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cstdint>
 #include <cstring>
+#include <cerrno>
 #ifndef _WIN32
 #include <sys/stat.h>
 #endif
@@ -186,6 +187,42 @@ int OsErrorToCause(LONG lOsError)
     throw &s_oom;
 }
 
+namespace mfc_detail
+{
+int FileOpenCause(int err, const std::filesystem::path& path)
+{
+    if (err == EACCES || err == EPERM || err == EROFS || err == EISDIR)
+        return ECFileException::accessDenied;
+    if (err == EMFILE || err == ENFILE)
+        return ECFileException::tooManyOpenFiles;
+    if (err == ENOSPC)
+        return ECFileException::diskFull;
+    if (err == ENAMETOOLONG || err == ENOTDIR)
+        return ECFileException::badPath;
+
+    std::error_code ec;
+    const std::filesystem::path parent = path.parent_path();
+    if (!parent.empty() && !std::filesystem::exists(parent, ec))
+        return ECFileException::badPath;
+    if (!std::filesystem::exists(path, ec))
+        return ECFileException::fileNotFound;
+    return ECFileException::accessDenied;
+}
+
+LONG FileOsError(int err, int cause)
+{
+    if (err != 0) return static_cast<LONG>(err);
+    switch (cause)
+    {
+    case ECFileException::fileNotFound:
+    case ECFileException::badPath:      return static_cast<LONG>(ENOENT);
+    case ECFileException::accessDenied: return static_cast<LONG>(EACCES);
+    case ECFileException::diskFull:     return static_cast<LONG>(ENOSPC);
+    default:                            return 1;
+    }
+}
+}
+
 BOOL ECFile::Open(LPCTSTR lpszFileName, UINT nOpenFlags, ECFileException* pError)
 {
     std::ios_base::openmode mode = std::ios::binary;
@@ -199,31 +236,88 @@ BOOL ECFile::Open(LPCTSTR lpszFileName, UINT nOpenFlags, ECFileException* pError
     }
 
     m_path = lpszFileName ? lpszFileName : _T("");
-    m_stream.open(std::filesystem::path(m_path), mode);
-    if (!m_stream.is_open())
+    const std::filesystem::path path(m_path);
+
+    std::error_code ec;
+    if (std::filesystem::is_directory(path, ec))
     {
-        if (pError) *pError = ECFileException(ECFileException::fileNotFound, -1, lpszFileName);
+        if (pError)
+            *pError = ECFileException(ECFileException::accessDenied,
+                                      static_cast<LONG>(EISDIR), lpszFileName);
         return FALSE;
     }
+
+    errno = 0;
+    m_stream.clear();
+    m_stream.open(path, mode);
+    if (!m_stream.is_open())
+    {
+        const int err = errno;
+        const int cause = mfc_detail::FileOpenCause(err, path);
+        if (pError)
+            *pError = ECFileException(cause, mfc_detail::FileOsError(err, cause), lpszFileName);
+        return FALSE;
+    }
+
+    m_nOpenFlags = nOpenFlags;
+    m_strFileName = m_path.c_str();
     return TRUE;
+}
+
+ECFile::ECFile(LPCTSTR lpszFileName, UINT nOpenFlags)
+{
+    ECFileException error;
+    if (!Open(lpszFileName, nOpenFlags, &error))
+        EAfxThrowFileException(error.m_cause, error.m_lOsError, lpszFileName);
 }
 
 UINT ECFile::Read(void* lpBuf, UINT nCount)
 {
     m_stream.read(static_cast<char*>(lpBuf), nCount);
-    return static_cast<UINT>(m_stream.gcount());
+    const std::streamsize got = m_stream.gcount();
+    if (m_stream.eof()) m_stream.clear();
+    return static_cast<UINT>(got);
 }
 
 void ECFile::Write(const void* lpBuf, UINT nCount)
 {
+    if (!(m_nOpenFlags & (modeWrite | modeReadWrite | modeCreate)))
+        EAfxThrowFileException(ECFileException::accessDenied,
+                               static_cast<LONG>(EACCES), m_path.c_str());
+    errno = 0;
     m_stream.write(static_cast<const char*>(lpBuf), nCount);
+    if (!m_stream)
+    {
+        const int err = errno;
+        m_stream.clear();
+        const int cause = err == ENOSPC   ? ECFileException::diskFull
+                        : err == EACCES || err == EBADF || err == EPERM
+                                          ? ECFileException::accessDenied
+                                          : ECFileException::genericException;
+        EAfxThrowFileException(cause, mfc_detail::FileOsError(err, cause), m_path.c_str());
+    }
 }
 
 ULONGLONG ECFile::Seek(LONGLONG lOff, UINT nFrom)
 {
-    auto dir = nFrom == begin ? std::ios::beg : nFrom == end ? std::ios::end : std::ios::cur;
     m_stream.clear();
-    m_stream.seekg(static_cast<std::streamoff>(lOff), dir);
+
+    LONGLONG base = 0;
+    if (nFrom == current) base = static_cast<LONGLONG>(GetPosition());
+    else if (nFrom == end) base = static_cast<LONGLONG>(GetLength());
+    const LONGLONG target = base + lOff;
+    if (target < 0)
+        EAfxThrowFileException(ECFileException::badSeek,
+                               static_cast<LONG>(EINVAL), m_path.c_str());
+
+    m_stream.clear();
+    m_stream.seekg(static_cast<std::streamoff>(target), std::ios::beg);
+    if (!m_stream)
+    {
+        m_stream.clear();
+        EAfxThrowFileException(ECFileException::badSeek,
+                               static_cast<LONG>(EINVAL), m_path.c_str());
+    }
     m_stream.seekp(m_stream.tellg());
     return GetPosition();
 }
@@ -231,11 +325,13 @@ ULONGLONG ECFile::Seek(LONGLONG lOff, UINT nFrom)
 ULONGLONG ECFile::GetLength() const
 {
     auto* self = const_cast<ECFile*>(this);
-    auto cur = self->m_stream.tellg();
+    self->m_stream.clear();
+    const auto cur = self->m_stream.tellg();
     self->m_stream.seekg(0, std::ios::end);
-    auto len = self->m_stream.tellg();
+    const auto len = self->m_stream.tellg();
+    self->m_stream.clear();
     self->m_stream.seekg(cur);
-    return static_cast<ULONGLONG>(len);
+    return len < 0 ? 0 : static_cast<ULONGLONG>(len);
 }
 
 void ECFile::SetLength(ULONGLONG dwNewLen)
@@ -248,7 +344,9 @@ void ECFile::SetLength(ULONGLONG dwNewLen)
 ULONGLONG ECFile::GetPosition() const
 {
     auto* self = const_cast<ECFile*>(this);
-    return static_cast<ULONGLONG>(self->m_stream.tellg());
+    self->m_stream.clear();
+    const auto pos = self->m_stream.tellg();
+    return pos < 0 ? 0 : static_cast<ULONGLONG>(pos);
 }
 
 BOOL ECFile::GetStatus(ECFileStatus& rStatus) const
@@ -268,12 +366,27 @@ BOOL ECFile::GetStatus(LPCTSTR lpszFileName, ECFileStatus& rStatus)
 
 void ECFile::Remove(LPCTSTR lpszFileName)
 {
-    std::filesystem::remove(std::filesystem::path(lpszFileName));
+    const std::filesystem::path path(lpszFileName ? lpszFileName : _T(""));
+    std::error_code ec;
+    if (!std::filesystem::remove(path, ec) || ec)
+    {
+        const int err = ec ? ec.value() : ENOENT;
+        const int cause = mfc_detail::FileOpenCause(err, path);
+        EAfxThrowFileException(cause, mfc_detail::FileOsError(err, cause), lpszFileName);
+    }
 }
 
 void ECFile::Rename(LPCTSTR lpszOldName, LPCTSTR lpszNewName)
 {
-    std::filesystem::rename(std::filesystem::path(lpszOldName), std::filesystem::path(lpszNewName));
+    const std::filesystem::path from(lpszOldName ? lpszOldName : _T(""));
+    const std::filesystem::path to(lpszNewName ? lpszNewName : _T(""));
+    std::error_code ec;
+    std::filesystem::rename(from, to, ec);
+    if (ec)
+    {
+        const int cause = mfc_detail::FileOpenCause(ec.value(), from);
+        EAfxThrowFileException(cause, mfc_detail::FileOsError(ec.value(), cause), lpszOldName);
+    }
 }
 
 LPTSTR ECStdioFile::ReadString(LPTSTR lpsz, UINT nMax)

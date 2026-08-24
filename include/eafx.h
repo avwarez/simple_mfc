@@ -586,22 +586,41 @@ public:
 
     int GetLength() const noexcept { return static_cast<int>(m_data.size()); }
     bool IsEmpty() const noexcept { return m_data.empty(); }
-    void Empty() noexcept { m_data.clear(); }
+    void Empty() noexcept { m_data.clear(); m_bBufferOut = false; }
     PXSTR GetBuffer(int nMinBufferLength)
     {
-        if (static_cast<size_t>(nMinBufferLength) > m_data.size())
-            m_data.resize(static_cast<size_t>(nMinBufferLength));
-        return m_data.data();
+        const size_t want = nMinBufferLength > 0 ? static_cast<size_t>(nMinBufferLength) : 0;
+        const size_t need = (want > m_data.size() ? want : m_data.size()) + 1;
+        m_buffer.assign(need, XCHAR());
+        if (!m_data.empty())
+            std::char_traits<XCHAR>::copy(m_buffer.data(), m_data.data(), m_data.size());
+        m_bBufferOut = true;
+        return m_buffer.data();
     }
     PXSTR GetBuffer() { return GetBuffer(GetLength()); }
     void ReleaseBuffer(int nNewLength = -1)
     {
-        if (nNewLength < 0) m_data.resize(std::char_traits<XCHAR>::length(m_data.c_str()));
-        else m_data.resize(static_cast<size_t>(nNewLength));
+        if (!m_bBufferOut)
+        {
+            if (nNewLength >= 0) m_data.resize(static_cast<size_t>(nNewLength));
+            return;
+        }
+        m_bBufferOut = false;
+        const size_t n = nNewLength < 0
+            ? std::char_traits<XCHAR>::length(m_buffer.data())
+            : static_cast<size_t>(nNewLength);
+        m_data.assign(m_buffer.data(), n);
     }
     void ReleaseBufferSetLength(int nNewLength)
     {
-        m_data.resize(static_cast<size_t>(nNewLength));
+        const size_t n = nNewLength > 0 ? static_cast<size_t>(nNewLength) : 0;
+        if (!m_bBufferOut)
+        {
+            m_data.resize(n);
+            return;
+        }
+        m_bBufferOut = false;
+        m_data.assign(m_buffer.data(), n);
     }
     XCHAR GetAt(int iChar) const { return m_data.at(static_cast<size_t>(iChar)); }
     void SetAt(int iChar, XCHAR ch) { m_data.at(static_cast<size_t>(iChar)) = ch; }
@@ -924,6 +943,8 @@ private:
     }
 
     std::basic_string<XCHAR> m_data;
+    std::vector<XCHAR> m_buffer;
+    bool m_bBufferOut = false;
 };
 
 using ECStringA = ECStringT<char>;
@@ -1036,7 +1057,7 @@ public:
     enum SeekPosition { begin = 0, current = 1, end = 2 };
 
     ECFile() = default;
-    ECFile(LPCTSTR lpszFileName, UINT nOpenFlags) { Open(lpszFileName, nOpenFlags); }
+    ECFile(LPCTSTR lpszFileName, UINT nOpenFlags);
     virtual ~ECFile() { if (m_stream.is_open()) m_stream.close(); }
 
     virtual BOOL Open(LPCTSTR lpszFileName, UINT nOpenFlags, ECFileException* pError = nullptr);
@@ -1061,6 +1082,7 @@ public:
 protected:
     std::fstream m_stream;
     std::basic_string<TCHAR> m_path;
+    UINT m_nOpenFlags = 0;
 };
 
 class ECStdioFile : public ECFile

@@ -3287,6 +3287,273 @@ static void TestRemainingGaps()
     }
 }
 
+namespace
+{
+template <class F>
+std::string FileOutcome(F&& fn)
+{
+    try
+    {
+        fn();
+        return "no-exception";
+    }
+    catch (CFileException* e)
+    {
+        const std::string cause = "CFileException.cause=" + std::to_string(e->m_cause);
+        e->Delete();
+        return cause;
+    }
+    catch (...)
+    {
+        return "other-exception";
+    }
+}
+}
+
+static void TestCStringBufferSemantics()
+{
+    {
+        CString s(_T("abc"));
+        LPTSTR p = s.GetBuffer(32);
+        LineBool("CString.GetBuffer.returns_nonnull", p != nullptr);
+        LineInt("CString.GetBuffer.length_unchanged_while_checked_out", s.GetLength());
+        Line("CString.GetBuffer.buffer_holds_content", CString(p));
+        s.ReleaseBuffer();
+        LineInt("CString.GetBuffer.length_after_release", s.GetLength());
+        Line("CString.GetBuffer.value_after_release", s);
+    }
+
+    {
+        CString s;
+        LPTSTR p = s.GetBuffer(8);
+        LineBool("CString.GetBuffer.empty.returns_nonnull", p != nullptr);
+        LineInt("CString.GetBuffer.empty.length_while_checked_out", s.GetLength());
+        s.ReleaseBuffer();
+        LineInt("CString.GetBuffer.empty.length_after_release", s.GetLength());
+        LineBool("CString.GetBuffer.empty.IsEmpty_after_release", s.IsEmpty() != FALSE);
+    }
+
+    {
+        CString s(_T("keepme"));
+        LPTSTR p = s.GetBuffer(0);
+        Line("CString.GetBuffer.zero_request.content", CString(p));
+        LineInt("CString.GetBuffer.zero_request.length", s.GetLength());
+        s.ReleaseBuffer();
+        LineInt("CString.GetBuffer.zero_request.length_after_release", s.GetLength());
+        Line("CString.GetBuffer.zero_request.value_after_release", s);
+    }
+
+    {
+        CString s(_T("small"));
+        LPTSTR p = s.GetBuffer(4096);
+        Line("CString.GetBuffer.large_growth.content", CString(p));
+        s.ReleaseBuffer();
+        Line("CString.GetBuffer.large_growth.value", s);
+        LineInt("CString.GetBuffer.large_growth.length", s.GetLength());
+    }
+
+    {
+        CString a(_T("shared-value"));
+        CString b(a);
+        CString c;
+        c = a;
+        LPTSTR p = a.GetBuffer(a.GetLength());
+        p[0] = _T('X');
+        a.ReleaseBuffer();
+        Line("CString.GetBuffer.copy_ctor_unaffected", b);
+        Line("CString.GetBuffer.assigned_copy_unaffected", c);
+        Line("CString.GetBuffer.original_modified", a);
+        LineInt("CString.GetBuffer.copy_ctor_unaffected.length", b.GetLength());
+        LineInt("CString.GetBuffer.original_modified.length", a.GetLength());
+    }
+
+    {
+        CString s;
+        LPTSTR p = s.GetBuffer(16);
+        for (int i = 0; i < 10; ++i)
+            p[i] = static_cast<TCHAR>(_T('a') + i);
+        p[10] = _T('\0');
+        s.ReleaseBuffer(4);
+        LineInt("CString.ReleaseBuffer.explicit_length.length", s.GetLength());
+        Line("CString.ReleaseBuffer.explicit_length.value", s);
+        LineBool("CString.ReleaseBuffer.explicit_length.nul_terminated",
+                 s.GetString()[4] == _T('\0'));
+    }
+
+    {
+        CString s;
+        LPTSTR p = s.GetBuffer(16);
+        p[0] = _T('a');
+        p[1] = _T('b');
+        p[2] = _T('\0');
+        p[3] = _T('c');
+        p[4] = _T('\0');
+        s.ReleaseBuffer();
+        LineInt("CString.ReleaseBuffer.stops_at_embedded_nul.length", s.GetLength());
+        Line("CString.ReleaseBuffer.stops_at_embedded_nul.value", s);
+    }
+
+    {
+        CString s;
+        LPTSTR p = s.GetBuffer(24);
+        wcscpy_s(p, 24, _T("filled-by-c-api"));
+        s.ReleaseBuffer();
+        LineInt("CString.GetBuffer.c_api_fill.length", s.GetLength());
+        Line("CString.GetBuffer.c_api_fill.value", s);
+        LineBool("CString.GetBuffer.c_api_fill.roundtrips",
+                 s == CString(_T("filled-by-c-api")));
+    }
+
+    {
+        CString s(_T("no-release"));
+        LPTSTR p = s.GetBuffer(64);
+        (void)p;
+        LineInt("CString.GetBuffer.without_release.length", s.GetLength());
+        Line("CString.GetBuffer.without_release.value", s);
+        LineBool("CString.GetBuffer.without_release.compares_equal",
+                 s == CString(_T("no-release")));
+    }
+
+    {
+        CString s(_T("reused"));
+        LPTSTR first = s.GetBuffer(32);
+        (void)first;
+        s.ReleaseBuffer();
+        LPTSTR second = s.GetBuffer(32);
+        wcscpy_s(second, 32, _T("second-round"));
+        s.ReleaseBuffer();
+        Line("CString.GetBuffer.reuse.value", s);
+        LineInt("CString.GetBuffer.reuse.length", s.GetLength());
+    }
+}
+
+static void TestCFileErrorPaths()
+{
+    const CString dir = TempDir();
+    const CString missing = dir + CString(_T("simple_mfc_absent_4711.bin"));
+    SafeRemoveFile(missing);
+
+    {
+        CFile f;
+        CFileException ex;
+        const BOOL ok = f.Open(missing, CFile::modeRead, &ex);
+        LineBool("CFile.Open.missing.returns_false", ok == FALSE);
+        LineInt("CFile.Open.missing.m_cause", ex.m_cause);
+        LineBool("CFile.Open.missing.m_lOsError_is_real", ex.m_lOsError > 0);
+        LineBool("CFile.Open.missing.m_strFileName_set", ex.m_strFileName.IsEmpty() == FALSE);
+    }
+
+    Line("CFile.Open.missing.without_pError_does_not_throw",
+         FileOutcome([&] { CFile f; f.Open(missing, CFile::modeRead); }));
+
+    {
+        const CString badPath =
+            dir + CString(_T("simple_mfc_absent_dir_4711")) + CString(SMFC_SEP) + CString(_T("child.bin"));
+        CFile f;
+        CFileException ex;
+        const BOOL ok = f.Open(badPath, CFile::modeCreate | CFile::modeWrite, &ex);
+        LineBool("CFile.Open.missing_directory.returns_false", ok == FALSE);
+        LineInt("CFile.Open.missing_directory.m_cause", ex.m_cause);
+    }
+
+    {
+        CFile f;
+        CFileException ex;
+        const BOOL ok = f.Open(dir, CFile::modeRead, &ex);
+        LineBool("CFile.Open.directory.returns_false", ok == FALSE);
+        LineInt("CFile.Open.directory.m_cause", ex.m_cause);
+        if (ok) SafeClose(f);
+    }
+
+    Line("CFile.ctor.missing_throws",
+         FileOutcome([&] { CFile f(missing, CFile::modeRead); (void)f.GetPosition(); }));
+
+    Line("CFile.Remove.missing_throws", FileOutcome([&] { CFile::Remove(missing); }));
+
+    {
+        const CString target = dir + CString(_T("simple_mfc_rename_target_4711.bin"));
+        Line("CFile.Rename.missing_throws",
+             FileOutcome([&] { CFile::Rename(missing, target); }));
+        SafeRemoveFile(target);
+    }
+
+    {
+        CFileStatus st{};
+        LineBool("CFile.GetStatus.missing.returns_false",
+                 CFile::GetStatus(missing, st) == FALSE);
+    }
+
+    const CString path = dir + CString(_T("simple_mfc_errpaths_4711.bin"));
+    {
+        CFile f;
+        f.Open(path, CFile::modeCreate | CFile::modeWrite);
+        const char payload[] = "0123";
+        f.Write(payload, sizeof(payload) - 1);
+        SafeClose(f);
+    }
+
+    {
+        CFile f;
+        const BOOL ok = f.Open(path, CFile::modeRead);
+        LineBool("CFile.Open.existing.returns_true", ok != FALSE);
+        LineBool("CFile.m_strFileName.set_by_Open", f.m_strFileName.IsEmpty() == FALSE);
+
+        char buf[16]{};
+        LineInt("CFile.Read.more_than_available.count",
+                static_cast<long long>(f.Read(buf, sizeof(buf))));
+        LineInt("CFile.Read.at_eof.count", static_cast<long long>(f.Read(buf, sizeof(buf))));
+        Line("CFile.Read.at_eof.does_not_throw",
+             FileOutcome([&] { char again[4]; f.Read(again, sizeof(again)); }));
+        LineInt("CFile.Read.at_eof.position", static_cast<long long>(f.GetPosition()));
+        LineInt("CFile.Read.at_eof.GetLength", static_cast<long long>(f.GetLength()));
+        f.SeekToBegin();
+        LineInt("CFile.Read.at_eof.seek_recovers_position",
+                static_cast<long long>(f.GetPosition()));
+        LineInt("CFile.Read.after_recovery.count", static_cast<long long>(f.Read(buf, 2)));
+        SafeClose(f);
+    }
+
+    {
+        CFile f;
+        f.Open(path, CFile::modeRead);
+        Line("CFile.Write.on_read_only_handle",
+             FileOutcome([&] { const char x = 'x'; f.Write(&x, 1); }));
+        SafeClose(f);
+    }
+
+    {
+        CFile f;
+        f.Open(path, CFile::modeRead);
+        f.SeekToBegin();
+        Line("CFile.Seek.before_begin", FileOutcome([&] { f.Seek(-8, CFile::current); }));
+        SafeClose(f);
+    }
+
+    {
+        CFile f;
+        f.Open(path, CFile::modeRead);
+        LineInt("CFile.Seek.beyond_end.position",
+                static_cast<long long>(f.Seek(4096, CFile::begin)));
+        LineInt("CFile.Seek.beyond_end.GetLength", static_cast<long long>(f.GetLength()));
+        char b[4]{};
+        LineInt("CFile.Read.beyond_end.count", static_cast<long long>(f.Read(b, sizeof(b))));
+        SafeClose(f);
+    }
+
+    {
+        MakeReadOnly(path);
+        CFile f;
+        CFileException ex;
+        const BOOL ok = f.Open(path, CFile::modeWrite, &ex);
+        LineBool("CFile.Open.readonly_file_for_write.returns_false", ok == FALSE);
+        LineInt("CFile.Open.readonly_file_for_write.m_cause", ex.m_cause);
+        if (ok) SafeClose(f);
+        MakeWritable(path);
+    }
+
+    SafeRemoveFile(path);
+}
+
 static void TestAfxSocketTerm()
 {
     AfxSocketTerm();
@@ -3545,6 +3812,8 @@ int main()
     TestPatternCTime();
     TestPatternBase64();
     TestPatternUnicodeToUtf8();
+    TestCStringBufferSemantics();
+    TestCFileErrorPaths();
     TestRemainingGaps();
 
 #ifdef _DEBUG
