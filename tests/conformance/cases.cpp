@@ -1140,6 +1140,13 @@ static void TestCMapTemplate()
                  firstAssoc != nullptr && constView.PGetNextAssoc(firstAssoc) != nullptr);
         LineBool("CMap.CPair.PLookup.miss.is_null",
                  constView.PLookup(_T("gamma")) == nullptr);
+
+        const CString firstKey = firstAssoc ? firstAssoc->key : CString();
+        const TypedMap::CPair* secondAssoc =
+            firstAssoc ? constView.PGetNextAssoc(firstAssoc) : nullptr;
+        LineBool("CMap.CPair.first_survives_next",
+                 firstAssoc != nullptr && firstAssoc->key == firstKey);
+        LineBool("CMap.CPair.next_is_distinct_object", firstAssoc != secondAssoc);
     }
 
     map.RemoveAll();
@@ -4002,8 +4009,14 @@ static void TestAliasingAndIdentity()
     {
         CString original(_T("aliasing subject"));
         CString copy(original);
+        LineBool("Aliasing.CString.copy_ctor.shares_buffer",
+                 original.GetString() == copy.GetString());
+
         CString assigned;
         assigned = original;
+        LineBool("Aliasing.CString.assign.shares_buffer",
+                 original.GetString() == assigned.GetString());
+
         copy += _T("!");
         LineBool("Aliasing.CString.mutate_detaches",
                  original.GetString() != copy.GetString());
@@ -4012,10 +4025,35 @@ static void TestAliasingAndIdentity()
     }
 
     {
+        CString firstEmpty;
+        CString secondEmpty;
+        LineBool("Aliasing.CString.empty_strings_share_one_buffer",
+                 firstEmpty.GetString() == secondEmpty.GetString());
+
+        CString emptied(_T("content"));
+        emptied.Empty();
+        LineBool("Aliasing.CString.Empty_returns_to_shared_buffer",
+                 emptied.GetString() == firstEmpty.GetString());
+    }
+
+    {
+        CString s(_T("abc"));
+        LPTSTR buffer = s.GetBuffer(16);
+        LineBool("Aliasing.GetBuffer.is_GetString_while_checked_out",
+                 buffer == s.GetString());
+        s.ReleaseBuffer();
+        LineBool("Aliasing.ReleaseBuffer.pointer_is_GetString",
+                 buffer == s.GetString());
+        Line("Aliasing.ReleaseBuffer.pointer_content", CString(buffer));
+    }
+
+    {
         CString s(_T("abc"));
         LPTSTR buffer = s.GetBuffer(16);
         s.ReleaseBuffer();
-        Line("Aliasing.ReleaseBuffer.pointer_content", CString(buffer));
+        buffer[0] = _T('X');
+        Line("Aliasing.WriteThroughReleasedPointer.string", s);
+        LineInt("Aliasing.WriteThroughReleasedPointer.length", s.GetLength());
     }
 
     {

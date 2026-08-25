@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <atomic>
 #include <cassert>
 #include <cctype>
 #include <cstdarg>
@@ -583,78 +584,123 @@ public:
     using YCHAR = std::conditional_t<std::is_same_v<XCHAR, char>, EWCHAR, char>;
     using PCYSTR = const YCHAR*;
 
-    ECStringT() = default;
-    ECStringT(const ECStringT&) = default;
-    ECStringT(ECStringT&&) noexcept = default;
-    ECStringT(PCXSTR pszSrc) { if (pszSrc) m_data = pszSrc; }
-    ECStringT(PCXSTR pch, int nLength) { if (pch && nLength > 0) m_data.assign(pch, static_cast<size_t>(nLength)); }
-    explicit ECStringT(XCHAR ch, int nRepeat = 1) : m_data(static_cast<size_t>(nRepeat < 0 ? 0 : nRepeat), ch) {}
-    explicit ECStringT(PCYSTR pszSrc) { if (pszSrc) m_data = Convert(pszSrc, std::char_traits<YCHAR>::length(pszSrc)); }
-    explicit ECStringT(PCYSTR pch, int nLength) { if (pch && nLength > 0) m_data = Convert(pch, static_cast<size_t>(nLength)); }
-    explicit ECStringT(const ECStringT<YCHAR>& strSrc) { m_data = Convert(strSrc.GetString(), static_cast<size_t>(strSrc.GetLength())); }
-
-    ECStringT& operator=(const ECStringT&) = default;
-    ECStringT& operator=(ECStringT&&) noexcept = default;
-    ECStringT& operator=(PCXSTR pszSrc) { if (pszSrc) m_data = pszSrc; else m_data.clear(); return *this; }
-    ECStringT& operator=(XCHAR ch) { m_data.assign(1, ch); return *this; }
-    ECStringT& operator=(PCYSTR pszSrc) { m_data = pszSrc ? Convert(pszSrc, std::char_traits<YCHAR>::length(pszSrc)) : std::basic_string<XCHAR>(); return *this; }
-
-    int GetLength() const noexcept { return static_cast<int>(m_data.size()); }
-    bool IsEmpty() const noexcept { return m_data.empty(); }
-    void Empty() noexcept { m_data.clear(); m_bBufferOut = false; }
-    PXSTR GetBuffer(int nMinBufferLength)
+    ECStringT() noexcept : m_pData(Nil()) {}
+    ECStringT(const ECStringT& strSrc) noexcept : m_pData(strSrc.m_pData) { AddRef(m_pData); }
+    ECStringT(ECStringT&& strSrc) noexcept : m_pData(strSrc.m_pData) { strSrc.m_pData = Nil(); }
+    ECStringT(PCXSTR pszSrc) : m_pData(Nil())
     {
-        const size_t want = nMinBufferLength > 0 ? static_cast<size_t>(nMinBufferLength) : 0;
-        const size_t need = (want > m_data.size() ? want : m_data.size()) + 1;
-        m_buffer.assign(need, XCHAR());
-        if (!m_data.empty())
-            std::char_traits<XCHAR>::copy(m_buffer.data(), m_data.data(), m_data.size());
-        m_bBufferOut = true;
-        return m_buffer.data();
+        if (pszSrc) Assign(pszSrc, std::char_traits<XCHAR>::length(pszSrc));
     }
-    PXSTR GetBuffer() { return GetBuffer(GetLength()); }
+    ECStringT(PCXSTR pch, int nLength) : m_pData(Nil())
+    {
+        if (pch && nLength > 0) Assign(pch, static_cast<size_t>(nLength));
+    }
+    explicit ECStringT(XCHAR ch, int nRepeat = 1) : m_pData(Nil())
+    {
+        if (nRepeat > 0)
+        {
+            PrepareWrite(nRepeat);
+            std::char_traits<XCHAR>::assign(Chars(), static_cast<size_t>(nRepeat), ch);
+            SetLength(nRepeat);
+        }
+    }
+    explicit ECStringT(PCYSTR pszSrc) : m_pData(Nil())
+    {
+        if (pszSrc) AssignStr(Convert(pszSrc, std::char_traits<YCHAR>::length(pszSrc)));
+    }
+    explicit ECStringT(PCYSTR pch, int nLength) : m_pData(Nil())
+    {
+        if (pch && nLength > 0) AssignStr(Convert(pch, static_cast<size_t>(nLength)));
+    }
+    explicit ECStringT(const ECStringT<YCHAR>& strSrc) : m_pData(Nil())
+    {
+        AssignStr(Convert(strSrc.GetString(), static_cast<size_t>(strSrc.GetLength())));
+    }
+
+    ~ECStringT() { Release(m_pData); }
+
+    ECStringT& operator=(const ECStringT& strSrc) noexcept
+    {
+        if (m_pData != strSrc.m_pData)
+        {
+            StringData* pNew = strSrc.m_pData;
+            AddRef(pNew);
+            Release(m_pData);
+            m_pData = pNew;
+        }
+        return *this;
+    }
+    ECStringT& operator=(ECStringT&& strSrc) noexcept
+    {
+        if (this != &strSrc)
+        {
+            Release(m_pData);
+            m_pData = strSrc.m_pData;
+            strSrc.m_pData = Nil();
+        }
+        return *this;
+    }
+    ECStringT& operator=(PCXSTR pszSrc)
+    {
+        if (pszSrc) Assign(pszSrc, std::char_traits<XCHAR>::length(pszSrc));
+        else Empty();
+        return *this;
+    }
+    ECStringT& operator=(XCHAR ch) { Assign(&ch, 1); return *this; }
+    ECStringT& operator=(PCYSTR pszSrc)
+    {
+        if (pszSrc) AssignStr(Convert(pszSrc, std::char_traits<YCHAR>::length(pszSrc)));
+        else Empty();
+        return *this;
+    }
+
+    int GetLength() const noexcept { return m_pData->nDataLength; }
+    bool IsEmpty() const noexcept { return m_pData->nDataLength == 0; }
+    void Empty() noexcept { Release(m_pData); m_pData = Nil(); }
+    PXSTR GetBuffer(int nMinBufferLength) { PrepareWrite(nMinBufferLength); return Chars(); }
+    PXSTR GetBuffer() { PrepareWrite(0); return Chars(); }
     void ReleaseBuffer(int nNewLength = -1)
     {
-        if (!m_bBufferOut)
-        {
-            if (nNewLength >= 0) m_data.resize(static_cast<size_t>(nNewLength));
-            return;
-        }
-        m_bBufferOut = false;
-        const size_t n = nNewLength < 0
-            ? std::char_traits<XCHAR>::length(m_buffer.data())
-            : static_cast<size_t>(nNewLength);
-        m_data.assign(m_buffer.data(), n);
+        if (nNewLength < 0)
+            nNewLength = static_cast<int>(std::char_traits<XCHAR>::length(GetString()));
+        PrepareWrite(nNewLength);
+        SetLength(nNewLength);
     }
     void ReleaseBufferSetLength(int nNewLength)
     {
-        const size_t n = nNewLength > 0 ? static_cast<size_t>(nNewLength) : 0;
-        if (!m_bBufferOut)
-        {
-            m_data.resize(n);
-            return;
-        }
-        m_bBufferOut = false;
-        m_data.assign(m_buffer.data(), n);
+        if (nNewLength < 0) nNewLength = 0;
+        PrepareWrite(nNewLength);
+        SetLength(nNewLength);
     }
-    XCHAR GetAt(int iChar) const { return m_data.at(static_cast<size_t>(iChar)); }
-    void SetAt(int iChar, XCHAR ch) { m_data.at(static_cast<size_t>(iChar)) = ch; }
-    PCXSTR GetString() const noexcept { return m_data.c_str(); }
+    XCHAR GetAt(int iChar) const
+    {
+        if (iChar < 0 || iChar >= GetLength()) throw std::out_of_range("ECStringT::GetAt");
+        return GetString()[iChar];
+    }
+    void SetAt(int iChar, XCHAR ch)
+    {
+        if (iChar < 0 || iChar >= GetLength()) throw std::out_of_range("ECStringT::SetAt");
+        PrepareWrite(0);
+        Chars()[iChar] = ch;
+    }
+    PCXSTR GetString() const noexcept { return m_pData->buf.c_str(); }
 
-    void Format(PCXSTR pszFormat, ...) { va_list a; va_start(a, pszFormat); m_data = VFormat(pszFormat, a); va_end(a); }
-    void AppendFormat(PCXSTR pszFormat, ...) { va_list a; va_start(a, pszFormat); m_data += VFormat(pszFormat, a); va_end(a); }
-    void FormatV(PCXSTR pszFormat, va_list args) { m_data = VFormat(pszFormat, args); }
-    void AppendFormatV(PCXSTR pszFormat, va_list args) { m_data += VFormat(pszFormat, args); }
-    void Append(PCXSTR pszSrc) { if (pszSrc) m_data += pszSrc; }
-    void Append(PCXSTR pszSrc, int nLength) { if (pszSrc && nLength > 0) m_data.append(pszSrc, static_cast<size_t>(nLength)); }
-    void AppendChar(XCHAR ch) { m_data += ch; }
-    void SetString(PCXSTR pszSrc) { m_data = pszSrc ? pszSrc : std::basic_string<XCHAR>(); }
+    void Format(PCXSTR pszFormat, ...) { va_list a; va_start(a, pszFormat); AssignStr(VFormat(pszFormat, a)); va_end(a); }
+    void AppendFormat(PCXSTR pszFormat, ...) { va_list a; va_start(a, pszFormat); AppendStr(VFormat(pszFormat, a)); va_end(a); }
+    void FormatV(PCXSTR pszFormat, va_list args) { AssignStr(VFormat(pszFormat, args)); }
+    void AppendFormatV(PCXSTR pszFormat, va_list args) { AppendStr(VFormat(pszFormat, args)); }
+    void Append(PCXSTR pszSrc) { if (pszSrc) AppendChars(pszSrc, std::char_traits<XCHAR>::length(pszSrc)); }
+    void Append(PCXSTR pszSrc, int nLength) { if (pszSrc && nLength > 0) AppendChars(pszSrc, static_cast<size_t>(nLength)); }
+    void AppendChar(XCHAR ch) { AppendChars(&ch, 1); }
+    void SetString(PCXSTR pszSrc)
+    {
+        if (pszSrc) Assign(pszSrc, std::char_traits<XCHAR>::length(pszSrc));
+        else Empty();
+    }
     void SetString(PCXSTR pszSrc, int nLength)
     {
-        if (pszSrc && nLength > 0)
-            m_data.assign(pszSrc, static_cast<size_t>(nLength));
-        else
-            m_data.clear();
+        if (pszSrc && nLength > 0) Assign(pszSrc, static_cast<size_t>(nLength));
+        else Empty();
     }
 
 #ifdef _WIN32
@@ -678,18 +724,18 @@ public:
         BSTR bstr = nullptr;
         if constexpr (!std::is_same_v<XCHAR, char>)
         {
-            bstr = ::SysAllocStringLen(reinterpret_cast<const OLECHAR*>(m_data.data()),
-                                       static_cast<UINT>(m_data.size()));
+            bstr = ::SysAllocStringLen(reinterpret_cast<const OLECHAR*>(GetString()),
+                                       static_cast<UINT>(GetLength()));
         }
         else
         {
-            const int nSrc = static_cast<int>(m_data.size());
+            const int nSrc = GetLength();
             const int nWide = nSrc == 0
                                   ? 0
-                                  : ::MultiByteToWideChar(CP_ACP, 0, m_data.data(), nSrc, nullptr, 0);
+                                  : ::MultiByteToWideChar(CP_ACP, 0, GetString(), nSrc, nullptr, 0);
             bstr = ::SysAllocStringLen(nullptr, static_cast<UINT>(nWide < 0 ? 0 : nWide));
             if (bstr != nullptr && nWide > 0)
-                ::MultiByteToWideChar(CP_ACP, 0, m_data.data(), nSrc, bstr, nWide);
+                ::MultiByteToWideChar(CP_ACP, 0, GetString(), nSrc, bstr, nWide);
         }
         if (bstr == nullptr)
             EAfxThrowMemoryException();
@@ -697,10 +743,12 @@ public:
     }
 #endif
 
-    int Compare(PCXSTR psz) const { return m_data.compare(psz); }
+    int Compare(PCXSTR psz) const { return View().compare(psz); }
     int CompareNoCase(PCXSTR psz) const
     {
-        std::basic_string<XCHAR> a = m_data, b = psz ? psz : std::basic_string<XCHAR>().c_str();
+        std::basic_string<XCHAR> a(View());
+        std::basic_string<XCHAR> b;
+        if (psz) b = psz;
         auto lower = [](XCHAR c) { return mfc_detail::StrTraits<XCHAR>::Lower(c); };
         std::transform(a.begin(), a.end(), a.begin(), lower);
         std::transform(b.begin(), b.end(), b.begin(), lower);
@@ -710,112 +758,139 @@ public:
     int CollateNoCase(PCXSTR psz) const { return CompareNoCase(psz); }
     int Delete(int iIndex, int nCount = 1)
     {
-        if (iIndex < 0 || static_cast<size_t>(iIndex) >= m_data.size()) return GetLength();
-        m_data.erase(static_cast<size_t>(iIndex), static_cast<size_t>(nCount));
+        if (iIndex < 0 || iIndex >= GetLength()) return GetLength();
+        std::basic_string<XCHAR> tmp(View());
+        tmp.erase(static_cast<size_t>(iIndex), static_cast<size_t>(nCount));
+        AssignStr(tmp);
         return GetLength();
     }
     int Find(PCXSTR pszSub, int iStart = 0) const
     {
-        auto pos = m_data.find(pszSub, static_cast<size_t>(iStart));
+        auto pos = View().find(pszSub, static_cast<size_t>(iStart));
         return pos == npos ? -1 : static_cast<int>(pos);
     }
     int Find(XCHAR ch, int iStart = 0) const
     {
-        auto pos = m_data.find(ch, static_cast<size_t>(iStart));
+        auto pos = View().find(ch, static_cast<size_t>(iStart));
         return pos == npos ? -1 : static_cast<int>(pos);
     }
     int FindOneOf(PCXSTR pszCharSet) const
     {
-        auto pos = m_data.find_first_of(pszCharSet);
+        auto pos = View().find_first_of(pszCharSet);
         return pos == npos ? -1 : static_cast<int>(pos);
     }
     int ReverseFind(XCHAR ch) const
     {
-        auto pos = m_data.rfind(ch);
+        auto pos = View().rfind(ch);
         return pos == npos ? -1 : static_cast<int>(pos);
     }
     int Insert(int iIndex, PCXSTR psz)
     {
-        size_t i = std::min<size_t>(static_cast<size_t>(iIndex), m_data.size());
-        m_data.insert(i, psz);
+        std::basic_string<XCHAR> tmp(View());
+        size_t i = std::min<size_t>(static_cast<size_t>(iIndex), tmp.size());
+        tmp.insert(i, psz);
+        AssignStr(tmp);
         return GetLength();
     }
     int Insert(int iIndex, XCHAR ch)
     {
-        size_t i = std::min<size_t>(static_cast<size_t>(iIndex), m_data.size());
-        m_data.insert(i, 1, ch);
+        std::basic_string<XCHAR> tmp(View());
+        size_t i = std::min<size_t>(static_cast<size_t>(iIndex), tmp.size());
+        tmp.insert(i, 1, ch);
+        AssignStr(tmp);
         return GetLength();
     }
     int Remove(XCHAR chRemove)
     {
-        size_t before = m_data.size();
-        m_data.erase(std::remove(m_data.begin(), m_data.end(), chRemove), m_data.end());
-        return static_cast<int>(before - m_data.size());
+        std::basic_string<XCHAR> tmp(View());
+        const size_t before = tmp.size();
+        tmp.erase(std::remove(tmp.begin(), tmp.end(), chRemove), tmp.end());
+        const int removed = static_cast<int>(before - tmp.size());
+        if (removed > 0) AssignStr(tmp);
+        return removed;
     }
     void Truncate(int nNewLength)
     {
-        if (nNewLength >= 0 && static_cast<size_t>(nNewLength) < m_data.size())
-            m_data.resize(static_cast<size_t>(nNewLength));
+        if (nNewLength >= 0 && nNewLength < GetLength())
+        {
+            PrepareWrite(0);
+            SetLength(nNewLength);
+        }
     }
     ECStringT Left(int nCount) const
     {
         nCount = std::clamp(nCount, 0, GetLength());
-        return ECStringT(m_data.substr(0, static_cast<size_t>(nCount)).c_str());
+        return ECStringT(GetString(), nCount);
     }
     ECStringT Right(int nCount) const
     {
         nCount = std::clamp(nCount, 0, GetLength());
-        return ECStringT(m_data.substr(m_data.size() - static_cast<size_t>(nCount)).c_str());
+        return ECStringT(GetString() + (GetLength() - nCount), nCount);
     }
     ECStringT Mid(int iFirst, int nCount) const
     {
         iFirst = std::clamp(iFirst, 0, GetLength());
         nCount = std::clamp(nCount, 0, GetLength() - iFirst);
-        return ECStringT(m_data.substr(static_cast<size_t>(iFirst), static_cast<size_t>(nCount)).c_str());
+        return ECStringT(GetString() + iFirst, nCount);
     }
     ECStringT Mid(int iFirst) const { return Mid(iFirst, GetLength() - iFirst); }
     ECStringT& MakeLower()
     {
-        std::transform(m_data.begin(), m_data.end(), m_data.begin(), [](XCHAR c) { return mfc_detail::StrTraits<XCHAR>::Lower(c); });
+        PrepareWrite(0);
+        PXSTR p = Chars();
+        for (int i = 0, n = GetLength(); i < n; ++i)
+            p[i] = mfc_detail::StrTraits<XCHAR>::Lower(p[i]);
         return *this;
     }
     ECStringT& MakeUpper()
     {
-        std::transform(m_data.begin(), m_data.end(), m_data.begin(), [](XCHAR c) { return mfc_detail::StrTraits<XCHAR>::Upper(c); });
+        PrepareWrite(0);
+        PXSTR p = Chars();
+        for (int i = 0, n = GetLength(); i < n; ++i)
+            p[i] = mfc_detail::StrTraits<XCHAR>::Upper(p[i]);
         return *this;
     }
     int Replace(PCXSTR pszOld, PCXSTR pszNew)
     {
         std::basic_string<XCHAR> oldS = pszOld, newS = pszNew;
         if (oldS.empty()) return 0;
+        std::basic_string<XCHAR> tmp(View());
         int count = 0;
         size_t pos = 0;
-        while ((pos = m_data.find(oldS, pos)) != npos)
+        while ((pos = tmp.find(oldS, pos)) != npos)
         {
-            m_data.replace(pos, oldS.size(), newS);
+            tmp.replace(pos, oldS.size(), newS);
             pos += newS.size();
             ++count;
         }
+        if (count > 0) AssignStr(tmp);
         return count;
     }
     int Replace(XCHAR chOld, XCHAR chNew)
     {
         int count = 0;
-        for (auto& c : m_data) if (c == chOld) { c = chNew; ++count; }
+        const int n = GetLength();
+        for (int i = 0; i < n; ++i) if (GetString()[i] == chOld) ++count;
+        if (count == 0) return 0;
+        PrepareWrite(0);
+        PXSTR p = Chars();
+        for (int i = 0; i < n; ++i) if (p[i] == chOld) p[i] = chNew;
         return count;
     }
     ECStringT SpanExcluding(PCXSTR pszCharSet) const
     {
-        auto pos = m_data.find_first_of(pszCharSet);
+        auto pos = View().find_first_of(pszCharSet);
         return pos == npos ? *this : Left(static_cast<int>(pos));
     }
     ECStringT Tokenize(PCXSTR pszTokens, int& iStart) const
     {
-        if (iStart < 0 || static_cast<size_t>(iStart) >= m_data.size()) { iStart = -1; return ECStringT(); }
-        size_t begin = m_data.find_first_not_of(pszTokens, static_cast<size_t>(iStart));
+        if (iStart < 0 || iStart >= GetLength()) { iStart = -1; return ECStringT(); }
+        const auto v = View();
+        const size_t begin = v.find_first_not_of(pszTokens, static_cast<size_t>(iStart));
         if (begin == npos) { iStart = -1; return ECStringT(); }
-        size_t end = m_data.find_first_of(pszTokens, begin);
-        ECStringT tok(m_data.substr(begin, end == npos ? npos : end - begin).c_str());
+        const size_t end = v.find_first_of(pszTokens, begin);
+        const size_t n = (end == npos) ? v.size() - begin : end - begin;
+        ECStringT tok(GetString() + begin, static_cast<int>(n));
         iStart = (end == npos) ? -1 : static_cast<int>(end + 1);
         return tok;
     }
@@ -823,57 +898,176 @@ public:
     ECStringT& Trim(XCHAR chTarget) { XCHAR set[2] = {chTarget, 0}; return Trim(set); }
     ECStringT& Trim(PCXSTR pszTargets)
     {
-        size_t b = m_data.find_first_not_of(pszTargets);
-        if (b == npos) m_data.clear();
-        else m_data.erase(0, b);
+        const size_t b = View().find_first_not_of(pszTargets);
+        if (b == npos) { Empty(); return *this; }
+        if (b > 0)
+        {
+            std::basic_string<XCHAR> tmp(View().substr(b));
+            AssignStr(tmp);
+        }
         return TrimRight(pszTargets);
     }
     ECStringT& TrimRight() { return TrimRight(mfc_detail::StrTraits<XCHAR>::WS()); }
     ECStringT& TrimRight(XCHAR chTarget) { XCHAR set[2] = {chTarget, 0}; return TrimRight(set); }
     ECStringT& TrimRight(PCXSTR pszTargets)
     {
-        size_t e = m_data.find_last_not_of(pszTargets);
-        if (e == npos) m_data.clear();
-        else m_data.erase(e + 1);
+        const size_t e = View().find_last_not_of(pszTargets);
+        if (e == npos) { Empty(); return *this; }
+        PrepareWrite(0);
+        SetLength(static_cast<int>(e + 1));
         return *this;
     }
 
-    operator PCXSTR() const noexcept { return m_data.c_str(); }
-    XCHAR operator[](int i) const { return m_data[static_cast<size_t>(i)]; }
+    operator PCXSTR() const noexcept { return GetString(); }
+    XCHAR operator[](int i) const { return GetString()[i]; }
 
-    ECStringT& operator+=(const ECStringT& s) { m_data += s.m_data; return *this; }
-    ECStringT& operator+=(PCXSTR psz) { if (psz) m_data += psz; return *this; }
-    ECStringT& operator+=(XCHAR ch) { m_data += ch; return *this; }
-    ECStringT& operator+=(PCYSTR psz) { if (psz) m_data += Convert(psz, std::char_traits<YCHAR>::length(psz)); return *this; }
-    ECStringT& operator+=(const ECStringT<YCHAR>& s) { m_data += Convert(s.GetString(), static_cast<size_t>(s.GetLength())); return *this; }
+    ECStringT& operator+=(const ECStringT& s) { AppendChars(s.GetString(), static_cast<size_t>(s.GetLength())); return *this; }
+    ECStringT& operator+=(PCXSTR psz) { if (psz) AppendChars(psz, std::char_traits<XCHAR>::length(psz)); return *this; }
+    ECStringT& operator+=(XCHAR ch) { AppendChars(&ch, 1); return *this; }
+    ECStringT& operator+=(PCYSTR psz) { if (psz) AppendStr(Convert(psz, std::char_traits<YCHAR>::length(psz))); return *this; }
+    ECStringT& operator+=(const ECStringT<YCHAR>& s) { AppendStr(Convert(s.GetString(), static_cast<size_t>(s.GetLength()))); return *this; }
 
-    friend ECStringT operator+(const ECStringT& a, const ECStringT& b) { ECStringT r(a); r.m_data += b.m_data; return r; }
-    friend ECStringT operator+(const ECStringT& a, PCXSTR b) { ECStringT r(a); if (b) r.m_data += b; return r; }
-    friend ECStringT operator+(PCXSTR a, const ECStringT& b) { ECStringT r; if (a) r.m_data = a; r.m_data += b.m_data; return r; }
-    friend ECStringT operator+(const ECStringT& a, XCHAR b) { ECStringT r(a); r.m_data += b; return r; }
-    friend ECStringT operator+(XCHAR a, const ECStringT& b) { ECStringT r; r.m_data += a; r.m_data += b.m_data; return r; }
+    friend ECStringT operator+(const ECStringT& a, const ECStringT& b) { ECStringT r(a); r += b; return r; }
+    friend ECStringT operator+(const ECStringT& a, PCXSTR b) { ECStringT r(a); if (b) r += b; return r; }
+    friend ECStringT operator+(PCXSTR a, const ECStringT& b) { ECStringT r; if (a) r = a; r += b; return r; }
+    friend ECStringT operator+(const ECStringT& a, XCHAR b) { ECStringT r(a); r += b; return r; }
+    friend ECStringT operator+(XCHAR a, const ECStringT& b) { ECStringT r; r += a; r += b; return r; }
 
-    friend bool operator==(const ECStringT& a, const ECStringT& b) noexcept { return a.m_data == b.m_data; }
-    friend bool operator==(const ECStringT& a, PCXSTR b) noexcept { return a.m_data == b; }
-    friend bool operator==(PCXSTR a, const ECStringT& b) noexcept { return a == b.m_data; }
-    friend bool operator!=(const ECStringT& a, const ECStringT& b) noexcept { return a.m_data != b.m_data; }
-    friend bool operator!=(const ECStringT& a, PCXSTR b) noexcept { return a.m_data != b; }
-    friend bool operator!=(PCXSTR a, const ECStringT& b) noexcept { return a != b.m_data; }
-    friend bool operator==(const ECStringT& a, PCYSTR b) noexcept { return b != nullptr && a.m_data == Convert(b, std::char_traits<YCHAR>::length(b)); }
+    friend bool operator==(const ECStringT& a, const ECStringT& b) noexcept { return a.View() == b.View(); }
+    friend bool operator==(const ECStringT& a, PCXSTR b) noexcept { return a.View() == ViewOf(b); }
+    friend bool operator==(PCXSTR a, const ECStringT& b) noexcept { return ViewOf(a) == b.View(); }
+    friend bool operator!=(const ECStringT& a, const ECStringT& b) noexcept { return !(a == b); }
+    friend bool operator!=(const ECStringT& a, PCXSTR b) noexcept { return !(a == b); }
+    friend bool operator!=(PCXSTR a, const ECStringT& b) noexcept { return !(a == b); }
+    friend bool operator==(const ECStringT& a, PCYSTR b) noexcept
+    {
+        return b != nullptr && a.View() == std::basic_string_view<XCHAR>(Convert(b, std::char_traits<YCHAR>::length(b)));
+    }
     friend bool operator==(PCYSTR a, const ECStringT& b) noexcept { return b == a; }
     friend bool operator!=(const ECStringT& a, PCYSTR b) noexcept { return !(a == b); }
     friend bool operator!=(PCYSTR a, const ECStringT& b) noexcept { return !(b == a); }
-    friend bool operator<(const ECStringT& a, const ECStringT& b) noexcept { return a.m_data < b.m_data; }
-    friend bool operator<(const ECStringT& a, PCXSTR b) noexcept { return a.m_data < b; }
-    friend bool operator<(PCXSTR a, const ECStringT& b) noexcept { return a < b.m_data; }
-    friend bool operator>(const ECStringT& a, const ECStringT& b) noexcept { return a.m_data > b.m_data; }
-    friend bool operator>(const ECStringT& a, PCXSTR b) noexcept { return a.m_data > b; }
-    friend bool operator>(PCXSTR a, const ECStringT& b) noexcept { return a > b.m_data; }
-    friend bool operator<=(const ECStringT& a, const ECStringT& b) noexcept { return a.m_data <= b.m_data; }
-    friend bool operator>=(const ECStringT& a, const ECStringT& b) noexcept { return a.m_data >= b.m_data; }
+    friend bool operator<(const ECStringT& a, const ECStringT& b) noexcept { return a.View() < b.View(); }
+    friend bool operator<(const ECStringT& a, PCXSTR b) noexcept { return a.View() < ViewOf(b); }
+    friend bool operator<(PCXSTR a, const ECStringT& b) noexcept { return ViewOf(a) < b.View(); }
+    friend bool operator>(const ECStringT& a, const ECStringT& b) noexcept { return a.View() > b.View(); }
+    friend bool operator>(const ECStringT& a, PCXSTR b) noexcept { return a.View() > ViewOf(b); }
+    friend bool operator>(PCXSTR a, const ECStringT& b) noexcept { return ViewOf(a) > b.View(); }
+    friend bool operator<=(const ECStringT& a, const ECStringT& b) noexcept { return a.View() <= b.View(); }
+    friend bool operator>=(const ECStringT& a, const ECStringT& b) noexcept { return a.View() >= b.View(); }
 
 private:
     static constexpr auto npos = std::basic_string<XCHAR>::npos;
+
+    struct StringData
+    {
+        std::atomic<long> nRefs;
+        int nDataLength;
+        std::basic_string<XCHAR> buf;
+    };
+
+    static StringData* Nil() noexcept
+    {
+        static StringData nil{1, 0, std::basic_string<XCHAR>(1, XCHAR())};
+        nil.nRefs.store(-1, std::memory_order_relaxed);
+        return &nil;
+    }
+    static void AddRef(StringData* p) noexcept
+    {
+        if (p->nRefs.load(std::memory_order_relaxed) >= 0)
+            p->nRefs.fetch_add(1, std::memory_order_relaxed);
+    }
+    static void Release(StringData* p) noexcept
+    {
+        if (p->nRefs.load(std::memory_order_relaxed) < 0) return;
+        if (p->nRefs.fetch_sub(1, std::memory_order_acq_rel) == 1) delete p;
+    }
+    static StringData* NewData(int nAlloc)
+    {
+        if (nAlloc < 0) nAlloc = 0;
+        return new StringData{1, 0, std::basic_string<XCHAR>(static_cast<size_t>(nAlloc) + 1, XCHAR())};
+    }
+    static std::basic_string_view<XCHAR> ViewOf(PCXSTR p) noexcept
+    {
+        return p ? std::basic_string_view<XCHAR>(p) : std::basic_string_view<XCHAR>();
+    }
+
+    bool IsShared() const noexcept { return m_pData->nRefs.load(std::memory_order_relaxed) > 1; }
+    int AllocLength() const noexcept { return static_cast<int>(m_pData->buf.size()) - 1; }
+    PXSTR Chars() noexcept { return &m_pData->buf[0]; }
+    std::basic_string_view<XCHAR> View() const noexcept
+    {
+        return std::basic_string_view<XCHAR>(m_pData->buf.data(), static_cast<size_t>(m_pData->nDataLength));
+    }
+    bool Owns(PCXSTR p) const noexcept
+    {
+        const PCXSTR base = m_pData->buf.data();
+        return p >= base && p <= base + m_pData->buf.size();
+    }
+
+    void Fork(int nAlloc)
+    {
+        StringData* pOld = m_pData;
+        const int n = pOld->nDataLength;
+        if (nAlloc < n) nAlloc = n;
+        StringData* pNew = NewData(nAlloc);
+        if (n > 0)
+            std::char_traits<XCHAR>::copy(&pNew->buf[0], pOld->buf.data(), static_cast<size_t>(n));
+        pNew->nDataLength = n;
+        pNew->buf[static_cast<size_t>(n)] = XCHAR();
+        m_pData = pNew;
+        Release(pOld);
+    }
+    void PrepareWrite(int nLength)
+    {
+        if (nLength < m_pData->nDataLength) nLength = m_pData->nDataLength;
+        if (m_pData == Nil() || IsShared())
+        {
+            if (m_pData == Nil() && nLength == 0) return;
+            Fork(nLength);
+        }
+        else if (AllocLength() < nLength)
+        {
+            m_pData->buf.resize(static_cast<size_t>(nLength) + 1, XCHAR());
+        }
+    }
+    void SetLength(int n)
+    {
+        if (m_pData == Nil()) return;
+        if (n < 0) n = 0;
+        if (n > AllocLength()) n = AllocLength();
+        m_pData->nDataLength = n;
+        m_pData->buf[static_cast<size_t>(n)] = XCHAR();
+    }
+    void Assign(PCXSTR p, size_t n)
+    {
+        if (n == 0) { Empty(); return; }
+        if (Owns(p))
+        {
+            const std::basic_string<XCHAR> tmp(p, n);
+            Assign(tmp.data(), tmp.size());
+            return;
+        }
+        PrepareWrite(static_cast<int>(n));
+        std::char_traits<XCHAR>::copy(Chars(), p, n);
+        SetLength(static_cast<int>(n));
+    }
+    void AssignStr(const std::basic_string<XCHAR>& s) { Assign(s.data(), s.size()); }
+    void AppendChars(PCXSTR p, size_t n)
+    {
+        if (n == 0) return;
+        if (Owns(p))
+        {
+            const std::basic_string<XCHAR> tmp(p, n);
+            AppendChars(tmp.data(), tmp.size());
+            return;
+        }
+        const int oldLength = m_pData->nDataLength;
+        const int newLength = oldLength + static_cast<int>(n);
+        PrepareWrite(newLength);
+        std::char_traits<XCHAR>::copy(Chars() + oldLength, p, n);
+        SetLength(newLength);
+    }
+    void AppendStr(const std::basic_string<XCHAR>& s) { AppendChars(s.data(), s.size()); }
 
 #ifdef _WIN32
     BOOL LoadStringForLangId(HINSTANCE hInstance, UINT nID, bool useLangId, WORD wLanguageID)
@@ -884,7 +1078,7 @@ private:
             const int n = ::LoadStringW(hInstance, nID, reinterpret_cast<LPWSTR>(&pStr), 0);
             if (n <= 0)
                 return FALSE;
-            m_data = Convert(pStr, static_cast<size_t>(n));
+            AssignStr(Convert(pStr, static_cast<size_t>(n)));
             return TRUE;
         }
 
@@ -906,7 +1100,7 @@ private:
         if (p >= end || *p == 0) { return FALSE; }
         const size_t len = static_cast<size_t>(*p);
         if (p + 1 + len > end) { return FALSE; }
-        m_data = Convert(p + 1, len);
+        AssignStr(Convert(p + 1, len));
         return TRUE;
     }
 #endif
@@ -956,10 +1150,7 @@ private:
             buf.resize(size);
         }
     }
-
-    std::basic_string<XCHAR> m_data;
-    std::vector<XCHAR> m_buffer;
-    bool m_bBufferOut = false;
+    StringData* m_pData;
 };
 
 using ECStringA = ECStringT<char>;
