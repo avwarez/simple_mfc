@@ -142,10 +142,10 @@ int main()
     ECWinThread thread;
     const int rc = thread.Run();
 
-    EAFX_MODULE_THREAD_STATE* state = EAfxGetModuleThreadState();
+    const void* trace = &EtraceAppMsg;
 
     std::printf("instantiation OK: standard %ld (%s), pointer %d bytes, "
-                "Run() -> %d, module thread state %s\n",
+                "Run() -> %d, trace category %s\n",
                 static_cast<long>(
 #if defined(_MSVC_LANG)
                     _MSVC_LANG
@@ -159,9 +159,9 @@ int main()
                 __cplusplus >= 202302L ? "C++23" : "C++2b",
 #endif
                 static_cast<int>(sizeof(void*)), rc,
-                state != nullptr ? "resolved" : "null");
+                trace != nullptr ? "resolved" : "null");
     const int utf16Bad = Utf16Checks();
     std::printf("UTF-16 string checks: %d failed\n", utf16Bad);
 
-    return (state != nullptr && utf16Bad == 0) ? 0 : 1;
+    return (trace != nullptr && utf16Bad == 0) ? 0 : 1;
 }

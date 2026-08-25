@@ -1112,13 +1112,12 @@ public:
 
     FILE* m_pStream = nullptr;
 
-protected:
-    bool IsTextMode() const;
-
-public:
     virtual LPTSTR ReadString(LPTSTR lpsz, UINT nMax);
     virtual BOOL ReadString(ECString& rString);
     virtual void WriteString(LPCTSTR lpsz);
+
+private:
+    bool IsTextMode() const;
 };
 
 class ECMemFile : public ECFile

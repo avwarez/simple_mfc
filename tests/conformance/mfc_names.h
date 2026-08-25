@@ -90,6 +90,8 @@ using CSimpleArray = ECSimpleArray<T, TEqual>;
 template <class KEY, class VALUE, class KTraits = void, class VTraits = void>
 using CRBMap = ECRBMap<KEY, VALUE, KTraits, VTraits>;
 
+#define CPair ECPair
+
 constexpr auto& Base64EncodeGetRequiredLength = EBase64EncodeGetRequiredLength;
 constexpr auto& Base64Encode                  = EBase64Encode;
 constexpr auto& AtlUnicodeToUTF8              = EAtlUnicodeToUTF8;

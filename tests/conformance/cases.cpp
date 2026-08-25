@@ -1117,6 +1117,31 @@ static void TestCMapTemplate()
     LineInt("CMap.PLookup.hit.value", hit ? hit->value : -1);
     LineBool("CMap.PLookup.miss.is_null", map.PLookup(_T("nosuchkey")) == nullptr);
 
+    {
+        typedef CMap<CString, LPCTSTR, int, int> TypedMap;
+        TypedMap typedMap;
+        typedMap.SetAt(_T("alpha"), 10);
+        typedMap.SetAt(_T("beta"), 20);
+        const TypedMap& constView = typedMap;
+
+        const TypedMap::CPair* constPair = constView.PLookup(_T("alpha"));
+        LineBool("CMap.CPair.const.non_null", constPair != nullptr);
+        Line("CMap.CPair.const.key", constPair ? constPair->key : CString());
+        LineInt("CMap.CPair.const.value", constPair ? constPair->value : -1);
+
+        TypedMap::CPair* pair = typedMap.PLookup(_T("beta"));
+        LineBool("CMap.CPair.nonconst.non_null", pair != nullptr);
+        Line("CMap.CPair.nonconst.key", pair ? pair->key : CString());
+        LineInt("CMap.CPair.nonconst.value", pair ? pair->value : -1);
+
+        const TypedMap::CPair* firstAssoc = constView.PGetFirstAssoc();
+        LineBool("CMap.CPair.PGetFirstAssoc.non_null", firstAssoc != nullptr);
+        LineBool("CMap.CPair.PGetNextAssoc.reaches_second",
+                 firstAssoc != nullptr && constView.PGetNextAssoc(firstAssoc) != nullptr);
+        LineBool("CMap.CPair.PLookup.miss.is_null",
+                 constView.PLookup(_T("gamma")) == nullptr);
+    }
+
     map.RemoveAll();
     LineBool("CMap.IsEmptyAfterRemoveAll", map.IsEmpty() != FALSE);
     LineInt("CMap.CountAfterRemoveAll", map.GetCount());
@@ -1751,6 +1776,29 @@ static void TestCRBMap()
             ++n;
         }
         Line("CRBMap.reversed", back);
+    }
+
+    {
+        typedef CRBMap<ULONGLONG, DWORD> TypedRBMap;
+        TypedRBMap typedMap;
+        typedMap.SetAt(1, 100);
+        typedMap.SetAt(2, 200);
+
+        POSITION forward = typedMap.GetHeadPosition();
+        TypedRBMap::CPair* headPair = typedMap.GetNext(forward);
+        LineBool("CRBMap.CPair.GetNext.non_null", headPair != nullptr);
+        LineInt("CRBMap.CPair.GetNext.m_key",
+                headPair ? static_cast<long long>(headPair->m_key) : -1);
+        LineInt("CRBMap.CPair.GetNext.m_value",
+                headPair ? static_cast<long long>(headPair->m_value) : -1);
+
+        POSITION backward = typedMap.GetTailPosition();
+        TypedRBMap::CPair* tailPair = typedMap.GetPrev(backward);
+        LineBool("CRBMap.CPair.GetPrev.non_null", tailPair != nullptr);
+        LineInt("CRBMap.CPair.GetPrev.m_key",
+                tailPair ? static_cast<long long>(tailPair->m_key) : -1);
+        LineInt("CRBMap.CPair.GetPrev.m_value",
+                tailPair ? static_cast<long long>(tailPair->m_value) : -1);
     }
 
     {

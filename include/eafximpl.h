@@ -1,14 +1,5 @@
 #pragma once
-#include "eafxcoll.h"
-
-struct EAFX_MODULE_THREAD_STATE
-{
-    ECMapPtrToPtr* m_pmapSocketHandle;
-    ECMapPtrToPtr* m_pmapDeadSockets;
-    ECPtrList* m_plistSocketNotifications;
-};
-
-EAFX_MODULE_THREAD_STATE* EAFXAPI EAfxGetModuleThreadState();
+#include "eafx.h"
 
 struct ECTraceCategory
 {
