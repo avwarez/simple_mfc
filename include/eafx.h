@@ -967,9 +967,9 @@ private:
 
     static StringData* Nil() noexcept
     {
-        static StringData nil{1, 0, std::basic_string<XCHAR>(1, XCHAR())};
-        nil.nRefs.store(-1, std::memory_order_relaxed);
-        return &nil;
+        static StringData* const nil =
+            new StringData{-1, 0, std::basic_string<XCHAR>(1, XCHAR())};
+        return nil;
     }
     static void AddRef(StringData* p) noexcept
     {
