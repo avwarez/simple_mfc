@@ -41,21 +41,6 @@ BOOL ECEvent::SetEvent()
     return TRUE;
 }
 
-BOOL ECEvent::PulseEvent()
-{
-    {
-        std::lock_guard<std::mutex> lk(m_mutex);
-        m_signaled = true;
-    }
-    if (m_manualReset) m_cv.notify_all();
-    else m_cv.notify_one();
-    {
-        std::lock_guard<std::mutex> lk(m_mutex);
-        m_signaled = false;
-    }
-    return TRUE;
-}
-
 BOOL ECEvent::ResetEvent()
 {
     std::lock_guard<std::mutex> lk(m_mutex);

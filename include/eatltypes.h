@@ -100,9 +100,6 @@ public:
     int Width() const noexcept;
     BOOL PtInRect(POINT point) const noexcept;
     void MoveToX(int x) noexcept;
-    void MoveToY(int y) noexcept;
-    void MoveToXY(int x, int y) noexcept;
-    void MoveToXY(POINT point) noexcept;
     void OffsetRect(int x, int y) noexcept;
     void OffsetRect(POINT point) noexcept;
     void OffsetRect(SIZE size) noexcept;

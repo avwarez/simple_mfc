@@ -83,9 +83,6 @@ BOOL ECRect::PtInRect(POINT point) const noexcept
 }
 
 void ECRect::MoveToX(int x) noexcept { int w = Width(); left = x; right = x + w; }
-void ECRect::MoveToY(int y) noexcept { int h = Height(); top = y; bottom = y + h; }
-void ECRect::MoveToXY(int x, int y) noexcept { MoveToX(x); MoveToY(y); }
-void ECRect::MoveToXY(POINT point) noexcept { MoveToXY(point.x, point.y); }
 
 void ECRect::OffsetRect(int x, int y) noexcept { left += x; right += x; top += y; bottom += y; }
 void ECRect::OffsetRect(POINT point) noexcept { OffsetRect(point.x, point.y); }

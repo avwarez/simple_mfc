@@ -135,13 +135,11 @@ public:
     }
     void Copy(const ArrayImpl& src) { m_v = src.m_v; }
     T& ElementAt(INT_PTR i) { return AsT(m_v.at(static_cast<size_t>(i))); }
-    void FreeExtra() { m_v.shrink_to_fit(); }
     const T& GetAt(INT_PTR i) const { return AsT(m_v.at(static_cast<size_t>(i))); }
     INT_PTR GetCount() const { return static_cast<INT_PTR>(m_v.size()); }
     T* GetData() { return reinterpret_cast<T*>(m_v.data()); }
     const T* GetData() const { return reinterpret_cast<const T*>(m_v.data()); }
     INT_PTR GetSize() const { return static_cast<INT_PTR>(m_v.size()); }
-    INT_PTR GetUpperBound() const { return static_cast<INT_PTR>(m_v.size()) - 1; }
     void InsertAt(INT_PTR i, T v, INT_PTR nCount = 1)
     {
         if (static_cast<size_t>(i) > m_v.size()) m_v.resize(static_cast<size_t>(i));
@@ -151,11 +149,6 @@ public:
     void RemoveAll() { m_v.clear(); }
     void RemoveAt(INT_PTR i, INT_PTR nCount = 1) { m_v.erase(m_v.begin() + i, m_v.begin() + i + nCount); }
     void SetAt(INT_PTR i, T v) { m_v.at(static_cast<size_t>(i)) = std::move(v); }
-    void SetAtGrow(INT_PTR i, T v)
-    {
-        if (static_cast<size_t>(i) >= m_v.size()) m_v.resize(static_cast<size_t>(i) + 1);
-        m_v[static_cast<size_t>(i)] = std::move(v);
-    }
     void SetSize(INT_PTR nNewSize, INT_PTR   = -1) { m_v.resize(static_cast<size_t>(nNewSize)); }
 
 private:
@@ -428,13 +421,11 @@ public:
     INT_PTR GetCount() const { return m_impl.GetCount(); }
     void** GetData() { return m_impl.GetData(); }
     INT_PTR GetSize() const { return m_impl.GetSize(); }
-    INT_PTR GetUpperBound() const { return m_impl.GetUpperBound(); }
     void InsertAt(INT_PTR i, void* e, INT_PTR nCount = 1) { m_impl.InsertAt(i, e, nCount); }
     BOOL IsEmpty() const { return m_impl.IsEmpty() ? TRUE : FALSE; }
     void RemoveAll() { m_impl.RemoveAll(); }
     void RemoveAt(INT_PTR i, INT_PTR nCount = 1) { m_impl.RemoveAt(i, nCount); }
     void SetAt(INT_PTR i, void* e) { m_impl.SetAt(i, e); }
-    void SetAtGrow(INT_PTR i, void* e) { m_impl.SetAtGrow(i, e); }
     void SetSize(INT_PTR nNewSize, INT_PTR nGrowBy = -1) { m_impl.SetSize(nNewSize, nGrowBy); }
     void* operator[](INT_PTR i) const { return m_impl.GetAt(i); }
     void*& operator[](INT_PTR i) { return m_impl.ElementAt(i); }
@@ -456,13 +447,11 @@ public:
     const ECString& GetAt(INT_PTR i) const { return m_impl.GetAt(i); }
     INT_PTR GetCount() const { return m_impl.GetCount(); }
     INT_PTR GetSize() const { return m_impl.GetSize(); }
-    INT_PTR GetUpperBound() const { return m_impl.GetUpperBound(); }
     void InsertAt(INT_PTR i, const ECString& e, INT_PTR nCount = 1) { m_impl.InsertAt(i, e, nCount); }
     BOOL IsEmpty() const { return m_impl.IsEmpty() ? TRUE : FALSE; }
     void RemoveAll() { m_impl.RemoveAll(); }
     void RemoveAt(INT_PTR i, INT_PTR nCount = 1) { m_impl.RemoveAt(i, nCount); }
     void SetAt(INT_PTR i, const ECString& e) { m_impl.SetAt(i, e); }
-    void SetAtGrow(INT_PTR i, const ECString& e) { m_impl.SetAtGrow(i, e); }
     void SetSize(INT_PTR nNewSize, INT_PTR nGrowBy = -1) { m_impl.SetSize(nNewSize, nGrowBy); }
     const ECString& operator[](INT_PTR i) const { return m_impl.GetAt(i); }
     ECString& operator[](INT_PTR i) { return m_impl.ElementAt(i); }
@@ -480,19 +469,16 @@ public:                                                                         
     INT_PTR Append(const ClassName& src) { return m_impl.Append(src.m_impl); }   \
     void Copy(const ClassName& src) { m_impl.Copy(src.m_impl); }                 \
     ElemType& ElementAt(INT_PTR i) { return m_impl.ElementAt(i); }               \
-    void FreeExtra() { m_impl.FreeExtra(); }                                     \
     ElemType GetAt(INT_PTR i) const { return m_impl.GetAt(i); }                  \
     INT_PTR GetCount() const { return m_impl.GetCount(); }                       \
     ElemType* GetData() { return m_impl.GetData(); }                            \
     const ElemType* GetData() const { return m_impl.GetData(); }                \
     INT_PTR GetSize() const { return m_impl.GetSize(); }                         \
-    INT_PTR GetUpperBound() const { return m_impl.GetUpperBound(); }             \
     void InsertAt(INT_PTR i, ElemType e, INT_PTR nCount = 1) { m_impl.InsertAt(i, e, nCount); } \
     BOOL IsEmpty() const { return m_impl.IsEmpty() ? TRUE : FALSE; }             \
     void RemoveAll() { m_impl.RemoveAll(); }                                     \
     void RemoveAt(INT_PTR i, INT_PTR nCount = 1) { m_impl.RemoveAt(i, nCount); } \
     void SetAt(INT_PTR i, ElemType e) { m_impl.SetAt(i, e); }                    \
-    void SetAtGrow(INT_PTR i, ElemType e) { m_impl.SetAtGrow(i, e); }            \
     void SetSize(INT_PTR nNewSize, INT_PTR nGrowBy = -1) { m_impl.SetSize(nNewSize, nGrowBy); } \
     ElemType operator[](INT_PTR i) const { return m_impl.GetAt(i); }             \
     ElemType& operator[](INT_PTR i) { return m_impl.ElementAt(i); }              \

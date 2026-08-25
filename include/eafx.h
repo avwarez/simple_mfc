@@ -178,7 +178,6 @@ public:
     BOOL IsKindOf(const ECRuntimeClass* pClass) const { return GetRuntimeClass()->IsDerivedFrom(pClass) ? TRUE : FALSE; }
     virtual void AssertValid() const {}
     virtual void Dump(ECDumpContext& dc) const;
-    virtual BOOL IsSerializable() const { return FALSE; }
     virtual ~ECObject() = default;
 };
 
@@ -191,8 +190,6 @@ class ECDumpContext
 public:
     explicit ECDumpContext(std::wostream& os = std::wcerr) : m_os(os) {}
 
-    void SetDepth(int nNewDepth) noexcept { m_nDepth = nNewDepth; }
-    int GetDepth() const noexcept { return m_nDepth; }
 
     ECDumpContext& operator<<(const char* lpsz);
     ECDumpContext& operator<<(LPCTSTR lpsz);
@@ -206,7 +203,6 @@ public:
 
 private:
     std::wostream& m_os;
-    int m_nDepth = 0;
 };
 
 [[noreturn]] void EAfxThrowMemoryException();
@@ -666,12 +662,6 @@ public:
         PrepareWrite(nNewLength);
         SetLength(nNewLength);
     }
-    void ReleaseBufferSetLength(int nNewLength)
-    {
-        if (nNewLength < 0) nNewLength = 0;
-        PrepareWrite(nNewLength);
-        SetLength(nNewLength);
-    }
     XCHAR GetAt(int iChar) const
     {
         if (iChar < 0 || iChar >= GetLength()) throw std::out_of_range("ECStringT::GetAt");
@@ -691,7 +681,6 @@ public:
     void AppendFormatV(PCXSTR pszFormat, va_list args) { AppendStr(VFormat(pszFormat, args)); }
     void Append(PCXSTR pszSrc) { if (pszSrc) AppendChars(pszSrc, std::char_traits<XCHAR>::length(pszSrc)); }
     void Append(PCXSTR pszSrc, int nLength) { if (pszSrc && nLength > 0) AppendChars(pszSrc, static_cast<size_t>(nLength)); }
-    void AppendChar(XCHAR ch) { AppendChars(&ch, 1); }
     void SetString(PCXSTR pszSrc)
     {
         if (pszSrc) Assign(pszSrc, std::char_traits<XCHAR>::length(pszSrc));
@@ -1353,20 +1342,13 @@ public:
     virtual BOOL IsDots() const;
     BOOL IsSystem() const;
     BOOL IsHidden() const;
-    BOOL IsReadOnly() const;
     virtual ECString GetFileName() const;
     virtual ECString GetFilePath() const;
     ULONGLONG GetLength() const;
     virtual ECString GetRoot() const;
     virtual BOOL GetLastWriteTime(ECTime& refTime) const;
-    virtual BOOL GetCreationTime(ECTime& refTime) const;
-    virtual BOOL GetLastAccessTime(ECTime& refTime) const;
     virtual BOOL GetLastWriteTime(FILETIME* pTimeStamp) const;
-    virtual BOOL GetCreationTime(FILETIME* pTimeStamp) const;
-    virtual BOOL GetLastAccessTime(FILETIME* pTimeStamp) const;
     BOOL IsTemporary() const;
-    BOOL IsArchived() const;
-    BOOL IsCompressed() const;
 
 private:
     bool AdvanceToNextMatch();
@@ -1387,8 +1369,6 @@ public:
     ECArchive(ECFile* pFile, UINT nMode, int nBufSize = 4096, void* lpBuf = nullptr);
     ~ECArchive();
 
-    BOOL IsLoading() const;
-    BOOL IsStoring() const;
     ECFile* GetFile() const;
     void Close();
     void Flush();

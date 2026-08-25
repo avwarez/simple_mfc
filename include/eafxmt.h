@@ -35,7 +35,6 @@ public:
     BOOL Lock(DWORD dwTimeout = 0xFFFFFFFF) override;
     BOOL Unlock() override { return TRUE; }
     BOOL SetEvent();
-    BOOL PulseEvent();
     BOOL ResetEvent();
 
 private:

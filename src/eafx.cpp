@@ -736,16 +736,7 @@ ECTime TimeFromFileTime(const FILETIME& ft)
 }
 }
 
-BOOL ECFileFind::GetCreationTime(ECTime& refTime) const
-{
-    FILETIME ft{};
-    if (!GetCreationTime(&ft))
-        return FALSE;
-    refTime = TimeFromFileTime(ft);
-    return TRUE;
-}
 #else
-BOOL ECFileFind::GetCreationTime(ECTime&  ) const { return FALSE; }
 #endif
 
 #ifdef _WIN32
@@ -759,73 +750,13 @@ BOOL ECFileFind::GetLastWriteTime(FILETIME* pTimeStamp) const
     *pTimeStamp = data.ftLastWriteTime;
     return TRUE;
 }
-BOOL ECFileFind::GetCreationTime(FILETIME* pTimeStamp) const
-{
-    if (pTimeStamp == nullptr)
-        return FALSE;
-    WIN32_FILE_ATTRIBUTE_DATA data{};
-    if (!::GetFileAttributesExW(m_current.path().wstring().c_str(), GetFileExInfoStandard, &data))
-        return FALSE;
-    *pTimeStamp = data.ftCreationTime;
-    return TRUE;
-}
-BOOL ECFileFind::GetLastAccessTime(FILETIME* pTimeStamp) const
-{
-    if (pTimeStamp == nullptr)
-        return FALSE;
-    WIN32_FILE_ATTRIBUTE_DATA data{};
-    if (!::GetFileAttributesExW(m_current.path().wstring().c_str(), GetFileExInfoStandard, &data))
-        return FALSE;
-    *pTimeStamp = data.ftLastAccessTime;
-    return TRUE;
-}
 #else
 BOOL ECFileFind::GetLastWriteTime(FILETIME*) const { return FALSE; }
-BOOL ECFileFind::GetCreationTime(FILETIME*) const { return FALSE; }
-BOOL ECFileFind::GetLastAccessTime(FILETIME*) const { return FALSE; }
 #endif
-#ifdef _WIN32
-BOOL ECFileFind::GetLastAccessTime(ECTime& refTime) const
-{
-    FILETIME ft{};
-    if (!GetLastAccessTime(&ft))
-        return FALSE;
-    refTime = TimeFromFileTime(ft);
-    return TRUE;
-}
-#else
-BOOL ECFileFind::GetLastAccessTime(ECTime& refTime) const
-{
-    struct stat st{};
-    if (::stat(m_current.path().c_str(), &st) != 0)
-        return FALSE;
-    refTime = ECTime(static_cast<__time64_t>(st.st_atime));
-    return TRUE;
-}
-#endif
-
 BOOL ECFileFind::IsTemporary() const
 {
 #ifdef _WIN32
     return HasFileAttribute(m_current.path(), FILE_ATTRIBUTE_TEMPORARY);
-#else
-    return FALSE;
-#endif
-}
-
-BOOL ECFileFind::IsArchived() const
-{
-#ifdef _WIN32
-    return HasFileAttribute(m_current.path(), FILE_ATTRIBUTE_ARCHIVE);
-#else
-    return FALSE;
-#endif
-}
-
-BOOL ECFileFind::IsCompressed() const
-{
-#ifdef _WIN32
-    return HasFileAttribute(m_current.path(), FILE_ATTRIBUTE_COMPRESSED);
 #else
     return FALSE;
 #endif
@@ -839,18 +770,9 @@ static BOOL HasFileAttribute(const std::filesystem::path& p, DWORD dwAttr)
 }
 BOOL ECFileFind::IsSystem() const { return HasFileAttribute(m_current.path(), FILE_ATTRIBUTE_SYSTEM); }
 BOOL ECFileFind::IsHidden() const { return HasFileAttribute(m_current.path(), FILE_ATTRIBUTE_HIDDEN); }
-BOOL ECFileFind::IsReadOnly() const { return HasFileAttribute(m_current.path(), FILE_ATTRIBUTE_READONLY); }
 #else
 BOOL ECFileFind::IsSystem() const { return FALSE; }
 BOOL ECFileFind::IsHidden() const { return FALSE; }
-BOOL ECFileFind::IsReadOnly() const
-{
-    std::error_code ec;
-    auto perms = std::filesystem::status(m_current.path(), ec).permissions();
-    if (ec)
-        return FALSE;
-    return (perms & std::filesystem::perms::owner_write) == std::filesystem::perms::none ? TRUE : FALSE;
-}
 #endif
 
 BOOL ECFileFind::IsDots() const
@@ -878,8 +800,6 @@ ECArchive::ECArchive(ECFile* pFile, UINT nMode, int  , void*  )
 
 ECArchive::~ECArchive() { Close(); }
 
-BOOL ECArchive::IsLoading() const { return (m_nMode & static_cast<UINT>(ECArchive::load)) ? TRUE : FALSE; }
-BOOL ECArchive::IsStoring() const { return IsLoading() ? FALSE : TRUE; }
 ECFile* ECArchive::GetFile() const { return m_pFile; }
 
 void ECArchive::Close() { Flush(); }

@@ -38,9 +38,7 @@ public:
     BOOL CreateThread(DWORD dwCreateFlags = 0, UINT nStackSize = 0,
                       SECURITY_ATTRIBUTES* lpSecurityAttrs = nullptr);
     DWORD ResumeThread();
-    DWORD SuspendThread();
     BOOL SetThreadPriority(int nPriority);
-    int GetThreadPriority();
     virtual BOOL InitInstance();
     virtual int ExitInstance();
     virtual int Run();

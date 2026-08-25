@@ -106,31 +106,11 @@ DWORD ECWinThread::ResumeThread()
     return previous;
 }
 
-DWORD ECWinThread::SuspendThread()
-{
-    if (m_pImpl == nullptr)
-        return 0;
-
-    unsigned long previous;
-    {
-        std::lock_guard<std::mutex> lk(m_pImpl->m);
-        previous = m_pImpl->suspendCount;
-        ++m_pImpl->suspendCount;
-        m_pImpl->resumed = false;
-    }
-    return previous;
-}
-
 BOOL ECWinThread::SetThreadPriority(int nPriority)
 {
     if (m_pImpl != nullptr)
         m_pImpl->priority = nPriority;
     return TRUE;
-}
-
-int ECWinThread::GetThreadPriority()
-{
-    return (m_pImpl != nullptr) ? m_pImpl->priority : 0;
 }
 
 BOOL ECWinThread::InitInstance() { return FALSE; }

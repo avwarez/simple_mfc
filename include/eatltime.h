@@ -19,13 +19,9 @@ public:
     ECTimeSpan(long lDays, int nHours, int nMins, int nSecs) noexcept
         : m_span(static_cast<long long>(lDays) * 86400 + nHours * 3600 + nMins * 60 + nSecs) {}
 
-    long GetDays() const noexcept { return static_cast<long>(m_span / 86400); }
     long GetHours() const noexcept { return static_cast<long>((m_span / 3600) % 24); }
     long GetMinutes() const noexcept { return static_cast<long>((m_span / 60) % 60); }
-    long GetSeconds() const noexcept { return static_cast<long>(m_span % 60); }
     long long GetTotalSeconds() const noexcept { return m_span; }
-    long long GetTotalHours() const noexcept { return m_span / 3600; }
-    long long GetTotalMinutes() const noexcept { return m_span / 60; }
 
     ECString Format(const TCHAR* pszFormat) const;
     ECString Format(const char* pszFormat) const;
@@ -63,12 +59,8 @@ public:
         return ptm;
     }
 
-    int GetYear() const noexcept { return Tm().tm_year + 1900; }
-    int GetMonth() const noexcept { return Tm().tm_mon + 1; }
-    int GetDay() const noexcept { return Tm().tm_mday; }
     int GetHour() const noexcept { return Tm().tm_hour; }
     int GetMinute() const noexcept { return Tm().tm_min; }
-    int GetSecond() const noexcept { return Tm().tm_sec; }
     int GetDayOfWeek() const noexcept { return Tm().tm_wday + 1; }
     __time64_t GetTime() const noexcept { return m_time; }
 

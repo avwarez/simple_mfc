@@ -15,19 +15,16 @@ public:
     INT_PTR Append(const ECArray& src) { return m_impl.Append(src.m_impl); }
     void Copy(const ECArray& src) { m_impl.Copy(src.m_impl); }
     TYPE& ElementAt(INT_PTR i) { return m_impl.ElementAt(i); }
-    void FreeExtra() { m_impl.FreeExtra(); }
     const TYPE& GetAt(INT_PTR i) const { return m_impl.GetAt(i); }
     INT_PTR GetCount() const { return m_impl.GetCount(); }
     TYPE* GetData() { return m_impl.GetData(); }
     const TYPE* GetData() const { return m_impl.GetData(); }
     INT_PTR GetSize() const { return m_impl.GetSize(); }
-    INT_PTR GetUpperBound() const { return m_impl.GetUpperBound(); }
     void InsertAt(INT_PTR i, ARG_TYPE e, INT_PTR nCount = 1) { m_impl.InsertAt(i, e, nCount); }
     BOOL IsEmpty() const { return m_impl.IsEmpty() ? TRUE : FALSE; }
     void RemoveAll() { m_impl.RemoveAll(); }
     void RemoveAt(INT_PTR i, INT_PTR nCount = 1) { m_impl.RemoveAt(i, nCount); }
     void SetAt(INT_PTR i, ARG_TYPE e) { m_impl.SetAt(i, e); }
-    void SetAtGrow(INT_PTR i, ARG_TYPE e) { m_impl.SetAtGrow(i, e); }
     void SetSize(INT_PTR nNewSize, INT_PTR nGrowBy = -1) { m_impl.SetSize(nNewSize, nGrowBy); }
 
     const TYPE& operator[](INT_PTR i) const { return GetAt(i); }
@@ -164,7 +161,6 @@ public:
     }
 
     void InitHashTable(UINT nHashSize, BOOL bAllocNow = TRUE) { if (!bAllocNow) return; m_map.reserve(nHashSize); }
-    UINT GetHashTableSize() const { return static_cast<UINT>(m_map.bucket_count()); }
     INT_PTR GetCount() const { return static_cast<INT_PTR>(m_map.size()); }
     INT_PTR GetSize() const { return GetCount(); }
     BOOL IsEmpty() const { return m_map.empty() ? TRUE : FALSE; }
@@ -233,7 +229,6 @@ public:
     TYPE GetAt(INT_PTR nIndex) const { return reinterpret_cast<TYPE>(BASE_CLASS::GetAt(nIndex)); }
     TYPE& ElementAt(INT_PTR nIndex) { return reinterpret_cast<TYPE&>(BASE_CLASS::ElementAt(nIndex)); }
     void SetAt(INT_PTR nIndex, TYPE newElement) { BASE_CLASS::SetAt(nIndex, newElement); }
-    void SetAtGrow(INT_PTR nIndex, TYPE newElement) { BASE_CLASS::SetAtGrow(nIndex, newElement); }
     void InsertAt(INT_PTR nIndex, TYPE newElement, INT_PTR nCount = 1) { BASE_CLASS::InsertAt(nIndex, newElement, nCount); }
     TYPE operator[](INT_PTR nIndex) const { return reinterpret_cast<TYPE>(BASE_CLASS::GetAt(nIndex)); }
     TYPE& operator[](INT_PTR nIndex) { return reinterpret_cast<TYPE&>(BASE_CLASS::ElementAt(nIndex)); }

@@ -18,7 +18,6 @@ public:
         Release();
         return Reallocate(nElements);
     }
-    T* AllocateBytes(size_t nBytes) { return Allocate(nBytes / sizeof(T)); }
 
     T* Reallocate(size_t nElements)
     {
