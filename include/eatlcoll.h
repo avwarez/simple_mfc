@@ -11,21 +11,29 @@
 template <class KEY, class VALUE, class KTraits = void, class VTraits = void>
 class ECRBMap
 {
-    using MapT = std::map<KEY, VALUE>;
-    using ValueType = typename MapT::value_type;
-
 public:
     struct ECPair
     {
+        ECPair(const KEY& key, const VALUE& value) : m_key(key), m_value(value) {}
+
         const KEY m_key;
         VALUE m_value;
     };
 
+private:
+    using MapT = std::map<KEY, ECPair>;
+    using Iter = typename MapT::iterator;
+
+public:
     ECRBMap() = default;
 
     EPOSITION SetAt(const KEY& key, const VALUE& value)
     {
-        auto it = m_map.insert_or_assign(key, value).first;
+        auto it = m_map.find(key);
+        if (it == m_map.end())
+            it = m_map.emplace(key, ECPair(key, value)).first;
+        else
+            it->second.m_value = value;
         return Box(it);
     }
 
@@ -55,40 +63,35 @@ public:
         return it == m_map.end() ? nullptr : Box(it);
     }
 
-    const KEY& GetKeyAt(EPOSITION pos) const { return NodeFromPos(pos)->first; }
-    VALUE& GetValueAt(EPOSITION pos) { return NodeFromPos(pos)->second; }
-    const VALUE& GetValueAt(EPOSITION pos) const { return NodeFromPos(pos)->second; }
+    const KEY& GetKeyAt(EPOSITION pos) const { return PairFromPos(pos)->m_key; }
+    VALUE& GetValueAt(EPOSITION pos) { return PairFromPos(pos)->m_value; }
+    const VALUE& GetValueAt(EPOSITION pos) const { return PairFromPos(pos)->m_value; }
 
     ECPair* GetNext(EPOSITION& pos)
     {
-        auto it = IterFromPos(pos);
-        m_scratch = std::make_unique<ECPair>(ECPair{it->first, it->second});
-        Advance(pos, it);
-        return m_scratch.get();
+        ECPair* pair = PairFromPos(pos);
+        Advance(pos, IterFromPos(pos));
+        return pair;
     }
     VALUE& GetNextValue(EPOSITION& pos)
     {
-        auto it = IterFromPos(pos);
-        VALUE& v = it->second;
-        Advance(pos, it);
+        VALUE& v = PairFromPos(pos)->m_value;
+        Advance(pos, IterFromPos(pos));
         return v;
     }
     ECPair* GetPrev(EPOSITION& pos)
     {
-        auto it = IterFromPos(pos);
-        m_scratch = std::make_unique<ECPair>(ECPair{it->first, it->second});
-        Retreat(pos, it);
-        return m_scratch.get();
+        ECPair* pair = PairFromPos(pos);
+        Retreat(pos, IterFromPos(pos));
+        return pair;
     }
 
 private:
-    using Iter = typename MapT::iterator;
-
-    static EPOSITION Box(Iter it) { return const_cast<ValueType*>(&*it); }
-    ValueType* NodeFromPos(EPOSITION pos) const { return static_cast<ValueType*>(pos); }
+    static EPOSITION Box(Iter it) { return &it->second; }
+    ECPair* PairFromPos(EPOSITION pos) const { return static_cast<ECPair*>(pos); }
     Iter IterFromPos(EPOSITION pos) const
     {
-        return const_cast<MapT&>(m_map).find(NodeFromPos(pos)->first);
+        return const_cast<MapT&>(m_map).find(PairFromPos(pos)->m_key);
     }
     void Advance(EPOSITION& pos, Iter it) const
     {
@@ -103,5 +106,4 @@ private:
     }
 
     MapT m_map;
-    mutable std::unique_ptr<ECPair> m_scratch;
 };

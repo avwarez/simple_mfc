@@ -125,9 +125,6 @@ struct MfcHashKey
 template <class KEY, class ARG_KEY, class VALUE, class ARG_VALUE>
 class ECMap : public ECObject
 {
-    using MapT = std::unordered_map<KEY, VALUE, MfcHashKey<KEY, ARG_KEY>>;
-    using Iter = typename MapT::iterator;
-
 public:
     struct ECPair
     {
@@ -137,17 +134,22 @@ public:
         VALUE value;
     };
 
+private:
+    using MapT = std::unordered_map<KEY, ECPair, MfcHashKey<KEY, ARG_KEY>>;
+    using Iter = typename MapT::iterator;
+
+public:
     explicit ECMap(INT_PTR   = 10) {}
 
     BOOL Lookup(ARG_KEY key, VALUE& rValue) const
     {
         auto it = m_map.find(key);
         if (it == m_map.end()) return FALSE;
-        rValue = it->second;
+        rValue = it->second.value;
         return TRUE;
     }
-    void SetAt(ARG_KEY key, ARG_VALUE newValue) { m_map[key] = newValue; }
-    VALUE& operator[](ARG_KEY key) { return m_map[key]; }
+    void SetAt(ARG_KEY key, ARG_VALUE newValue) { Slot(key).value = newValue; }
+    VALUE& operator[](ARG_KEY key) { return Slot(key).value; }
     BOOL RemoveKey(ARG_KEY key) { return m_map.erase(key) > 0 ? TRUE : FALSE; }
     void RemoveAll() { m_map.clear(); }
 
@@ -156,7 +158,7 @@ public:
     {
         auto* box = static_cast<Iter*>(rNextPosition);
         rKey = (*box)->first;
-        rValue = (*box)->second;
+        rValue = (*box)->second.value;
         ++(*box);
         if (*box == const_cast<MapT&>(m_map).end()) { delete box; rNextPosition = nullptr; }
     }
@@ -169,23 +171,18 @@ public:
 
     const ECPair* PGetFirstAssoc() const
     {
-        if (m_map.empty()) return nullptr;
-        m_scratch.reset(new ECPair(m_map.begin()->first, m_map.begin()->second));
-        return m_scratch.get();
+        return m_map.empty() ? nullptr : &m_map.begin()->second;
     }
     const ECPair* PGetNextAssoc(const ECPair* pAssocRet) const
     {
         auto it = m_map.find(pAssocRet->key);
         if (it == m_map.end() || ++it == m_map.end()) return nullptr;
-        m_scratch.reset(new ECPair(it->first, it->second));
-        return m_scratch.get();
+        return &it->second;
     }
     const ECPair* PLookup(ARG_KEY key) const
     {
         auto it = m_map.find(key);
-        if (it == m_map.end()) return nullptr;
-        m_scratch.reset(new ECPair(it->first, it->second));
-        return m_scratch.get();
+        return it == m_map.end() ? nullptr : &it->second;
     }
     ECPair* PGetFirstAssoc() { return const_cast<ECPair*>(AsConst().PGetFirstAssoc()); }
     ECPair* PGetNextAssoc(const ECPair* pAssocRet) { return const_cast<ECPair*>(AsConst().PGetNextAssoc(pAssocRet)); }
@@ -194,8 +191,15 @@ public:
 private:
     const ECMap& AsConst() const { return *this; }
 
+    ECPair& Slot(ARG_KEY key)
+    {
+        auto it = m_map.find(key);
+        if (it == m_map.end())
+            it = m_map.emplace(KEY(key), ECPair(KEY(key), VALUE())).first;
+        return it->second;
+    }
+
     MapT m_map;
-    mutable std::unique_ptr<ECPair> m_scratch;
 };
 
 template <class BASE_CLASS, class TYPE>

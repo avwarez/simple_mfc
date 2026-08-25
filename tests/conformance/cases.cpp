@@ -3997,6 +3997,99 @@ static void TestDebugOnly()
 }
 #endif
 
+static void TestAliasingAndIdentity()
+{
+    {
+        CString original(_T("aliasing subject"));
+        CString copy(original);
+        CString assigned;
+        assigned = original;
+        copy += _T("!");
+        LineBool("Aliasing.CString.mutate_detaches",
+                 original.GetString() != copy.GetString());
+        Line("Aliasing.CString.original_unchanged", original);
+        Line("Aliasing.CString.copy_after_mutation", copy);
+    }
+
+    {
+        CString s(_T("abc"));
+        LPTSTR buffer = s.GetBuffer(16);
+        s.ReleaseBuffer();
+        Line("Aliasing.ReleaseBuffer.pointer_content", CString(buffer));
+    }
+
+    {
+        CString shared(_T("cow subject"));
+        CString twin(shared);
+        LPTSTR buffer = twin.GetBuffer(32);
+        buffer[0] = _T('C');
+        twin.ReleaseBuffer();
+        Line("Aliasing.GetBuffer.on_shared_copy.original", shared);
+        Line("Aliasing.GetBuffer.on_shared_copy.twin", twin);
+    }
+
+    {
+        typedef CMap<CString, LPCTSTR, int, int> TypedMap;
+        TypedMap map;
+        map.SetAt(_T("k"), 1);
+        if (TypedMap::CPair* pair = map.PLookup(_T("k")))
+            pair->value = 42;
+        int readBack = 0;
+        map.Lookup(_T("k"), readBack);
+        LineInt("Aliasing.CMap.CPair.write_through", readBack);
+
+        map[_T("idx")] = 7;
+        int viaIndex = 0;
+        map.Lookup(_T("idx"), viaIndex);
+        LineInt("Aliasing.CMap.operator_index.write_through", viaIndex);
+    }
+
+    {
+        typedef CRBMap<ULONGLONG, DWORD> TypedRBMap;
+        TypedRBMap map;
+        map.SetAt(1, 100);
+        POSITION pos = map.GetHeadPosition();
+        if (TypedRBMap::CPair* pair = map.GetNext(pos))
+            pair->m_value = 999;
+        POSITION head = map.GetHeadPosition();
+        LineInt("Aliasing.CRBMap.CPair.write_through",
+                static_cast<long long>(map.GetValueAt(head)));
+    }
+
+    {
+        CArray<int, int> values;
+        values.SetSize(3);
+        values.SetAt(0, 1);
+        int* data = values.GetData();
+        values.SetAt(0, 7);
+        LineInt("Aliasing.CArray.GetData.sees_SetAt", data[0]);
+        values.ElementAt(1) = 5;
+        LineInt("Aliasing.CArray.ElementAt.write_through", values.GetAt(1));
+        values[2] = 9;
+        LineInt("Aliasing.CArray.operator_index.write_through", values.GetAt(2));
+    }
+
+    {
+        CStringList list;
+        list.AddTail(_T("first"));
+        list.AddTail(_T("second"));
+        POSITION pos = list.GetHeadPosition();
+        list.GetAt(pos) = _T("rewritten");
+        Line("Aliasing.CStringList.GetAt.write_through", list.GetHead());
+    }
+
+    {
+        CPtrList list;
+        int one = 1;
+        int two = 2;
+        list.AddTail(&one);
+        POSITION pos = list.GetHeadPosition();
+        list.GetAt(pos) = &two;
+        LineInt("Aliasing.CPtrList.GetAt.write_through",
+                *static_cast<int*>(list.GetHead()));
+    }
+}
+
 int main()
 {
     SilenceWindowsDialogs();
@@ -4058,6 +4151,7 @@ int main()
     TestCFileSharing();
     TestCStdioFileTextMode();
     TestCFileErrorPaths();
+    TestAliasingAndIdentity();
     TestRemainingGaps();
 
 #ifdef _DEBUG
