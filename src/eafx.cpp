@@ -726,20 +726,6 @@ BOOL ECFileFind::GetLastWriteTime(ECTime& refTime) const
 }
 
 #ifdef _WIN32
-namespace
-{
-ECTime TimeFromFileTime(const FILETIME& ft)
-{
-    const unsigned long long ticks =
-        (static_cast<unsigned long long>(ft.dwHighDateTime) << 32) | ft.dwLowDateTime;
-    return ECTime(static_cast<__time64_t>(ticks / 10000000ULL) - 11644473600LL);
-}
-}
-
-#else
-#endif
-
-#ifdef _WIN32
 BOOL ECFileFind::GetLastWriteTime(FILETIME* pTimeStamp) const
 {
     if (pTimeStamp == nullptr)

@@ -136,7 +136,7 @@ static int SmfcEnumerate()
 
 static int SmfcCurrentYear()
 {
-    return ECTime::GetCurrentTime().GetYear();
+    return _ttoi(ECTime::GetCurrentTime().Format(_T("%Y")));
 }
 #endif
 
