@@ -27,95 +27,147 @@ namespace mfc_detail
 template <class T>
 class ListImpl
 {
-public:
-    EPOSITION AddHead(T v) { m_list.push_front(std::move(v)); return Box(m_list.begin()); }
-    EPOSITION AddTail(T v) { m_list.push_back(std::move(v)); auto it = m_list.end(); --it; return Box(it); }
-    T& GetHead() { return m_list.front(); }
-    const T& GetHead() const { return m_list.front(); }
-    T& GetTail() { return m_list.back(); }
-    const T& GetTail() const { return m_list.back(); }
-    T RemoveHead() { T v = std::move(m_list.front()); m_list.pop_front(); return v; }
-    T RemoveTail() { T v = std::move(m_list.back()); m_list.pop_back(); return v; }
+    struct Node
+    {
+        Node* prev;
+        Node* next;
+        T value;
+        explicit Node(T v) : prev(nullptr), next(nullptr), value(std::move(v)) {}
+    };
 
-    EPOSITION GetHeadPosition() const { return m_list.empty() ? nullptr : Box(m_list.begin()); }
-    EPOSITION GetTailPosition() const { if (m_list.empty()) return nullptr; auto it = m_list.end(); --it; return Box(it); }
+public:
+    ListImpl() = default;
+    ListImpl(const ListImpl& other) { CopyFrom(other); }
+    ListImpl& operator=(const ListImpl& other)
+    {
+        if (this != &other) { RemoveAll(); CopyFrom(other); }
+        return *this;
+    }
+    ~ListImpl() { RemoveAll(); }
+
+    EPOSITION AddHead(T v)
+    {
+        Node* n = new Node(std::move(v));
+        n->next = m_head;
+        if (m_head) m_head->prev = n; else m_tail = n;
+        m_head = n;
+        ++m_count;
+        return n;
+    }
+    EPOSITION AddTail(T v)
+    {
+        Node* n = new Node(std::move(v));
+        n->prev = m_tail;
+        if (m_tail) m_tail->next = n; else m_head = n;
+        m_tail = n;
+        ++m_count;
+        return n;
+    }
+    T& GetHead() { return m_head->value; }
+    const T& GetHead() const { return m_head->value; }
+    T& GetTail() { return m_tail->value; }
+    const T& GetTail() const { return m_tail->value; }
+    T RemoveHead() { T v = std::move(m_head->value); Unlink(m_head); return v; }
+    T RemoveTail() { T v = std::move(m_tail->value); Unlink(m_tail); return v; }
+
+    EPOSITION GetHeadPosition() const { return m_head; }
+    EPOSITION GetTailPosition() const { return m_tail; }
 
     T& GetNext(EPOSITION& rPosition)
     {
-        auto* box = static_cast<Iter*>(rPosition);
-        T& ref = **box;
-        ++(*box);
-        if (*box == m_list.end()) { delete box; rPosition = nullptr; }
-        return ref;
+        Node* n = static_cast<Node*>(rPosition);
+        rPosition = n->next;
+        return n->value;
+    }
+    const T& GetNext(EPOSITION& rPosition) const
+    {
+        Node* n = static_cast<Node*>(rPosition);
+        rPosition = n->next;
+        return n->value;
     }
     T& GetPrev(EPOSITION& rPosition)
     {
-        auto* box = static_cast<Iter*>(rPosition);
-        T& ref = **box;
-        if (*box == m_list.begin()) { delete box; rPosition = nullptr; }
-        else { --(*box); }
-        return ref;
-    }
-    T& GetAt(EPOSITION position) { return **static_cast<Iter*>(position); }
-    const T& GetNext(EPOSITION& rPosition) const
-    {
-        auto* box = static_cast<Iter*>(rPosition);
-        const T& ref = **box;
-        ++(*box);
-        if (*box == m_list.end()) { delete box; rPosition = nullptr; }
-        return ref;
+        Node* n = static_cast<Node*>(rPosition);
+        rPosition = n->prev;
+        return n->value;
     }
     const T& GetPrev(EPOSITION& rPosition) const
     {
-        auto* box = static_cast<Iter*>(rPosition);
-        const T& ref = **box;
-        if (*box == m_list.begin()) { delete box; rPosition = nullptr; }
-        else { --(*box); }
-        return ref;
+        Node* n = static_cast<Node*>(rPosition);
+        rPosition = n->prev;
+        return n->value;
     }
-    const T& GetAt(EPOSITION position) const { return **static_cast<Iter*>(position); }
+    T& GetAt(EPOSITION position) { return static_cast<Node*>(position)->value; }
+    const T& GetAt(EPOSITION position) const { return static_cast<Node*>(position)->value; }
 
-    void SetAt(EPOSITION position, T v) { **static_cast<Iter*>(position) = std::move(v); }
-    void RemoveAt(EPOSITION position)
+    void SetAt(EPOSITION position, T v) { static_cast<Node*>(position)->value = std::move(v); }
+    void RemoveAt(EPOSITION position) { Unlink(static_cast<Node*>(position)); }
+    void RemoveAll()
     {
-        auto* box = static_cast<Iter*>(position);
-        m_list.erase(*box);
-        delete box;
+        Node* n = m_head;
+        while (n) { Node* next = n->next; delete n; n = next; }
+        m_head = nullptr;
+        m_tail = nullptr;
+        m_count = 0;
     }
-    void RemoveAll() { m_list.clear(); }
 
     EPOSITION Find(const T& searchValue, EPOSITION startAfter = nullptr) const
     {
-        auto it = startAfter ? std::next(*static_cast<Iter*>(startAfter)) : m_list.begin();
-        for (; it != m_list.end(); ++it)
-            if (*it == searchValue) return Box(it);
+        Node* n = startAfter ? static_cast<Node*>(startAfter)->next : m_head;
+        for (; n; n = n->next)
+            if (n->value == searchValue) return n;
         return nullptr;
     }
     EPOSITION FindIndex(INT_PTR nIndex) const
     {
-        if (nIndex < 0 || static_cast<size_t>(nIndex) >= m_list.size()) return nullptr;
-        auto it = m_list.begin();
-        std::advance(it, nIndex);
-        return Box(it);
+        if (nIndex < 0 || nIndex >= m_count) return nullptr;
+        Node* n = m_head;
+        for (INT_PTR i = 0; i < nIndex; ++i) n = n->next;
+        return n;
     }
     EPOSITION InsertBefore(EPOSITION position, T newElement)
     {
-        auto it = position ? *static_cast<Iter*>(position) : m_list.begin();
-        return Box(m_list.insert(it, std::move(newElement)));
+        if (position == nullptr) return AddHead(std::move(newElement));
+        Node* at = static_cast<Node*>(position);
+        Node* n = new Node(std::move(newElement));
+        n->prev = at->prev;
+        n->next = at;
+        if (at->prev) at->prev->next = n; else m_head = n;
+        at->prev = n;
+        ++m_count;
+        return n;
     }
     EPOSITION InsertAfter(EPOSITION position, T newElement)
     {
-        auto it = position ? std::next(*static_cast<Iter*>(position)) : m_list.begin();
-        return Box(m_list.insert(it, std::move(newElement)));
+        if (position == nullptr) return AddTail(std::move(newElement));
+        Node* at = static_cast<Node*>(position);
+        Node* n = new Node(std::move(newElement));
+        n->next = at->next;
+        n->prev = at;
+        if (at->next) at->next->prev = n; else m_tail = n;
+        at->next = n;
+        ++m_count;
+        return n;
     }
 
-    INT_PTR GetCount() const { return static_cast<INT_PTR>(m_list.size()); }
-    bool IsEmpty() const { return m_list.empty(); }
+    INT_PTR GetCount() const { return m_count; }
+    bool IsEmpty() const { return m_count == 0; }
 
 private:
-    using Iter = typename std::list<T>::iterator;
-    static EPOSITION Box(Iter it) { return new Iter(it); }
-    mutable std::list<T> m_list;
+    void Unlink(Node* n)
+    {
+        if (n->prev) n->prev->next = n->next; else m_head = n->next;
+        if (n->next) n->next->prev = n->prev; else m_tail = n->prev;
+        delete n;
+        --m_count;
+    }
+    void CopyFrom(const ListImpl& other)
+    {
+        for (Node* n = other.m_head; n; n = n->next) AddTail(n->value);
+    }
+    Node* m_head = nullptr;
+    Node* m_tail = nullptr;
+    INT_PTR m_count = 0;
 };
 
 template <class T>

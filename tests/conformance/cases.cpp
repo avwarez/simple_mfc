@@ -1042,6 +1042,266 @@ static void TestCListTemplate()
     LineBool("CList_CString.IsEmptyAfterRemoveAll", list.IsEmpty() != FALSE);
 }
 
+
+template <class ListType>
+static std::string ListOrder(const ListType& list)
+{
+    std::string out;
+    POSITION pos = list.GetHeadPosition();
+    while (pos)
+    {
+        const CString& v = list.GetNext(pos);
+        out += Utf8(v);
+        if (pos) out += ",";
+    }
+    return out;
+}
+
+static void TestCObListEdges()
+{
+    CObList empty;
+    LineInt("CObList.Empty.GetCount", empty.GetCount());
+    LineBool("CObList.Empty.IsEmpty", empty.IsEmpty() != FALSE);
+    LineBool("CObList.Empty.GetHeadPosition.null", empty.GetHeadPosition() == nullptr);
+    LineBool("CObList.Empty.GetTailPosition.null", empty.GetTailPosition() == nullptr);
+    IntBox probe(7);
+    LineBool("CObList.Empty.Find.null", empty.Find(&probe) == nullptr);
+    LineBool("CObList.Empty.FindIndex0.null", empty.FindIndex(0) == nullptr);
+
+    CObList list;
+    IntBox a(1);
+    POSITION posA = list.AddTail(&a);
+    LineInt("CObList.AddTail.first.GetAt.value", static_cast<IntBox*>(list.GetAt(posA))->v);
+    LineBool("CObList.AddTail.first.is_head", posA == list.GetHeadPosition());
+    LineBool("CObList.AddTail.first.is_tail", posA == list.GetTailPosition());
+    LineBool("CObList.Single.head_eq_tail", list.GetHead() == list.GetTail());
+
+    POSITION walk = list.GetHeadPosition();
+    list.GetNext(walk);
+    LineBool("CObList.Single.GetNext.pos_null_after", walk == nullptr);
+    walk = list.GetTailPosition();
+    list.GetPrev(walk);
+    LineBool("CObList.Single.GetPrev.pos_null_after", walk == nullptr);
+
+    IntBox b(2);
+    POSITION posB = list.AddHead(&b);
+    LineInt("CObList.AddHead.GetAt.value", static_cast<IntBox*>(list.GetAt(posB))->v);
+    LineBool("CObList.AddHead.is_head", posB == list.GetHeadPosition());
+
+    CObList dup;
+    IntBox d1(5), d2(5), d3(9);
+    dup.AddTail(&d1);
+    dup.AddTail(&d3);
+    dup.AddTail(&d2);
+    POSITION first = dup.Find(&d1);
+    LineBool("CObList.Find.first.is_head", first == dup.GetHeadPosition());
+    LineBool("CObList.Find.startAfter.skips_first", dup.Find(&d1, first) == nullptr);
+    POSITION firstNine = dup.Find(&d3);
+    LineBool("CObList.Find.startAfter.finds_later", dup.Find(&d2, firstNine) == dup.GetTailPosition());
+    LineBool("CObList.Find.startAfter.past_end.null", dup.Find(&d2, dup.GetTailPosition()) == nullptr);
+
+    LineBool("CObList.FindIndex.outOfRange.null", dup.FindIndex(dup.GetCount()) == nullptr);
+    LineBool("CObList.FindIndex.negative.null", dup.FindIndex(-1) == nullptr);
+    LineBool("CObList.FindIndex.last.is_tail", dup.FindIndex(dup.GetCount() - 1) == dup.GetTailPosition());
+
+    IntBox ins(42);
+    POSITION beforeHead = dup.InsertBefore(dup.GetHeadPosition(), &ins);
+    LineBool("CObList.InsertBefore.head.becomes_head", beforeHead == dup.GetHeadPosition());
+    LineInt("CObList.InsertBefore.head.value", static_cast<IntBox*>(dup.GetHead())->v);
+    IntBox ins2(43);
+    POSITION afterTail = dup.InsertAfter(dup.GetTailPosition(), &ins2);
+    LineBool("CObList.InsertAfter.tail.becomes_tail", afterTail == dup.GetTailPosition());
+    LineInt("CObList.InsertAfter.tail.value", static_cast<IntBox*>(dup.GetTail())->v);
+
+    dup.RemoveAt(dup.GetHeadPosition());
+    LineInt("CObList.RemoveAt.head.newHead", static_cast<IntBox*>(dup.GetHead())->v);
+    dup.RemoveAt(dup.GetTailPosition());
+    LineInt("CObList.RemoveAt.tail.newTail", static_cast<IntBox*>(dup.GetTail())->v);
+    LineInt("CObList.RemoveAt.CountAfterBoth", dup.GetCount());
+
+    POSITION last = dup.GetTailPosition();
+    dup.GetNext(last);
+    LineBool("CObList.GetNext.at_tail.pos_null", last == nullptr);
+    POSITION head = dup.GetHeadPosition();
+    dup.GetPrev(head);
+    LineBool("CObList.GetPrev.at_head.pos_null", head == nullptr);
+
+    CObList nullPos;
+    IntBox n1(61), n2(62), n3(63);
+    nullPos.AddTail(&n1);
+    POSITION beforeNull = nullPos.InsertBefore(nullptr, &n2);
+    LineBool("CObList.InsertBefore.null.is_head", beforeNull == nullPos.GetHeadPosition());
+    LineInt("CObList.InsertBefore.null.head.value", static_cast<IntBox*>(nullPos.GetHead())->v);
+    POSITION afterNull = nullPos.InsertAfter(nullptr, &n3);
+    LineBool("CObList.InsertAfter.null.is_head", afterNull == nullPos.GetHeadPosition());
+    LineBool("CObList.InsertAfter.null.is_tail", afterNull == nullPos.GetTailPosition());
+    LineInt("CObList.InsertAfter.null.head.value", static_cast<IntBox*>(nullPos.GetHead())->v);
+    LineInt("CObList.InsertAfter.null.tail.value", static_cast<IntBox*>(nullPos.GetTail())->v);
+}
+
+static void TestCPtrListEdges()
+{
+    void* v1 = reinterpret_cast<void*>(static_cast<intptr_t>(11));
+    void* v2 = reinterpret_cast<void*>(static_cast<intptr_t>(22));
+    void* v3 = reinterpret_cast<void*>(static_cast<intptr_t>(33));
+
+    CPtrList empty;
+    LineInt("CPtrList.Empty.GetCount", empty.GetCount());
+    LineBool("CPtrList.Empty.GetHeadPosition.null", empty.GetHeadPosition() == nullptr);
+    LineBool("CPtrList.Empty.GetTailPosition.null", empty.GetTailPosition() == nullptr);
+    LineBool("CPtrList.Empty.Find.null", empty.Find(v1) == nullptr);
+    LineBool("CPtrList.Empty.FindIndex0.null", empty.FindIndex(0) == nullptr);
+
+    CPtrList list;
+    POSITION p1 = list.AddTail(v1);
+    LineInt("CPtrList.AddTail.first.GetAt", reinterpret_cast<intptr_t>(list.GetAt(p1)));
+    LineBool("CPtrList.AddTail.first.is_head", p1 == list.GetHeadPosition());
+    LineBool("CPtrList.AddTail.first.is_tail", p1 == list.GetTailPosition());
+
+    POSITION p2 = list.AddHead(v2);
+    LineBool("CPtrList.AddHead.is_head", p2 == list.GetHeadPosition());
+    list.AddTail(v3);
+
+    POSITION firstV2 = list.Find(v2);
+    LineBool("CPtrList.Find.startAfter.skips_first", list.Find(v2, firstV2) == nullptr);
+    LineBool("CPtrList.FindIndex.outOfRange.null", list.FindIndex(list.GetCount()) == nullptr);
+    LineBool("CPtrList.FindIndex.negative.null", list.FindIndex(-1) == nullptr);
+    LineBool("CPtrList.FindIndex.last.is_tail", list.FindIndex(list.GetCount() - 1) == list.GetTailPosition());
+
+    list.SetAt(list.GetHeadPosition(), v3);
+    LineInt("CPtrList.SetAt.head.value", reinterpret_cast<intptr_t>(list.GetHead()));
+
+    POSITION insHead = list.InsertBefore(list.GetHeadPosition(), v1);
+    LineBool("CPtrList.InsertBefore.head.becomes_head", insHead == list.GetHeadPosition());
+    POSITION insTail = list.InsertAfter(list.GetTailPosition(), v2);
+    LineBool("CPtrList.InsertAfter.tail.becomes_tail", insTail == list.GetTailPosition());
+
+    list.RemoveAt(list.GetHeadPosition());
+    LineInt("CPtrList.RemoveAt.head.newHead", reinterpret_cast<intptr_t>(list.GetHead()));
+    list.RemoveAt(list.GetTailPosition());
+    LineInt("CPtrList.RemoveAt.tail.newTail", reinterpret_cast<intptr_t>(list.GetTail()));
+    LineInt("CPtrList.RemoveAt.CountAfterBoth", list.GetCount());
+
+    POSITION walk = list.GetTailPosition();
+    list.GetNext(walk);
+    LineBool("CPtrList.GetNext.at_tail.pos_null", walk == nullptr);
+}
+
+static void TestCStringListEdges()
+{
+    CStringList empty;
+    LineInt("CStringList.Empty.GetCount", empty.GetCount());
+    LineBool("CStringList.Empty.GetHeadPosition.null", empty.GetHeadPosition() == nullptr);
+    LineBool("CStringList.Empty.GetTailPosition.null", empty.GetTailPosition() == nullptr);
+    LineBool("CStringList.Empty.Find.null", empty.Find(_T("nope")) == nullptr);
+
+    CStringList list;
+    POSITION posA = list.AddTail(_T("alpha"));
+    Line("CStringList.AddTail.first.GetAt", list.GetAt(posA));
+    LineBool("CStringList.AddTail.first.is_head", posA == list.GetHeadPosition());
+    LineBool("CStringList.AddTail.first.is_tail", posA == list.GetTailPosition());
+
+    POSITION posB = list.AddHead(_T("beta"));
+    LineBool("CStringList.AddHead.is_head", posB == list.GetHeadPosition());
+    list.AddTail(_T("gamma"));
+    Line("CStringList.GetTailPosition.value", list.GetAt(list.GetTailPosition()));
+
+    list.SetAt(list.GetHeadPosition(), _T("BETA"));
+    Line("CStringList.SetAt.head.value", list.GetHead());
+
+    POSITION insHead = list.InsertBefore(list.GetHeadPosition(), _T("first"));
+    LineBool("CStringList.InsertBefore.head.becomes_head", insHead == list.GetHeadPosition());
+    POSITION insTail = list.InsertAfter(list.GetTailPosition(), _T("last"));
+    LineBool("CStringList.InsertAfter.tail.becomes_tail", insTail == list.GetTailPosition());
+    Line("CStringList.Order.afterInserts", ListOrder(list));
+
+    list.RemoveAt(list.GetHeadPosition());
+    Line("CStringList.RemoveAt.head.newHead", list.GetHead());
+    list.RemoveAt(list.GetTailPosition());
+    Line("CStringList.RemoveAt.tail.newTail", list.GetTail());
+    LineInt("CStringList.RemoveAt.CountAfterBoth", list.GetCount());
+
+    CStringList dup;
+    dup.AddTail(_T("dup"));
+    dup.AddTail(_T("mid"));
+    dup.AddTail(_T("dup"));
+    POSITION firstDup = dup.Find(_T("dup"));
+    LineBool("CStringList.Find.first.is_head", firstDup == dup.GetHeadPosition());
+    LineBool("CStringList.Find.startAfter.finds_second", dup.Find(_T("dup"), firstDup) == dup.GetTailPosition());
+    LineBool("CStringList.Find.startAfter.past_end.null", dup.Find(_T("dup"), dup.GetTailPosition()) == nullptr);
+
+    CStringList other;
+    other.AddTail(_T("x1"));
+    other.AddTail(_T("x2"));
+    CStringList target;
+    target.AddTail(_T("keep"));
+    target.AddTail(&other);
+    Line("CStringList.AddTail.list.order", ListOrder(target));
+    LineInt("CStringList.AddTail.list.count", target.GetCount());
+    CStringList target2;
+    target2.AddTail(_T("keep"));
+    target2.AddHead(&other);
+    Line("CStringList.AddHead.list.order", ListOrder(target2));
+    LineInt("CStringList.AddHead.list.count", target2.GetCount());
+    LineInt("CStringList.AddHead.list.source_untouched", other.GetCount());
+}
+
+static void TestCListTemplateEdges()
+{
+    typedef CList<CString, const CString&> StrList;
+
+    StrList empty;
+    LineInt("CList_CString.Empty.GetCount", empty.GetCount());
+    LineBool("CList_CString.Empty.GetHeadPosition.null", empty.GetHeadPosition() == nullptr);
+    LineBool("CList_CString.Empty.GetTailPosition.null", empty.GetTailPosition() == nullptr);
+    LineBool("CList_CString.Empty.Find.null", empty.Find(_T("nope")) == nullptr);
+    LineBool("CList_CString.Empty.FindIndex0.null", empty.FindIndex(0) == nullptr);
+
+    StrList list;
+    POSITION posA = list.AddTail(_T("a"));
+    Line("CList_CString.AddTail.first.GetAt", list.GetAt(posA));
+    LineBool("CList_CString.AddTail.first.is_head", posA == list.GetHeadPosition());
+    LineBool("CList_CString.AddTail.first.is_tail", posA == list.GetTailPosition());
+    POSITION posB = list.AddHead(_T("b"));
+    LineBool("CList_CString.AddHead.is_head", posB == list.GetHeadPosition());
+    list.AddTail(_T("c"));
+
+    LineBool("CList_CString.FindIndex.outOfRange.null", list.FindIndex(list.GetCount()) == nullptr);
+    LineBool("CList_CString.FindIndex.negative.null", list.FindIndex(-1) == nullptr);
+    LineBool("CList_CString.FindIndex.last.is_tail", list.FindIndex(list.GetCount() - 1) == list.GetTailPosition());
+
+    POSITION insHead = list.InsertBefore(list.GetHeadPosition(), _T("pre"));
+    LineBool("CList_CString.InsertBefore.head.becomes_head", insHead == list.GetHeadPosition());
+    POSITION insTail = list.InsertAfter(list.GetTailPosition(), _T("post"));
+    LineBool("CList_CString.InsertAfter.tail.becomes_tail", insTail == list.GetTailPosition());
+
+    list.RemoveAt(list.GetHeadPosition());
+    Line("CList_CString.RemoveAt.head.newHead", list.GetHead());
+    list.RemoveAt(list.GetTailPosition());
+    Line("CList_CString.RemoveAt.tail.newTail", list.GetTail());
+    LineInt("CList_CString.RemoveAt.CountAfterBoth", list.GetCount());
+
+    StrList dup;
+    dup.AddTail(_T("same"));
+    dup.AddTail(_T("other"));
+    dup.AddTail(_T("same"));
+    POSITION firstSame = dup.Find(_T("same"));
+    LineBool("CList_CString.Find.startAfter.finds_second", dup.Find(_T("same"), firstSame) == dup.GetTailPosition());
+    LineBool("CList_CString.Find.startAfter.past_end.null", dup.Find(_T("same"), dup.GetTailPosition()) == nullptr);
+
+    StrList other;
+    other.AddTail(_T("o1"));
+    other.AddTail(_T("o2"));
+    StrList target;
+    target.AddTail(_T("keep"));
+    target.AddTail(&other);
+    Line("CList_CString.AddTail.list.order", ListOrder(target));
+    StrList target2;
+    target2.AddTail(_T("keep"));
+    target2.AddHead(&other);
+    Line("CList_CString.AddHead.list.order", ListOrder(target2));
+    LineInt("CList_CString.AddHead.list.source_untouched", other.GetCount());
+}
 static void TestCMapTemplate()
 {
     CMap<CString, LPCTSTR, int, int> map;
@@ -4021,6 +4281,10 @@ int main()
     TestCUIntArray();
     TestCArrayTemplate();
     TestCListTemplate();
+    TestCObListEdges();
+    TestCPtrListEdges();
+    TestCStringListEdges();
+    TestCListTemplateEdges();
     TestCMapTemplate();
     TestCMapPtrToPtr();
     TestCMapStringToPtr();
