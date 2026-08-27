@@ -3492,6 +3492,194 @@ static void TestNonBMP()
     Line("NonBMP.AtlUnicodeToUTF8.hex", Hex(dst.data(), static_cast<size_t>(outLen > 0 ? outLen : 0)));
 }
 
+namespace
+{
+std::string Bytes(const CStringA& s)
+{
+    std::string out;
+    for (int i = 0; i < s.GetLength(); ++i)
+    {
+        char buf[8];
+        std::snprintf(buf, sizeof(buf), "%s%02X", i ? " " : "",
+                      static_cast<unsigned>(static_cast<unsigned char>(s.GetAt(i))));
+        out += buf;
+    }
+    return out;
+}
+
+CStringA NarrowFrom(const unsigned char* p, size_t n)
+{
+    return CStringA(reinterpret_cast<const char*>(p), static_cast<int>(n));
+}
+
+void NarrowToWideCase(const char* label, const unsigned char* p, size_t n)
+{
+    const std::string base = std::string("Conv.N2W.") + label;
+    const CString wide(reinterpret_cast<const char*>(p), static_cast<int>(n));
+    LineInt((base + ".length").c_str(), wide.GetLength());
+    Line((base + ".units").c_str(), CodeUnits(wide));
+
+    const CStringA back(wide.GetString(), wide.GetLength());
+    LineInt((base + ".back.length").c_str(), back.GetLength());
+    Line((base + ".back.bytes").c_str(), Bytes(back));
+    LineBool((base + ".round_trips").c_str(),
+             back.GetLength() == static_cast<int>(n) &&
+                 std::memcmp(back.GetString(), p, n) == 0);
+}
+
+void WideToNarrowCase(const char* label, const unsigned short* p, size_t n)
+{
+    const std::string base = std::string("Conv.W2N.") + label;
+    std::vector<TCHAR> src(n);
+    for (size_t i = 0; i < n; ++i) src[i] = static_cast<TCHAR>(p[i]);
+    const CString wide(src.data(), static_cast<int>(n));
+
+    const CStringA narrow(wide.GetString(), wide.GetLength());
+    LineInt((base + ".length").c_str(), narrow.GetLength());
+    Line((base + ".bytes").c_str(), Bytes(narrow));
+
+    const CString back(narrow.GetString(), narrow.GetLength());
+    Line((base + ".back.units").c_str(), CodeUnits(back));
+    LineBool((base + ".round_trips").c_str(), back == wide);
+}
+}
+
+static void TestNarrowWideConversion()
+{
+    {
+        const unsigned char ascii[] = {'H', 'e', 'l', 'l', 'o', '!'};
+        NarrowToWideCase("ascii", ascii, sizeof(ascii));
+
+        const unsigned char ctrl[] = {0x01, 0x09, 0x0A, 0x1F, 0x7F};
+        NarrowToWideCase("ctrl", ctrl, sizeof(ctrl));
+    }
+
+    {
+        static const unsigned char kProbes[] = {
+            0x80, 0x81, 0x82, 0x85, 0x8D, 0x8F, 0x90, 0x92,
+            0x93, 0x99, 0x9D, 0xA0, 0xAD, 0xC0, 0xE9, 0xFC, 0xFF};
+        for (unsigned char b : kProbes)
+        {
+            char label[16];
+            std::snprintf(label, sizeof(label), "byte_%02X", static_cast<unsigned>(b));
+            const unsigned char one[] = {b};
+            NarrowToWideCase(label, one, 1);
+        }
+    }
+
+    {
+        unsigned char high[128];
+        for (int i = 0; i < 128; ++i) high[i] = static_cast<unsigned char>(0x80 + i);
+        NarrowToWideCase("high_range", high, sizeof(high));
+    }
+
+    {
+        const unsigned char utf8_e_acute[] = {0xC3, 0xA9};
+        NarrowToWideCase("utf8_e_acute", utf8_e_acute, sizeof(utf8_e_acute));
+        const unsigned char utf8_euro[] = {0xE2, 0x82, 0xAC};
+        NarrowToWideCase("utf8_euro", utf8_euro, sizeof(utf8_euro));
+        const unsigned char utf8_cjk[] = {0xE4, 0xB8, 0xAD};
+        NarrowToWideCase("utf8_cjk", utf8_cjk, sizeof(utf8_cjk));
+        const unsigned char mixed[] = {'a', 0xE9, 'b', 0x80, 'c'};
+        NarrowToWideCase("mixed", mixed, sizeof(mixed));
+        const unsigned char lead_only[] = {'a', 0xC3};
+        NarrowToWideCase("truncated_lead", lead_only, sizeof(lead_only));
+    }
+
+    {
+        const unsigned short ascii[] = {'H', 'i'};
+        WideToNarrowCase("ascii", ascii, 2);
+        const unsigned short latin1[] = {0x00E9, 0x00FC};
+        WideToNarrowCase("latin1", latin1, 2);
+        const unsigned short c1[] = {0x0081, 0x008D, 0x009D};
+        WideToNarrowCase("c1_controls", c1, 3);
+        const unsigned short euro[] = {0x20AC};
+        WideToNarrowCase("euro", euro, 1);
+        const unsigned short rsquo[] = {0x2019};
+        WideToNarrowCase("rsquo", rsquo, 1);
+        const unsigned short nbsp[] = {0x00A0};
+        WideToNarrowCase("nbsp", nbsp, 1);
+        const unsigned short amacron[] = {0x0100};
+        WideToNarrowCase("latin_ext_a", amacron, 1);
+        const unsigned short cyrillic[] = {0x0410, 0x0411};
+        WideToNarrowCase("cyrillic", cyrillic, 2);
+        const unsigned short cjk[] = {0x4E2D, 0x6587};
+        WideToNarrowCase("cjk", cjk, 2);
+        const unsigned short surrogate[] = {0xD83D, 0xDE00};
+        WideToNarrowCase("non_bmp", surrogate, 2);
+        const unsigned short lone_surrogate[] = {0xD83D};
+        WideToNarrowCase("lone_surrogate", lone_surrogate, 1);
+        const unsigned short replacement[] = {0xFFFD};
+        WideToNarrowCase("replacement", replacement, 1);
+        const unsigned short mix[] = {'a', 0x00E9, 'b', 0x20AC, 'c'};
+        WideToNarrowCase("mixed", mix, 5);
+    }
+
+    {
+        const char embedded[] = {'a', '\0', 0x62, 0};
+        const CString wide(embedded, 3);
+        LineInt("Conv.embedded_nul.length", wide.GetLength());
+        Line("Conv.embedded_nul.units", CodeUnits(wide));
+    }
+
+    {
+        const unsigned char high[] = {0xE9, 0x80};
+        CString wide(_T("x"));
+        wide += NarrowFrom(high, sizeof(high)).GetString();
+        Line("Conv.append_narrow.units", CodeUnits(wide));
+        LineInt("Conv.append_narrow.length", wide.GetLength());
+
+        const CStringA narrow = NarrowFrom(high, sizeof(high));
+        const CString widened(narrow.GetString(), narrow.GetLength());
+        LineBool("Conv.compare_cross_width", widened == narrow.GetString());
+    }
+
+    {
+        const unsigned char high[] = {'a', 0xE9, 0x80, 'b'};
+        const CStringA payload = NarrowFrom(high, sizeof(high));
+        CMemFile file;
+        {
+            CArchive ar(&file, CArchive::store);
+            ar.Write(payload.GetString(), static_cast<UINT>(payload.GetLength()));
+        }
+        file.SeekToBegin();
+        char raw[8] = {0};
+        {
+            CArchive ar(&file, CArchive::load);
+            ar.Read(raw, static_cast<UINT>(payload.GetLength()));
+        }
+        const CString wide(raw, payload.GetLength());
+        Line("Conv.archive_ansi.units", CodeUnits(wide));
+    }
+}
+
+static void TestConversionBestFitTable()
+{
+    for (unsigned hi = 0; hi < 256; ++hi)
+    {
+        std::string row;
+        for (unsigned lo = 0; lo < 256; ++lo)
+        {
+            if (lo) row += '/';
+            const unsigned cp = (hi << 8) | lo;
+            if (cp >= 0xD800 && cp <= 0xDFFF) { row += '-'; continue; }
+            const TCHAR one[1] = {static_cast<TCHAR>(cp)};
+            const CString wide(one, 1);
+            const CStringA narrow(wide.GetString(), wide.GetLength());
+            for (int i = 0; i < narrow.GetLength(); ++i)
+            {
+                char buf[4];
+                std::snprintf(buf, sizeof(buf), "%02X",
+                              static_cast<unsigned>(static_cast<unsigned char>(narrow.GetAt(i))));
+                row += buf;
+            }
+        }
+        char name[32];
+        std::snprintf(name, sizeof(name), "Conv.BestFit.%02X", hi);
+        Line(name, row);
+    }
+}
+
 static void TestCStringGaps()
 {
     {
@@ -4837,6 +5025,8 @@ int main()
     TestExceptionGaps();
     TestCString();
     TestCStringGaps();
+    TestNarrowWideConversion();
+    TestConversionBestFitTable();
     TestNonBMP();
     TestCFile();
     TestCStdioFile();
