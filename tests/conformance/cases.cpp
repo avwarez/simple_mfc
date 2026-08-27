@@ -981,6 +981,428 @@ static void TestCArrayTemplate()
     LineBool("CArray_int.IsEmptyAfterRemoveAll", arr.IsEmpty() != FALSE);
 }
 
+template <class ArrayType>
+static std::string ArrayInts(const ArrayType& arr)
+{
+    std::string out;
+    for (INT_PTR i = 0; i < arr.GetSize(); ++i)
+    {
+        if (i)
+            out += ",";
+        out += std::to_string(static_cast<long long>(arr.GetAt(i)));
+    }
+    return out;
+}
+
+static std::string PtrArrayInts(const CPtrArray& arr)
+{
+    std::string out;
+    for (INT_PTR i = 0; i < arr.GetSize(); ++i)
+    {
+        if (i)
+            out += ",";
+        out += std::to_string(static_cast<long long>(reinterpret_cast<intptr_t>(arr.GetAt(i))));
+    }
+    return out;
+}
+
+static std::string StringArrayOrder(const CStringArray& arr)
+{
+    std::string out;
+    for (INT_PTR i = 0; i < arr.GetSize(); ++i)
+    {
+        if (i)
+            out += ",";
+        out += Utf8(arr.GetAt(i));
+    }
+    return out;
+}
+
+static void* PtrVal(intptr_t v)
+{
+    return reinterpret_cast<void*>(v);
+}
+
+static void TestCArrayTemplateEdges()
+{
+    CArray<int> fresh;
+    LineBool("CArray_int.GetData.fresh.is_null", fresh.GetData() == NULL);
+    LineInt("CArray_int.GetSize.fresh", static_cast<long long>(fresh.GetSize()));
+    LineBool("CArray_int.IsEmpty.fresh", fresh.IsEmpty() != FALSE);
+
+    CArray<int> grow;
+    grow.Add(1);
+    grow.Add(2);
+    grow.SetSize(5);
+    LineInt("CArray_int.SetSize.grow.size", static_cast<long long>(grow.GetSize()));
+    Line("CArray_int.SetSize.grow.content", ArrayInts(grow));
+    grow.SetSize(1);
+    grow.SetSize(3);
+    Line("CArray_int.SetSize.shrink_then_grow.content", ArrayInts(grow));
+
+    CArray<int> lifecycle;
+    lifecycle.Add(10);
+    lifecycle.Add(20);
+    lifecycle.Add(30);
+    lifecycle.Add(40);
+    const int* before = lifecycle.GetData();
+    lifecycle.SetSize(2);
+    LineBool("CArray_int.GetData.shrink.same_buffer", lifecycle.GetData() == before);
+    lifecycle.SetSize(0);
+    LineBool("CArray_int.GetData.after_SetSize0.is_null", lifecycle.GetData() == NULL);
+    LineInt("CArray_int.GetCount.after_SetSize0", static_cast<long long>(lifecycle.GetCount()));
+
+    CArray<int> cleared;
+    cleared.Add(7);
+    cleared.RemoveAll();
+    LineBool("CArray_int.GetData.after_RemoveAll.is_null", cleared.GetData() == NULL);
+
+    CArray<int> beyond;
+    beyond.Add(1);
+    beyond.Add(2);
+    beyond.InsertAt(4, 9);
+    LineInt("CArray_int.InsertAt.beyond.size", static_cast<long long>(beyond.GetSize()));
+    Line("CArray_int.InsertAt.beyond.content", ArrayInts(beyond));
+
+    CArray<int> multi;
+    multi.Add(1);
+    multi.Add(2);
+    multi.Add(3);
+    multi.InsertAt(1, 8, 3);
+    LineInt("CArray_int.InsertAt.count3.size", static_cast<long long>(multi.GetSize()));
+    Line("CArray_int.InsertAt.count3.content", ArrayInts(multi));
+
+    CArray<int> rem;
+    for (int i = 0; i < 5; ++i)
+        rem.Add(i);
+    rem.RemoveAt(1, 0);
+    Line("CArray_int.RemoveAt.count0.content", ArrayInts(rem));
+    rem.RemoveAt(3, 2);
+    Line("CArray_int.RemoveAt.to_end.content", ArrayInts(rem));
+    rem.RemoveAt(0, rem.GetSize());
+    LineInt("CArray_int.RemoveAt.all.size", static_cast<long long>(rem.GetSize()));
+    LineBool("CArray_int.RemoveAt.all.GetData.is_null", rem.GetData() == NULL);
+
+    CArray<int> dst;
+    dst.Add(1);
+    dst.Add(2);
+    CArray<int> emptySrc;
+    LineInt("CArray_int.Append.empty.result", static_cast<long long>(dst.Append(emptySrc)));
+    LineInt("CArray_int.Append.empty.size", static_cast<long long>(dst.GetSize()));
+
+    CArray<int> emptyDst;
+    CArray<int> src2;
+    src2.Add(5);
+    src2.Add(6);
+    LineInt("CArray_int.Append.onto_empty.result", static_cast<long long>(emptyDst.Append(src2)));
+    Line("CArray_int.Append.onto_empty.content", ArrayInts(emptyDst));
+
+    CArray<int> big;
+    for (int i = 0; i < 6; ++i)
+        big.Add(100 + i);
+    CArray<int> oneOnly;
+    oneOnly.Add(1);
+    big.Copy(oneOnly);
+    LineInt("CArray_int.Copy.shrinks_dst.size", static_cast<long long>(big.GetSize()));
+    Line("CArray_int.Copy.shrinks_dst.content", ArrayInts(big));
+
+    CArray<int> copyFromEmpty;
+    copyFromEmpty.Add(1);
+    CArray<int> nothing;
+    copyFromEmpty.Copy(nothing);
+    LineInt("CArray_int.Copy.from_empty.size", static_cast<long long>(copyFromEmpty.GetSize()));
+    LineBool("CArray_int.Copy.from_empty.IsEmpty", copyFromEmpty.IsEmpty() != FALSE);
+    LineBool("CArray_int.Copy.from_empty.GetData.is_null", copyFromEmpty.GetData() == NULL);
+
+    CArray<int> writeThrough;
+    writeThrough.Add(1);
+    writeThrough.Add(2);
+    writeThrough.ElementAt(0) = 55;
+    LineInt("CArray_int.ElementAt.write_through", writeThrough.GetAt(0));
+    writeThrough[1] = 66;
+    LineInt("CArray_int.operator_index.write_through", writeThrough.GetAt(1));
+    LineInt("CArray_int.GetCount.minus.GetSize", static_cast<long long>(writeThrough.GetCount() - writeThrough.GetSize()));
+}
+
+static void TestCStringArrayEdges()
+{
+    CStringArray fresh;
+    LineBool("CStringArray.GetData.fresh.is_null", fresh.GetData() == NULL);
+    LineInt("CStringArray.GetSize.fresh", static_cast<long long>(fresh.GetSize()));
+
+    CStringArray grow;
+    grow.Add(_T("aa"));
+    grow.Add(_T("bb"));
+    grow.SetSize(4);
+    LineInt("CStringArray.SetSize.grow.size", static_cast<long long>(grow.GetSize()));
+    Line("CStringArray.SetSize.grow.content", StringArrayOrder(grow));
+    LineBool("CStringArray.SetSize.grow.tail_is_empty", grow.GetAt(3).IsEmpty() != FALSE);
+    grow.SetSize(1);
+    grow.SetSize(3);
+    Line("CStringArray.SetSize.shrink_then_grow.content", StringArrayOrder(grow));
+
+    CStringArray lifecycle;
+    lifecycle.Add(_T("one"));
+    lifecycle.Add(_T("two"));
+    lifecycle.Add(_T("three"));
+    lifecycle.Add(_T("four"));
+    const CString* before = lifecycle.GetData();
+    lifecycle.SetSize(2);
+    LineBool("CStringArray.GetData.shrink.same_buffer", lifecycle.GetData() == before);
+    lifecycle.SetSize(0);
+    LineBool("CStringArray.GetData.after_SetSize0.is_null", lifecycle.GetData() == NULL);
+    LineInt("CStringArray.GetCount.after_SetSize0", static_cast<long long>(lifecycle.GetCount()));
+
+    CStringArray cleared;
+    cleared.Add(_T("x"));
+    cleared.RemoveAll();
+    LineBool("CStringArray.GetData.after_RemoveAll.is_null", cleared.GetData() == NULL);
+
+    CStringArray beyond;
+    beyond.Add(_T("a"));
+    beyond.Add(_T("b"));
+    beyond.InsertAt(4, _T("z"));
+    LineInt("CStringArray.InsertAt.beyond.size", static_cast<long long>(beyond.GetSize()));
+    Line("CStringArray.InsertAt.beyond.content", StringArrayOrder(beyond));
+    LineBool("CStringArray.InsertAt.beyond.gap_is_empty", beyond.GetAt(2).IsEmpty() != FALSE);
+
+    CStringArray multi;
+    multi.Add(_T("a"));
+    multi.Add(_T("b"));
+    multi.Add(_T("c"));
+    multi.InsertAt(1, _T("N"), 3);
+    LineInt("CStringArray.InsertAt.count3.size", static_cast<long long>(multi.GetSize()));
+    Line("CStringArray.InsertAt.count3.content", StringArrayOrder(multi));
+
+    CStringArray rem;
+    rem.Add(_T("0"));
+    rem.Add(_T("1"));
+    rem.Add(_T("2"));
+    rem.Add(_T("3"));
+    rem.Add(_T("4"));
+    rem.RemoveAt(1, 0);
+    Line("CStringArray.RemoveAt.count0.content", StringArrayOrder(rem));
+    rem.RemoveAt(3, 2);
+    Line("CStringArray.RemoveAt.to_end.content", StringArrayOrder(rem));
+    rem.RemoveAt(0, rem.GetSize());
+    LineInt("CStringArray.RemoveAt.all.size", static_cast<long long>(rem.GetSize()));
+    LineBool("CStringArray.RemoveAt.all.GetData.is_null", rem.GetData() == NULL);
+
+    CStringArray dst;
+    dst.Add(_T("a"));
+    dst.Add(_T("b"));
+    CStringArray emptySrc;
+    LineInt("CStringArray.Append.empty.result", static_cast<long long>(dst.Append(emptySrc)));
+    LineInt("CStringArray.Append.empty.size", static_cast<long long>(dst.GetSize()));
+
+    CStringArray emptyDst;
+    CStringArray src2;
+    src2.Add(_T("p"));
+    src2.Add(_T("q"));
+    LineInt("CStringArray.Append.onto_empty.result", static_cast<long long>(emptyDst.Append(src2)));
+    Line("CStringArray.Append.onto_empty.content", StringArrayOrder(emptyDst));
+    Line("CStringArray.Append.source_untouched", StringArrayOrder(src2));
+
+    CStringArray big;
+    big.Add(_T("1"));
+    big.Add(_T("2"));
+    big.Add(_T("3"));
+    big.Add(_T("4"));
+    CStringArray oneOnly;
+    oneOnly.Add(_T("only"));
+    big.Copy(oneOnly);
+    LineInt("CStringArray.Copy.shrinks_dst.size", static_cast<long long>(big.GetSize()));
+    Line("CStringArray.Copy.shrinks_dst.content", StringArrayOrder(big));
+
+    CStringArray copyFromEmpty;
+    copyFromEmpty.Add(_T("gone"));
+    CStringArray nothing;
+    copyFromEmpty.Copy(nothing);
+    LineInt("CStringArray.Copy.from_empty.size", static_cast<long long>(copyFromEmpty.GetSize()));
+    LineBool("CStringArray.Copy.from_empty.GetData.is_null", copyFromEmpty.GetData() == NULL);
+
+    CStringArray writeThrough;
+    writeThrough.Add(_T("a"));
+    writeThrough.Add(_T("b"));
+    writeThrough.ElementAt(0) = _T("A");
+    Line("CStringArray.ElementAt.write_through", writeThrough.GetAt(0));
+    writeThrough[1] = _T("B");
+    Line("CStringArray.operator_index.write_through", writeThrough.GetAt(1));
+    LineInt("CStringArray.GetCount.minus.GetSize", static_cast<long long>(writeThrough.GetCount() - writeThrough.GetSize()));
+}
+
+static void TestCPtrArrayEdges()
+{
+    CPtrArray fresh;
+    LineBool("CPtrArray.GetData.fresh.is_null", fresh.GetData() == NULL);
+    LineInt("CPtrArray.GetSize.fresh", static_cast<long long>(fresh.GetSize()));
+
+    CPtrArray grow;
+    grow.Add(PtrVal(11));
+    grow.Add(PtrVal(22));
+    grow.SetSize(4);
+    LineInt("CPtrArray.SetSize.grow.size", static_cast<long long>(grow.GetSize()));
+    Line("CPtrArray.SetSize.grow.content", PtrArrayInts(grow));
+    LineBool("CPtrArray.SetSize.grow.tail_is_null", grow.GetAt(3) == NULL);
+    grow.SetSize(1);
+    grow.SetSize(3);
+    Line("CPtrArray.SetSize.shrink_then_grow.content", PtrArrayInts(grow));
+
+    CPtrArray lifecycle;
+    lifecycle.Add(PtrVal(1));
+    lifecycle.Add(PtrVal(2));
+    lifecycle.Add(PtrVal(3));
+    lifecycle.Add(PtrVal(4));
+    void** before = lifecycle.GetData();
+    lifecycle.SetSize(2);
+    LineBool("CPtrArray.GetData.shrink.same_buffer", lifecycle.GetData() == before);
+    lifecycle.SetSize(0);
+    LineBool("CPtrArray.GetData.after_SetSize0.is_null", lifecycle.GetData() == NULL);
+    LineInt("CPtrArray.GetCount.after_SetSize0", static_cast<long long>(lifecycle.GetCount()));
+
+    CPtrArray cleared;
+    cleared.Add(PtrVal(9));
+    cleared.RemoveAll();
+    LineBool("CPtrArray.GetData.after_RemoveAll.is_null", cleared.GetData() == NULL);
+
+    CPtrArray beyond;
+    beyond.Add(PtrVal(1));
+    beyond.Add(PtrVal(2));
+    beyond.InsertAt(4, PtrVal(9));
+    LineInt("CPtrArray.InsertAt.beyond.size", static_cast<long long>(beyond.GetSize()));
+    Line("CPtrArray.InsertAt.beyond.content", PtrArrayInts(beyond));
+
+    CPtrArray multi;
+    multi.Add(PtrVal(1));
+    multi.Add(PtrVal(2));
+    multi.Add(PtrVal(3));
+    multi.InsertAt(1, PtrVal(8), 3);
+    LineInt("CPtrArray.InsertAt.count3.size", static_cast<long long>(multi.GetSize()));
+    Line("CPtrArray.InsertAt.count3.content", PtrArrayInts(multi));
+
+    CPtrArray rem;
+    for (intptr_t i = 0; i < 5; ++i)
+        rem.Add(PtrVal(i));
+    rem.RemoveAt(1, 0);
+    Line("CPtrArray.RemoveAt.count0.content", PtrArrayInts(rem));
+    rem.RemoveAt(3, 2);
+    Line("CPtrArray.RemoveAt.to_end.content", PtrArrayInts(rem));
+    rem.RemoveAt(0, rem.GetSize());
+    LineInt("CPtrArray.RemoveAt.all.size", static_cast<long long>(rem.GetSize()));
+    LineBool("CPtrArray.RemoveAt.all.GetData.is_null", rem.GetData() == NULL);
+
+    CPtrArray dst;
+    dst.Add(PtrVal(1));
+    dst.Add(PtrVal(2));
+    CPtrArray emptySrc;
+    LineInt("CPtrArray.Append.empty.result", static_cast<long long>(dst.Append(emptySrc)));
+    LineInt("CPtrArray.Append.empty.size", static_cast<long long>(dst.GetSize()));
+
+    CPtrArray emptyDst;
+    CPtrArray src2;
+    src2.Add(PtrVal(5));
+    src2.Add(PtrVal(6));
+    LineInt("CPtrArray.Append.onto_empty.result", static_cast<long long>(emptyDst.Append(src2)));
+    Line("CPtrArray.Append.onto_empty.content", PtrArrayInts(emptyDst));
+
+    CPtrArray big;
+    for (intptr_t i = 0; i < 6; ++i)
+        big.Add(PtrVal(100 + i));
+    CPtrArray oneOnly;
+    oneOnly.Add(PtrVal(1));
+    big.Copy(oneOnly);
+    CPtrArray copyFromEmpty;
+    copyFromEmpty.Add(PtrVal(1));
+    CPtrArray nothing;
+    copyFromEmpty.Copy(nothing);
+    LineInt("CPtrArray.Copy.from_empty.size", static_cast<long long>(copyFromEmpty.GetSize()));
+    LineBool("CPtrArray.Copy.from_empty.GetData.is_null", copyFromEmpty.GetData() == NULL);
+
+    LineInt("CPtrArray.Copy.shrinks_dst.size", static_cast<long long>(big.GetSize()));
+    Line("CPtrArray.Copy.shrinks_dst.content", PtrArrayInts(big));
+
+    CPtrArray writeThrough;
+    writeThrough.Add(PtrVal(1));
+    writeThrough.Add(PtrVal(2));
+    writeThrough.ElementAt(0) = PtrVal(55);
+    LineInt("CPtrArray.ElementAt.write_through", reinterpret_cast<intptr_t>(writeThrough.GetAt(0)));
+    writeThrough[1] = PtrVal(66);
+    LineInt("CPtrArray.operator_index.write_through", reinterpret_cast<intptr_t>(writeThrough.GetAt(1)));
+    LineInt("CPtrArray.GetCount.minus.GetSize", static_cast<long long>(writeThrough.GetCount() - writeThrough.GetSize()));
+}
+
+static void TestCByteArrayEdges()
+{
+    CByteArray fresh;
+    LineBool("CByteArray.GetData.fresh.is_null", fresh.GetData() == NULL);
+
+    CByteArray grow;
+    grow.Add(1);
+    grow.Add(2);
+    grow.SetSize(5);
+    Line("CByteArray.SetSize.grow.content", ArrayInts(grow));
+
+    CByteArray lifecycle;
+    lifecycle.Add(10);
+    lifecycle.Add(20);
+    lifecycle.Add(30);
+    lifecycle.Add(40);
+    const BYTE* before = lifecycle.GetData();
+    lifecycle.SetSize(2);
+    LineBool("CByteArray.GetData.shrink.same_buffer", lifecycle.GetData() == before);
+    lifecycle.SetSize(0);
+    LineBool("CByteArray.GetData.after_SetSize0.is_null", lifecycle.GetData() == NULL);
+
+    CByteArray cleared;
+    cleared.Add(7);
+    cleared.RemoveAll();
+    LineBool("CByteArray.GetData.after_RemoveAll.is_null", cleared.GetData() == NULL);
+
+    CByteArray beyond;
+    beyond.Add(1);
+    beyond.InsertAt(3, 9);
+    LineInt("CByteArray.InsertAt.beyond.size", static_cast<long long>(beyond.GetSize()));
+    Line("CByteArray.InsertAt.beyond.content", ArrayInts(beyond));
+
+    CByteArray multi;
+    multi.Add(1);
+    multi.Add(2);
+    multi.InsertAt(1, 8, 3);
+    Line("CByteArray.InsertAt.count3.content", ArrayInts(multi));
+
+    CByteArray rem;
+    for (int i = 0; i < 5; ++i)
+        rem.Add(static_cast<BYTE>(i));
+    rem.RemoveAt(3, 2);
+    Line("CByteArray.RemoveAt.to_end.content", ArrayInts(rem));
+
+    CByteArray dst;
+    dst.Add(1);
+    CByteArray emptySrc;
+    LineInt("CByteArray.Append.empty.result", static_cast<long long>(dst.Append(emptySrc)));
+
+    CByteArray big;
+    for (int i = 0; i < 4; ++i)
+        big.Add(static_cast<BYTE>(100 + i));
+    CByteArray oneOnly;
+    oneOnly.Add(1);
+    big.Copy(oneOnly);
+    Line("CByteArray.Copy.shrinks_dst.content", ArrayInts(big));
+
+    CByteArray copyFromEmpty;
+    copyFromEmpty.Add(1);
+    CByteArray nothing;
+    copyFromEmpty.Copy(nothing);
+    LineBool("CByteArray.Copy.from_empty.GetData.is_null", copyFromEmpty.GetData() == NULL);
+
+    CByteArray writeThrough;
+    writeThrough.Add(1);
+    writeThrough.ElementAt(0) = 55;
+    LineInt("CByteArray.ElementAt.write_through", writeThrough.GetAt(0));
+    writeThrough[0] = 66;
+    LineInt("CByteArray.operator_index.write_through", writeThrough.GetAt(0));
+}
+
 static void TestCListTemplate()
 {
     CList<CString, const CString&> list;
@@ -4280,6 +4702,10 @@ int main()
     TestCByteArray();
     TestCUIntArray();
     TestCArrayTemplate();
+    TestCArrayTemplateEdges();
+    TestCStringArrayEdges();
+    TestCPtrArrayEdges();
+    TestCByteArrayEdges();
     TestCListTemplate();
     TestCObListEdges();
     TestCPtrListEdges();

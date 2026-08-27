@@ -6,7 +6,7 @@
 
 #include "eafx.h"
 
-#include <list>
+#include <algorithm>
 #include <memory>
 #include <type_traits>
 #include <unordered_map>
@@ -182,10 +182,15 @@ public:
     INT_PTR Append(const ArrayImpl& src)
     {
         INT_PTR oldSize = static_cast<INT_PTR>(m_v.size());
-        m_v.insert(m_v.end(), src.m_v.begin(), src.m_v.end());
+        SetSize(oldSize + static_cast<INT_PTR>(src.m_v.size()));
+        std::copy(src.m_v.begin(), src.m_v.end(), m_v.begin() + oldSize);
         return oldSize;
     }
-    void Copy(const ArrayImpl& src) { m_v = src.m_v; }
+    void Copy(const ArrayImpl& src)
+    {
+        SetSize(static_cast<INT_PTR>(src.m_v.size()));
+        std::copy(src.m_v.begin(), src.m_v.end(), m_v.begin());
+    }
     T& ElementAt(INT_PTR i) { return AsT(m_v.at(static_cast<size_t>(i))); }
     const T& GetAt(INT_PTR i) const { return AsT(m_v.at(static_cast<size_t>(i))); }
     INT_PTR GetCount() const { return static_cast<INT_PTR>(m_v.size()); }
@@ -198,10 +203,16 @@ public:
         m_v.insert(m_v.begin() + i, static_cast<size_t>(nCount), v);
     }
     bool IsEmpty() const { return m_v.empty(); }
-    void RemoveAll() { m_v.clear(); }
+    void RemoveAll() { SetSize(0); }
     void RemoveAt(INT_PTR i, INT_PTR nCount = 1) { m_v.erase(m_v.begin() + i, m_v.begin() + i + nCount); }
     void SetAt(INT_PTR i, T v) { m_v.at(static_cast<size_t>(i)) = std::move(v); }
-    void SetSize(INT_PTR nNewSize, INT_PTR   = -1) { m_v.resize(static_cast<size_t>(nNewSize)); }
+    void SetSize(INT_PTR nNewSize, INT_PTR   = -1)
+    {
+        if (nNewSize == 0)
+            std::vector<StoredT>().swap(m_v);
+        else
+            m_v.resize(static_cast<size_t>(nNewSize));
+    }
 
 private:
     std::vector<StoredT> m_v;
