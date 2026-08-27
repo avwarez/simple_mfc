@@ -779,20 +779,121 @@ ULONGLONG ECFileFind::GetLength() const
 
 ECString ECFileFind::GetRoot() const { return ECString(m_root.c_str()); }
 
-ECArchive::ECArchive(ECFile* pFile, UINT nMode, int  , void*  )
-    : m_pFile(pFile), m_nMode(nMode)
+ECArchive::ECArchive(ECFile* pFile, UINT nMode, int nBufSize, void* lpBuf)
+    : m_pFile(pFile), m_nMode(nMode), m_bUserBuf(lpBuf != nullptr),
+      m_nBufSize(nBufSize > 0 ? nBufSize : 4096),
+      m_lpBufStart(nullptr), m_lpBufCur(nullptr), m_lpBufMax(nullptr)
 {
+    m_lpBufStart = m_bUserBuf ? static_cast<BYTE*>(lpBuf)
+                              : new BYTE[static_cast<size_t>(m_nBufSize)];
+    m_lpBufCur = m_lpBufStart;
+    m_lpBufMax = IsStoring() ? m_lpBufStart + m_nBufSize : m_lpBufStart;
 }
 
-ECArchive::~ECArchive() { Close(); }
+ECArchive::~ECArchive()
+{
+    if (m_pFile != nullptr)
+        Close();
+    if (!m_bUserBuf)
+        delete[] m_lpBufStart;
+    m_lpBufStart = nullptr;
+    m_lpBufCur = nullptr;
+    m_lpBufMax = nullptr;
+}
 
 ECFile* ECArchive::GetFile() const { return m_pFile; }
 
-void ECArchive::Close() { Flush(); }
-void ECArchive::Flush() { if (m_pFile != nullptr) m_pFile->Flush(); }
+void ECArchive::Close()
+{
+    Flush();
+    m_pFile = nullptr;
+}
 
-UINT ECArchive::Read(void* lpBuf, UINT nMax) { return m_pFile != nullptr ? m_pFile->Read(lpBuf, nMax) : 0; }
-void ECArchive::Write(const void* lpBuf, UINT nMax) { if (m_pFile != nullptr) m_pFile->Write(lpBuf, nMax); }
+void ECArchive::FlushBuffer()
+{
+    if (m_pFile == nullptr)
+        return;
+    if (IsStoring() && m_lpBufCur != m_lpBufStart)
+        m_pFile->Write(m_lpBufStart, static_cast<UINT>(m_lpBufCur - m_lpBufStart));
+    m_lpBufCur = m_lpBufStart;
+    m_lpBufMax = IsStoring() ? m_lpBufStart + m_nBufSize : m_lpBufStart;
+}
+
+void ECArchive::Flush()
+{
+    if (m_pFile == nullptr)
+        return;
+    FlushBuffer();
+    m_pFile->Flush();
+}
+
+bool ECArchive::FillBuffer()
+{
+    UINT got = m_pFile->Read(m_lpBufStart, static_cast<UINT>(m_nBufSize));
+    m_lpBufCur = m_lpBufStart;
+    m_lpBufMax = m_lpBufStart + got;
+    return got != 0;
+}
+
+UINT ECArchive::Read(void* lpBuf, UINT nMax)
+{
+    if (m_pFile == nullptr || nMax == 0)
+        return 0;
+
+    BYTE* p = static_cast<BYTE*>(lpBuf);
+    UINT nMostBytes = static_cast<UINT>(m_lpBufMax - m_lpBufCur);
+    UINT nTemp = nMax < nMostBytes ? nMax : nMostBytes;
+    if (nTemp != 0)
+    {
+        std::memcpy(p, m_lpBufCur, nTemp);
+        m_lpBufCur += nTemp;
+    }
+    if (nTemp == nMax)
+        return nMax;
+
+    p += nTemp;
+    UINT nTotal = nTemp;
+    UINT nLeft = nMax - nTemp;
+
+    if (nLeft >= static_cast<UINT>(m_nBufSize))
+    {
+        UINT got = m_pFile->Read(p, nLeft);
+        m_lpBufCur = m_lpBufStart;
+        m_lpBufMax = m_lpBufStart;
+        return nTotal + got;
+    }
+
+    if (!FillBuffer())
+        return nTotal;
+
+    nMostBytes = static_cast<UINT>(m_lpBufMax - m_lpBufCur);
+    nTemp = nLeft < nMostBytes ? nLeft : nMostBytes;
+    if (nTemp != 0)
+    {
+        std::memcpy(p, m_lpBufCur, nTemp);
+        m_lpBufCur += nTemp;
+    }
+    return nTotal + nTemp;
+}
+
+void ECArchive::Write(const void* lpBuf, UINT nMax)
+{
+    if (m_pFile == nullptr || nMax == 0)
+        return;
+
+    const BYTE* p = static_cast<const BYTE*>(lpBuf);
+    if (m_lpBufCur + nMax > m_lpBufMax)
+    {
+        FlushBuffer();
+        if (nMax >= static_cast<UINT>(m_nBufSize))
+        {
+            m_pFile->Write(p, nMax);
+            return;
+        }
+    }
+    std::memcpy(m_lpBufCur, p, nMax);
+    m_lpBufCur += nMax;
+}
 
 namespace
 {
@@ -843,23 +944,105 @@ ECArchive& ECArchive::operator<<(float f) { return ArWriteRaw(*this, f); }
 ECArchive& ECArchive::operator<<(double d) { return ArWriteRaw(*this, d); }
 ECArchive& ECArchive::operator<<(ULONGLONG dwdw) { return ArWriteRaw(*this, dwdw); }
 
+namespace
+{
+void ArWriteStringLength(ECArchive& ar, ULONGLONG nLength, bool bUnicode)
+{
+    if (bUnicode)
+    {
+        ar << static_cast<BYTE>(0xFF);
+        ar << static_cast<WORD>(0xFFFE);
+    }
+    if (nLength < 255)
+    {
+        ar << static_cast<BYTE>(nLength);
+    }
+    else if (nLength < 0xFFFE)
+    {
+        ar << static_cast<BYTE>(0xFF);
+        ar << static_cast<WORD>(nLength);
+    }
+    else if (nLength < 0xFFFFFFFF)
+    {
+        ar << static_cast<BYTE>(0xFF);
+        ar << static_cast<WORD>(0xFFFF);
+        ar << static_cast<UINT>(nLength);
+    }
+    else
+    {
+        ar << static_cast<BYTE>(0xFF);
+        ar << static_cast<WORD>(0xFFFF);
+        ar << static_cast<UINT>(0xFFFFFFFF);
+        ar << nLength;
+    }
+}
+
+ULONGLONG ArReadStringLength(ECArchive& ar, bool& bUnicode)
+{
+    BYTE bLen = 0;
+    WORD wLen = 0;
+    UINT dwLen = 0;
+    ULONGLONG nLen = 0;
+
+    bUnicode = false;
+    ar >> bLen;
+    if (bLen < 0xFF)
+        return bLen;
+
+    ar >> wLen;
+    if (wLen == 0xFFFE)
+    {
+        bUnicode = true;
+        ar >> bLen;
+        if (bLen < 0xFF)
+            return bLen;
+        ar >> wLen;
+    }
+    if (wLen == 0xFFFF)
+    {
+        ar >> dwLen;
+        if (dwLen == 0xFFFFFFFF)
+        {
+            ar >> nLen;
+            return nLen;
+        }
+        return dwLen;
+    }
+    return wLen;
+}
+}
+
 ECArchive& ECArchive::operator>>(ECString& str)
 {
-    UINT nLen = 0;
-    Read(&nLen, sizeof(nLen));
-    if (nLen == 0) { str.Empty(); return *this; }
-    std::vector<TCHAR> buf(nLen);
-    Read(buf.data(), static_cast<UINT>(nLen * sizeof(TCHAR)));
-    str.SetString(buf.data(), static_cast<int>(nLen));
+    bool bUnicode = false;
+    ULONGLONG nLen = ArReadStringLength(*this, bUnicode);
+    if (nLen == 0)
+    {
+        str.Empty();
+        return *this;
+    }
+    size_t n = static_cast<size_t>(nLen);
+    if (bUnicode)
+    {
+        std::vector<TCHAR> buf(n);
+        Read(buf.data(), static_cast<UINT>(n * sizeof(TCHAR)));
+        str.SetString(buf.data(), static_cast<int>(n));
+    }
+    else
+    {
+        std::vector<char> buf(n);
+        Read(buf.data(), static_cast<UINT>(n));
+        str = ECString(buf.data(), static_cast<int>(n));
+    }
     return *this;
 }
 
 ECArchive& ECArchive::operator<<(const ECString& str)
 {
-    UINT nLen = static_cast<UINT>(str.GetLength());
-    Write(&nLen, sizeof(nLen));
+    int nLen = str.GetLength();
+    ArWriteStringLength(*this, static_cast<ULONGLONG>(nLen), sizeof(TCHAR) > 1);
     if (nLen > 0)
-        Write(str.GetString(), static_cast<UINT>(nLen * sizeof(TCHAR)));
+        Write(str.GetString(), static_cast<UINT>(static_cast<size_t>(nLen) * sizeof(TCHAR)));
     return *this;
 }
 

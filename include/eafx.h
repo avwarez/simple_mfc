@@ -1402,8 +1402,17 @@ public:
     ECArchive& operator<<(const ECString& str);
 
 private:
+    bool IsStoring() const { return m_nMode == store; }
+    void FlushBuffer();
+    bool FillBuffer();
+
     ECFile* m_pFile;
     UINT m_nMode;
+    bool m_bUserBuf;
+    int m_nBufSize;
+    BYTE* m_lpBufStart;
+    BYTE* m_lpBufCur;
+    BYTE* m_lpBufMax;
 };
 
 class ECArchiveException : public ECException

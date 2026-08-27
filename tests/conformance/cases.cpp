@@ -2267,6 +2267,157 @@ static void TestCArchive()
     }
 }
 
+static std::string ArchiveStringPrefix(const CString& s, long long& outTotal)
+{
+    CMemFile mf;
+    {
+        CArchive ar(&mf, CArchive::store);
+        ar << s;
+        ar.Close();
+    }
+    ULONGLONG len = mf.GetLength();
+    outTotal = static_cast<long long>(len);
+    mf.SeekToBegin();
+    UINT take = static_cast<UINT>(len < 12 ? len : 12);
+    std::vector<unsigned char> raw(take);
+    if (take != 0)
+        mf.Read(raw.data(), take);
+    return Hex(raw.data(), raw.size());
+}
+
+static void ArchiveStringCase(const char* label, const CString& s)
+{
+    long long total = 0;
+    std::string prefix = ArchiveStringPrefix(s, total);
+    std::string base = std::string("CArchive.CString.") + label;
+    Line((base + ".prefix_bytes").c_str(), prefix);
+    LineInt((base + ".total_bytes").c_str(), total);
+
+    CMemFile mf;
+    {
+        CArchive ar(&mf, CArchive::store);
+        ar << s;
+        ar.Close();
+    }
+    mf.SeekToBegin();
+    CString back;
+    {
+        CArchive ar(&mf, CArchive::load);
+        ar >> back;
+        ar.Close();
+    }
+    LineInt((base + ".roundTrip.length").c_str(), static_cast<long long>(back.GetLength()));
+    LineBool((base + ".roundTrip.equal").c_str(), back == s);
+}
+
+static void TestCArchiveStringFormat()
+{
+    ArchiveStringCase("empty", CString());
+    ArchiveStringCase("one", CString(_T("a")));
+    ArchiveStringCase("short", CString(_T("hello")));
+    ArchiveStringCase("len254", CString(_T('a'), 254));
+    ArchiveStringCase("len255", CString(_T('a'), 255));
+    ArchiveStringCase("len256", CString(_T('a'), 256));
+    ArchiveStringCase("len65533", CString(_T('a'), 65533));
+    ArchiveStringCase("len65534", CString(_T('a'), 65534));
+
+    CString accented;
+    accented += static_cast<TCHAR>(0x00E9);
+    accented += static_cast<TCHAR>(0x00FC);
+    ArchiveStringCase("latin1_high", accented);
+
+    CString cjk;
+    cjk += static_cast<TCHAR>(0x4E2D);
+    cjk += static_cast<TCHAR>(0x6587);
+    ArchiveStringCase("cjk", cjk);
+}
+
+static void TestCArchiveBuffering()
+{
+    CMemFile mf;
+    {
+        CArchive ar(&mf, CArchive::store);
+        ar << static_cast<BYTE>(1);
+        ar << static_cast<DWORD>(0x11223344);
+        LineInt("CArchive.buffering.length_before_flush", static_cast<long long>(mf.GetLength()));
+        ar.Flush();
+        LineInt("CArchive.buffering.length_after_flush", static_cast<long long>(mf.GetLength()));
+        ar.Close();
+        LineInt("CArchive.buffering.length_after_close", static_cast<long long>(mf.GetLength()));
+    }
+
+    CMemFile big;
+    {
+        CArchive ar(&big, CArchive::store);
+        for (int i = 0; i < 2000; ++i)
+            ar << static_cast<DWORD>(i);
+        LineBool("CArchive.buffering.8000_bytes_reached_file", big.GetLength() > 0);
+        ar.Close();
+        LineInt("CArchive.buffering.8000_bytes_after_close", static_cast<long long>(big.GetLength()));
+    }
+
+    CMemFile src;
+    {
+        CArchive ar(&src, CArchive::store);
+        for (int i = 0; i < 25; ++i)
+            ar << static_cast<DWORD>(i);
+        ar.Close();
+    }
+    src.SeekToBegin();
+    {
+        CArchive ar(&src, CArchive::load);
+        DWORD first = 0;
+        ar >> first;
+        LineInt("CArchive.load.first_value", static_cast<long long>(first));
+        LineInt("CArchive.load.file_position_after_one_read", static_cast<long long>(src.GetPosition()));
+        ar.Close();
+    }
+}
+
+static void TestCArchiveCloseAndEof()
+{
+    CMemFile mf;
+    {
+        CArchive ar(&mf, CArchive::store);
+        ar << static_cast<BYTE>(7);
+        LineBool("CArchive.GetFile.before_Close.is_backing", ar.GetFile() == &mf);
+        ar.Close();
+        LineBool("CArchive.GetFile.after_Close.is_null", ar.GetFile() == NULL);
+    }
+
+    CMemFile shortFile;
+    BYTE payload[4] = { 1, 2, 3, 4 };
+    shortFile.Write(payload, 4);
+    shortFile.SeekToBegin();
+    {
+        CArchive ar(&shortFile, CArchive::load);
+        unsigned char buf[16] = {};
+        LineInt("CArchive.Read.more_than_available", static_cast<long long>(ar.Read(buf, 16)));
+        LineInt("CArchive.Read.again_at_eof", static_cast<long long>(ar.Read(buf, 4)));
+        ar.Close();
+    }
+
+    CMemFile empty;
+    {
+        CArchive ar(&empty, CArchive::load);
+        unsigned char buf[4] = {};
+        LineInt("CArchive.Read.from_empty_file", static_cast<long long>(ar.Read(buf, 4)));
+        ar.Close();
+    }
+
+    CMemFile partial;
+    BYTE two[2] = { 0xAA, 0xBB };
+    partial.Write(two, 2);
+    partial.SeekToBegin();
+    {
+        CArchive ar(&partial, CArchive::load);
+        unsigned char buf[8] = {};
+        LineInt("CArchive.Read.partial.returns", static_cast<long long>(ar.Read(buf, 8)));
+        Line("CArchive.Read.partial.bytes", Hex(buf, 2));
+        ar.Close();
+    }
+}
+
 static void TestCMemFileDetachAttach()
 {
     CMemFile mf;
@@ -4692,6 +4843,9 @@ int main()
     TestCMemFile();
     TestCMemFileDetachAttach();
     TestCArchive();
+    TestCArchiveStringFormat();
+    TestCArchiveBuffering();
+    TestCArchiveCloseAndEof();
     TestCFileFind();
     TestCFileFindAttributes();
     TestCObList();
