@@ -4535,6 +4535,42 @@ static int RunHolder(const char* path, UINT flags, const char* goFile)
     return 0;
 }
 
+static void RunSharingScenario(const CString& path, const CString& dir, const char* label,
+                               UINT holderFlags, UINT secondFlags)
+{
+    const std::string narrowPath = Utf8(path);
+    const std::string goFile = Utf8(dir) + "simple_mfc_share_xp_go.tmp";
+    std::remove(goFile.c_str());
+
+    FILE* pipe = StartHolder(HolderCommand(narrowPath, holderFlags, goFile));
+    bool holderOpened = false;
+    if (pipe)
+    {
+        char line[64] = {};
+        if (std::fgets(line, sizeof(line), pipe))
+            holderOpened = std::strstr(line, "READY 1") != nullptr;
+    }
+
+    CFile second;
+    CFileException ex;
+    const BOOL secondOk = second.Open(path, secondFlags, &ex);
+
+    const std::string tag = std::string("CFile.ShareAcrossProcesses.") + label;
+    LineBool((tag + ".holder_opens").c_str(), holderOpened);
+    LineBool((tag + ".second_opens").c_str(), secondOk != FALSE);
+    LineInt((tag + ".second_cause").c_str(), secondOk != FALSE ? 0 : ex.m_cause);
+    if (secondOk) SafeClose(second);
+
+    Touch(goFile);
+    StopHolder(pipe);
+    std::remove(goFile.c_str());
+
+    CFile afterExit;
+    const BOOL reopened = afterExit.Open(path, secondFlags);
+    LineBool((tag + ".reopens_after_exit").c_str(), reopened != FALSE);
+    if (reopened) SafeClose(afterExit);
+}
+
 static void TestCFileSharingAcrossProcesses()
 {
     const CString dir = TempDir();
@@ -4546,9 +4582,6 @@ static void TestCFileSharingAcrossProcesses()
         seed.Write(payload, sizeof(payload) - 1);
         SafeClose(seed);
     }
-
-    const std::string narrowPath = Utf8(path);
-    const std::string goFile = Utf8(dir) + "simple_mfc_share_xp_go.tmp";
 
     struct Combo { const char* label; UINT holder; UINT second; };
     const Combo combos[] = {
@@ -4566,39 +4599,16 @@ static void TestCFileSharingAcrossProcesses()
     };
 
     for (const Combo& c : combos)
-    {
-        std::remove(goFile.c_str());
-
-        FILE* pipe = StartHolder(HolderCommand(narrowPath, c.holder, goFile));
-        bool holderOpened = false;
-        if (pipe)
-        {
-            char line[64] = {};
-            if (std::fgets(line, sizeof(line), pipe))
-                holderOpened = std::strstr(line, "READY 1") != nullptr;
-        }
-
-        CFile second;
-        CFileException ex;
-        const BOOL secondOk = second.Open(path, c.second, &ex);
-
-        const std::string tag = std::string("CFile.ShareAcrossProcesses.") + c.label;
-        LineBool((tag + ".holder_opens").c_str(), holderOpened);
-        LineBool((tag + ".second_opens").c_str(), secondOk != FALSE);
-        LineInt((tag + ".second_cause").c_str(), secondOk != FALSE ? 0 : ex.m_cause);
-        if (secondOk) SafeClose(second);
-
-        Touch(goFile);
-        StopHolder(pipe);
-        std::remove(goFile.c_str());
-
-        CFile afterExit;
-        const BOOL reopened = afterExit.Open(path, c.second);
-        LineBool((tag + ".reopens_after_exit").c_str(), reopened != FALSE);
-        if (reopened) SafeClose(afterExit);
-    }
+        RunSharingScenario(path, dir, c.label, c.holder, c.second);
 
     SafeRemoveFile(path);
+
+    const CString fresh = dir + CString(_T("simple_mfc_share_xp_new.bin"));
+    SafeRemoveFile(fresh);
+    RunSharingScenario(fresh, dir, "created_denyWrite_then_write",
+                       CFile::modeCreate | CFile::modeWrite | CFile::shareDenyWrite,
+                       CFile::modeWrite | CFile::shareDenyNone);
+    SafeRemoveFile(fresh);
 }
 
 static void TestCStdioFileTextMode()
