@@ -266,6 +266,15 @@ void MakeWritable(LPCTSTR path)
 #endif
 }
 
+std::basic_string<TCHAR> FromAscii(const char* s)
+{
+    std::basic_string<TCHAR> out;
+    for (; s && *s; ++s) out += static_cast<TCHAR>(static_cast<unsigned char>(*s));
+    return out;
+}
+
+std::string g_probePath;
+
 }
 
 static void TestRTTI()
@@ -4462,6 +4471,136 @@ static void TestCFileSharing()
     SafeRemoveFile(path);
 }
 
+static std::string QuoteArg(const std::string& s)
+{
+    return "\"" + s + "\"";
+}
+
+static std::string HolderCommand(const std::string& path, UINT flags, const std::string& goFile)
+{
+    const std::string cmd = QuoteArg(g_probePath) + " --hold " + QuoteArg(path) + " "
+                          + std::to_string(static_cast<unsigned long>(flags)) + " "
+                          + QuoteArg(goFile);
+#ifdef _WIN32
+    return "\"" + cmd + "\"";
+#else
+    return cmd;
+#endif
+}
+
+static FILE* StartHolder(const std::string& command)
+{
+#ifdef _WIN32
+    return _popen(command.c_str(), "r");
+#else
+    return popen(command.c_str(), "r");
+#endif
+}
+
+static void StopHolder(FILE* pipe)
+{
+    if (!pipe) return;
+#ifdef _WIN32
+    _pclose(pipe);
+#else
+    pclose(pipe);
+#endif
+}
+
+static void Touch(const std::string& path)
+{
+    if (FILE* f = std::fopen(path.c_str(), "wb")) std::fclose(f);
+}
+
+static bool Exists(const std::string& path)
+{
+    FILE* f = std::fopen(path.c_str(), "rb");
+    if (!f) return false;
+    std::fclose(f);
+    return true;
+}
+
+static int RunHolder(const char* path, UINT flags, const char* goFile)
+{
+    SilenceWindowsDialogs();
+    const std::basic_string<TCHAR> wide = FromAscii(path);
+    CFile file;
+    CFileException ex;
+    const BOOL ok = file.Open(wide.c_str(), flags, &ex);
+    std::printf("READY %d\n", ok != FALSE ? 1 : 0);
+    std::fflush(stdout);
+    for (int i = 0; i < 1000 && !Exists(goFile); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (ok) SafeClose(file);
+    return 0;
+}
+
+static void TestCFileSharingAcrossProcesses()
+{
+    const CString dir = TempDir();
+    const CString path = dir + CString(_T("simple_mfc_share_xp_4711.bin"));
+    {
+        CFile seed;
+        seed.Open(path, CFile::modeCreate | CFile::modeWrite | CFile::shareDenyNone);
+        const char payload[] = "share";
+        seed.Write(payload, sizeof(payload) - 1);
+        SafeClose(seed);
+    }
+
+    const std::string narrowPath = Utf8(path);
+    const std::string goFile = Utf8(dir) + "simple_mfc_share_xp_go.tmp";
+
+    struct Combo { const char* label; UINT holder; UINT second; };
+    const Combo combos[] = {
+        {"default_then_default",           CFile::modeRead,                          CFile::modeRead},
+        {"exclusive_then_read",            CFile::modeRead | CFile::shareExclusive,  CFile::modeRead | CFile::shareDenyNone},
+        {"denyNone_then_read",             CFile::modeRead | CFile::shareDenyNone,   CFile::modeRead | CFile::shareDenyNone},
+        {"denyNone_then_write",            CFile::modeRead | CFile::shareDenyNone,   CFile::modeWrite | CFile::shareDenyNone},
+        {"denyWrite_then_read",            CFile::modeRead | CFile::shareDenyWrite,  CFile::modeRead | CFile::shareDenyNone},
+        {"denyWrite_then_write",           CFile::modeRead | CFile::shareDenyWrite,  CFile::modeWrite | CFile::shareDenyNone},
+        {"denyRead_then_read",             CFile::modeWrite | CFile::shareDenyRead,  CFile::modeRead | CFile::shareDenyNone},
+        {"denyRead_then_write",            CFile::modeWrite | CFile::shareDenyRead,  CFile::modeWrite | CFile::shareDenyNone},
+        {"denyNone_then_exclusive",        CFile::modeRead | CFile::shareDenyNone,   CFile::modeRead | CFile::shareExclusive},
+        {"denyNone_then_denyWrite",        CFile::modeRead | CFile::shareDenyNone,   CFile::modeRead | CFile::shareDenyWrite},
+        {"writer_denyNone_then_denyWrite", CFile::modeWrite | CFile::shareDenyNone,  CFile::modeRead | CFile::shareDenyWrite},
+    };
+
+    for (const Combo& c : combos)
+    {
+        std::remove(goFile.c_str());
+
+        FILE* pipe = StartHolder(HolderCommand(narrowPath, c.holder, goFile));
+        bool holderOpened = false;
+        if (pipe)
+        {
+            char line[64] = {};
+            if (std::fgets(line, sizeof(line), pipe))
+                holderOpened = std::strstr(line, "READY 1") != nullptr;
+        }
+
+        CFile second;
+        CFileException ex;
+        const BOOL secondOk = second.Open(path, c.second, &ex);
+
+        const std::string tag = std::string("CFile.ShareAcrossProcesses.") + c.label;
+        LineBool((tag + ".holder_opens").c_str(), holderOpened);
+        LineBool((tag + ".second_opens").c_str(), secondOk != FALSE);
+        LineInt((tag + ".second_cause").c_str(), secondOk != FALSE ? 0 : ex.m_cause);
+        if (secondOk) SafeClose(second);
+
+        Touch(goFile);
+        StopHolder(pipe);
+        std::remove(goFile.c_str());
+
+        CFile afterExit;
+        const BOOL reopened = afterExit.Open(path, c.second);
+        LineBool((tag + ".reopens_after_exit").c_str(), reopened != FALSE);
+        if (reopened) SafeClose(afterExit);
+    }
+
+    SafeRemoveFile(path);
+}
+
 static void TestCStdioFileTextMode()
 {
     const CString dir = TempDir();
@@ -5015,8 +5154,12 @@ static void TestAliasingAndIdentity()
     }
 }
 
-int main()
+int main(int argc, char** argv)
 {
+    g_probePath = argc > 0 && argv[0] ? argv[0] : "";
+    if (argc >= 5 && std::strcmp(argv[1], "--hold") == 0)
+        return RunHolder(argv[2], static_cast<UINT>(std::strtoul(argv[3], nullptr, 10)), argv[4]);
+
     SilenceWindowsDialogs();
 
     TestRTTI();
@@ -5087,6 +5230,7 @@ int main()
     TestCStringBufferSemantics();
     TestCFileOpenFlags();
     TestCFileSharing();
+    TestCFileSharingAcrossProcesses();
     TestCStdioFileTextMode();
     TestCFileErrorPaths();
     TestAliasingAndIdentity();

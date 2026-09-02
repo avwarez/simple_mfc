@@ -15,6 +15,12 @@
 #endif
 #ifndef _WIN32
 #include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#endif
+
+#if !defined(_WIN32) && defined(F_OFD_SETLK) && defined(F_OFD_SETLKW)
+#define ESIMPLE_MFC_CROSS_PROCESS_SHARE 1
 #endif
 
 const ECRuntimeClass ECObject::classCRuntimeClass = {"CObject", nullptr, nullptr};
@@ -210,7 +216,91 @@ struct ShareEntry
     bool writes;
     bool permitsRead;
     bool permitsWrite;
+    int lockFd = -1;
 };
+
+#ifdef ESIMPLE_MFC_CROSS_PROCESS_SHARE
+enum ShareLockByte { kShareGuard = 0, kShareHasRead, kShareHasWrite, kShareDenyRead, kShareDenyWrite };
+
+enum ShareLockResult { kShareGranted, kShareConflict, kShareUnavailable };
+
+const off_t kShareLockBase = 0x40000000;
+
+ShareLockResult LockShareByte(int fd, int which, short type, bool wait)
+{
+    struct flock lk = {};
+    lk.l_type = type;
+    lk.l_whence = SEEK_SET;
+    lk.l_start = kShareLockBase + which;
+    lk.l_len = 1;
+    while (::fcntl(fd, wait ? F_OFD_SETLKW : F_OFD_SETLK, &lk) == -1)
+    {
+        if (errno == EINTR) continue;
+        return errno == EACCES || errno == EAGAIN ? kShareConflict : kShareUnavailable;
+    }
+    return kShareGranted;
+}
+
+int OpenShareLockFd(const std::filesystem::path& path)
+{
+    return ::open(path.c_str(), O_RDWR | O_CLOEXEC);
+}
+
+ShareLockResult ClaimShareBytes(int fd, const ShareEntry& want)
+{
+    const ShareLockResult guard = LockShareByte(fd, kShareGuard, F_WRLCK, true);
+    if (guard != kShareGranted) return kShareUnavailable;
+
+    const struct { bool applies; int byte; } probes[] = {
+        { want.reads,         kShareDenyRead  },
+        { want.writes,        kShareDenyWrite },
+        { !want.permitsRead,  kShareHasRead   },
+        { !want.permitsWrite, kShareHasWrite  },
+    };
+    ShareLockResult outcome = kShareGranted;
+    for (const auto& probe : probes)
+    {
+        if (!probe.applies) continue;
+        outcome = LockShareByte(fd, probe.byte, F_WRLCK, false);
+        if (outcome != kShareGranted) break;
+        LockShareByte(fd, probe.byte, F_UNLCK, false);
+    }
+
+    if (outcome == kShareGranted)
+    {
+        const struct { bool applies; int byte; } claims[] = {
+            { want.reads,         kShareHasRead   },
+            { want.writes,        kShareHasWrite  },
+            { !want.permitsRead,  kShareDenyRead  },
+            { !want.permitsWrite, kShareDenyWrite },
+        };
+        for (const auto& claim : claims)
+        {
+            if (!claim.applies) continue;
+            outcome = LockShareByte(fd, claim.byte, F_RDLCK, false);
+            if (outcome != kShareGranted) break;
+        }
+    }
+
+    LockShareByte(fd, kShareGuard, F_UNLCK, false);
+    return outcome;
+}
+
+bool AcquireShareLock(ShareEntry& want, const std::filesystem::path& path)
+{
+    want.lockFd = OpenShareLockFd(path);
+    if (want.lockFd == -1) return true;
+
+    const ShareLockResult outcome = ClaimShareBytes(want.lockFd, want);
+    if (outcome == kShareGranted) return true;
+
+    ::close(want.lockFd);
+    want.lockFd = -1;
+    return outcome != kShareConflict;
+}
+#else
+bool AcquireShareLock(ShareEntry&, const std::filesystem::path&) { return true; }
+#endif
 
 class ShareRegistry
 {
@@ -221,7 +311,8 @@ public:
         return instance;
     }
 
-    bool Acquire(const std::basic_string<TCHAR>& key, const ShareEntry& want)
+    bool Acquire(const std::basic_string<TCHAR>& key, const std::filesystem::path& path,
+                 ShareEntry want)
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         const auto it = m_open.find(key);
@@ -233,7 +324,18 @@ public:
                 if (held.reads && !want.permitsRead) return false;
                 if (held.writes && !want.permitsWrite) return false;
             }
+        if (!AcquireShareLock(want, path)) return false;
         m_open[key].push_back(want);
+        return true;
+    }
+
+    bool AttachLock(const void* owner, const std::filesystem::path& path)
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        for (auto& entry : m_open)
+            for (ShareEntry& held : entry.second)
+                if (held.owner == owner && held.lockFd == -1)
+                    return AcquireShareLock(held, path);
         return true;
     }
 
@@ -243,6 +345,10 @@ public:
         for (auto it = m_open.begin(); it != m_open.end();)
         {
             std::vector<ShareEntry>& held = it->second;
+#ifdef ESIMPLE_MFC_CROSS_PROCESS_SHARE
+            for (const ShareEntry& e : held)
+                if (e.owner == owner && e.lockFd != -1) ::close(e.lockFd);
+#endif
             held.erase(std::remove_if(held.begin(), held.end(),
                                       [owner](const ShareEntry& e) { return e.owner == owner; }),
                        held.end());
@@ -268,8 +374,15 @@ void ReleaseShare(const void* owner)
     ShareRegistry::Instance().Release(owner);
 }
 
-int FileOpenCause(int err, const std::filesystem::path& path)
+bool AttachShare(const void* owner, const std::filesystem::path& path)
 {
+    return ShareRegistry::Instance().AttachLock(owner, path);
+}
+
+int FileOpenCause(int err, const std::filesystem::path& path, long dosError = 0)
+{
+    if (dosError == ESIMPLE_MFC_ERROR_SHARING_VIOLATION)
+        return ECFileException::sharingViolation;
     if (err == EACCES || err == EPERM || err == EROFS || err == EISDIR)
         return ECFileException::accessDenied;
     if (err == EMFILE || err == ENFILE)
@@ -290,6 +403,8 @@ int FileOpenCause(int err, const std::filesystem::path& path)
 
 LONG FileOsError(int err, int cause)
 {
+    if (cause == ECFileException::sharingViolation)
+        return ESIMPLE_MFC_ERROR_SHARING_VIOLATION;
     if (err != 0) return static_cast<LONG>(err);
     switch (cause)
     {
@@ -338,7 +453,7 @@ BOOL ECFile::Open(LPCTSTR lpszFileName, UINT nOpenFlags, ECFileException* pError
     want.permitsWrite = share == shareDenyRead || share == shareDenyNone;
 
     const std::basic_string<TCHAR> key = mfc_detail::ShareKey(path);
-    if (!mfc_detail::ShareRegistry::Instance().Acquire(key, want))
+    if (!mfc_detail::ShareRegistry::Instance().Acquire(key, path, want))
     {
         if (pError)
             *pError = ECFileException(ECFileException::sharingViolation,
@@ -356,10 +471,25 @@ BOOL ECFile::Open(LPCTSTR lpszFileName, UINT nOpenFlags, ECFileException* pError
     if (!m_stream.is_open())
     {
         const int err = errno;
-        const int cause = mfc_detail::FileOpenCause(err, path);
+#ifdef _WIN32
+        const long dosError = static_cast<long>(_doserrno);
+#else
+        const long dosError = 0;
+#endif
+        const int cause = mfc_detail::FileOpenCause(err, path, dosError);
         mfc_detail::ReleaseShare(this);
         if (pError)
             *pError = ECFileException(cause, mfc_detail::FileOsError(err, cause), lpszFileName);
+        return FALSE;
+    }
+
+    if (!mfc_detail::AttachShare(this, path))
+    {
+        m_stream.close();
+        mfc_detail::ReleaseShare(this);
+        if (pError)
+            *pError = ECFileException(ECFileException::sharingViolation,
+                                      ESIMPLE_MFC_ERROR_SHARING_VIOLATION, lpszFileName);
         return FALSE;
     }
 
