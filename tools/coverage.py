@@ -68,8 +68,21 @@ def strip(text):
     return "".join(out)
 
 
+OPERATOR = re.compile(r"\boperator\s*(\[\s*\]|\(\s*\)|[^\s\w(]+|[\w:\s\*&]+?)\s*\(")
+
+
 def member_name(statement):
-    """The declared name in a member-function declaration, or None."""
+    """The declared name in a member-function declaration, or None.
+
+    Operators are matched first and by their own rule: the angle-bracket
+    tracking used for the rest reads the `<` of `operator<` as the start of
+    a template argument list and never finds the parameter list, which is
+    how eight comparison operators on CTime/CTimeSpan went uncounted.
+    """
+    op = OPERATOR.search(statement)
+    if op:
+        return "operator" + re.sub(r"\s+", "", op.group(1))
+
     depth = 0
     for i, ch in enumerate(statement):
         if ch in "<[":
@@ -78,13 +91,8 @@ def member_name(statement):
             depth -= 1
         elif ch == "(" and depth == 0:
             head = statement[:i].strip()
-            if head.endswith("operator"):
-                pass
-            hit = re.search(r"(operator\s*(?:[^\w\s(]+|[A-Za-z_][\w:\s\*&]*))$|([A-Za-z_]\w*)$", head)
-            if not hit:
-                return None
-            name = re.sub(r"\s+", " ", (hit.group(1) or hit.group(2)).strip())
-            return name
+            hit = re.search(r"([A-Za-z_]\w*)$", head)
+            return hit.group(1) if hit else None
     return None
 
 
@@ -194,12 +202,34 @@ def probe_text():
     return text
 
 
-def calls(text, classes):
-    """(class, method) pairs the probes make, plus names called unqualified.
+def balanced(text, i):
+    """Index just past the parenthesis run starting at text[i] == '('."""
+    depth = 0
+    while i < len(text):
+        if text[i] == "(":
+            depth += 1
+        elif text[i] == ")":
+            depth -= 1
+            if depth == 0:
+                return i + 1
+        i += 1
+    return -1
 
-    Variables are typed from their declaration, which is what makes the
-    attribution possible at all; MFC spelling in the probes maps back to the
-    E-prefixed declarations by dropping the E.
+
+def calls(text, classes):
+    """(class, method) pairs the probes make, plus names seen unattributed.
+
+    Three shapes are attributed to a class; everything else falls back to the
+    bare name and is reported apart, never counted as covered:
+
+      var.Method(...)        var typed from its declaration. A name reused in
+                             two tests with two types keeps BOTH candidates --
+                             taking the last one seen silently mis-attributed
+                             most container calls.
+      CClass(...).Method()   call on a temporary. Missing this shape reported
+                             CompareNoCase as never exercised while the suite
+                             had been comparing it against MFC all along.
+      CClass::Method(...)    static or qualified call.
     """
     mfc = {c[1:]: c for c in classes}
     var_type = {}
@@ -208,6 +238,17 @@ def calls(text, classes):
             var_type.setdefault(hit.group(3), set()).add(mfc[hit.group(1)])
 
     attributed, by_name = set(), set()
+
+    for hit in re.finditer(r"\b(C[A-Za-z_]\w*)\s*(?:<[^;{}()]*>)?\s*\(", text):
+        if hit.group(1) not in mfc:
+            continue
+        close = balanced(text, hit.end() - 1)
+        if close < 0:
+            continue
+        tail = re.match(r"\s*\.\s*([A-Za-z_]\w*)\s*\(", text[close:])
+        if tail:
+            attributed.add((mfc[hit.group(1)], tail.group(1)))
+
     for hit in re.finditer(r"\b([A-Za-z_]\w*)\s*(?:\.|->)\s*([A-Za-z_]\w*)\s*\(", text):
         candidates = var_type.get(hit.group(1))
         if candidates:
@@ -215,12 +256,57 @@ def calls(text, classes):
                 attributed.add((cls, hit.group(2)))
         else:
             by_name.add(hit.group(2))
+
+    for hit in re.finditer(r"[)\]]\s*(?:\.|->)\s*([A-Za-z_]\w*)\s*\(", text):
+        by_name.add(hit.group(1))
+
     for hit in re.finditer(r"\b(C[A-Za-z_]\w*)\s*::\s*([A-Za-z_]\w*)", text):
         if hit.group(1) in mfc:
             attributed.add((mfc[hit.group(1)], hit.group(2)))
+
     for hit in re.finditer(r"(?<![A-Za-z0-9_.>:])([A-Za-z_]\w*)\s*\(", text):
         by_name.add(hit.group(1))
+
     return attributed, by_name
+
+
+def aliases(classes):
+    """{name used in the probes: E-prefixed class that declares the members}
+
+    The probes say CString; the declaration is ECStringT, two `using` hops
+    away. Without following them, no operator case could ever be matched to
+    the class it exercises.
+    """
+    links = {}
+    sources = [os.path.join(HEADERS, f) for f in os.listdir(HEADERS) if f.endswith(".h")]
+    sources.append(os.path.join(ROOT, "tests", "conformance", "mfc_names.h"))
+    for path in sources:
+        if not os.path.exists(path):
+            continue
+        text = strip(open(path, encoding="utf-8").read())
+        for hit in re.finditer(r"\busing\s+([A-Za-z_]\w*)\s*=\s*([A-Za-z_]\w*)", text):
+            links[hit.group(1)] = hit.group(2)
+        for hit in re.finditer(r"^\s*#\s*define\s+([A-Za-z_]\w*)\s+([A-Za-z_]\w*)\s*$", text, re.M):
+            links[hit.group(1)] = hit.group(2)
+
+    out = {}
+    for name in list(links) + list(classes):
+        seen, cur = set(), name
+        while cur in links and cur not in seen:
+            seen.add(cur)
+            cur = links[cur]
+        if cur in classes:
+            out[name] = cur
+    return out
+
+
+def operator_cases(text):
+    """{(probe class name, token)} named by the case-name convention
+    <Class>.operator<token>[.detail], read from the case-name literals."""
+    out = set()
+    for hit in re.finditer(r'"([A-Za-z_]\w*)\.operator([^"]*?)(?:\.[a-z_0-9]+)*"', text):
+        out.add((hit.group(1), re.sub(r"\s+", "", hit.group(2))))
+    return out
 
 
 def main():
@@ -244,8 +330,16 @@ def main():
         if owner:
             reached.add((owner, method))
 
+    alias = aliases(set(decl))
+    named_ops = operator_cases(text)
+    reached_ops = set()
+    for probe_name, token in named_ops:
+        owner = alias.get(probe_name)
+        if owner:
+            reached_ops.add((owner, "operator" + token))
+
     total = exact = loose = 0
-    gaps, ops = {}, 0
+    gaps, ops, op_gaps, op_total = {}, 0, {}, 0
     for cls in sorted(decl):
         ops += len(decl[cls]["operators"])
         missing = []
@@ -259,17 +353,32 @@ def main():
                 missing.append(method)
         if missing:
             gaps[cls] = missing
+        missing_ops = []
+        for op in sorted(decl[cls]["operators"]):
+            op_total += 1
+            owner = cls
+            while owner and (owner, op) not in reached_ops:
+                owner = base.get(owner)
+            if not owner:
+                missing_ops.append(op[8:] or "()")
+        if missing_ops:
+            op_gaps[cls] = missing_ops
 
     print("classi:                        %d" % len(decl))
     print("metodi con nome dichiarati:    %d  (piu' %d operatori/conversioni, invocati per sintassi)" % (total, ops))
     print("raggiunti, chiamata attribuita: %d  (%.1f%%)" % (exact, 100.0 * exact / total))
     print("raggiunti solo per nome:        %d" % loose)
     print("non raggiunti:                  %d" % sum(len(v) for v in gaps.values()))
+    print("operatori con un caso proprio:  %d su %d" % (op_total - sum(len(v) for v in op_gaps.values()), op_total))
     if gaps:
-        print()
+        print("\nmetodi non raggiunti:")
         for cls in sorted(gaps):
             print("  %-24s %s" % (cls, ", ".join(gaps[cls])))
-    return 0 if not gaps else 1
+    if op_gaps:
+        print("\noperatori senza un caso che li nomini:")
+        for cls in sorted(op_gaps):
+            print("  %-24s %s" % (cls, " ".join(op_gaps[cls])))
+    return 0 if (gaps or op_gaps) else 1
 
 
 if __name__ == "__main__":
