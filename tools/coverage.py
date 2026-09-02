@@ -168,7 +168,12 @@ def declared():
 
 
 def record(out, stack, statement, name):
+    """A pure virtual is a declaration, not code: the behaviour lives in the
+    overrides, which are counted on their own classes. Counting the pure one
+    too would ask for a call that cannot exist -- the type is abstract."""
     if not name:
+        return
+    if re.search(r"=\s*0\s*$", statement.strip()):
         return
     cls, access = stack[-1]
     if access not in ("public", "protected"):
@@ -236,9 +241,9 @@ def calls(text, alias):
       CClass::Method(...)    static or qualified call.
     """
     var_type = {}
-    for hit in re.finditer(r"\b(C[A-Za-z_]\w*)\s*(?:<[^;{}()]*>)?\s+(\*\s*)?([A-Za-z_]\w*)\s*[;=({\[]", text):
+    for hit in re.finditer(r"\b(C[A-Za-z_]\w*)\s*(?:<[^;{}()]*>)?(?:\s*\*\s*|\s+)([A-Za-z_]\w*)\s*[;=({\[]", text):
         if hit.group(1) in alias:
-            var_type.setdefault(hit.group(3), set()).add(alias[hit.group(1)])
+            var_type.setdefault(hit.group(2), set()).add(alias[hit.group(1)])
 
     attributed, by_name = set(), set()
 

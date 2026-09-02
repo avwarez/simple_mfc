@@ -2206,6 +2206,18 @@ static void TestMutex()
     LONG prevCount = -1;
     BOOL unlockedWithCount = lk2.Unlock(1, &prevCount);
     LineBool("CSingleLock.Unlock2Arg", unlockedWithCount != FALSE);
+
+    CSingleLock deferred(&mtx, FALSE);
+    LineBool("CSingleLock.Lock.not_locked_yet", deferred.IsLocked() == FALSE);
+    LineBool("CSingleLock.Lock.returns_true", deferred.Lock() != FALSE);
+    LineBool("CSingleLock.Lock.locked_after", deferred.IsLocked() != FALSE);
+    deferred.Unlock();
+
+    CMutex direct;
+    LineBool("CMutex.Lock.returns_true", direct.Lock() != FALSE);
+    LineBool("CMutex.Unlock.returns_true", direct.Unlock() != FALSE);
+    LineBool("CMutex.Lock.with_timeout", direct.Lock(0) != FALSE);
+    direct.Unlock();
 }
 
 static void TestCArchive()
@@ -3305,7 +3317,9 @@ static void TestCRuntimeClass()
         LineBool(name.c_str(), p.derived->IsDerivedFrom(p.base) != FALSE);
     }
 
-    CObject* made = RUNTIME_CLASS(DynMade)->CreateObject();
+    CRuntimeClass* madeClass = RUNTIME_CLASS(DynMade);
+    LineBool("CRuntimeClass.IsDerivedFrom.self", madeClass->IsDerivedFrom(RUNTIME_CLASS(DynMade)) != FALSE);
+    CObject* made = madeClass->CreateObject();
     LineBool("CRuntimeClass.CreateObject.dyncreate_returns_object", made != nullptr);
     LineBool("CRuntimeClass.CreateObject.result_is_the_class",
              made != nullptr && made->IsKindOf(RUNTIME_CLASS(DynMade)) != FALSE);

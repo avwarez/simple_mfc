@@ -1350,7 +1350,7 @@ class ECFile : public ECObject
 {
     EDECLARE_DYNAMIC(ECFile)
 public:
-    HANDLE m_hFile = nullptr;
+    HANDLE m_hFile = reinterpret_cast<HANDLE>(static_cast<std::intptr_t>(-1));
     operator HANDLE() const { return m_hFile; }
 
     enum OpenFlags
