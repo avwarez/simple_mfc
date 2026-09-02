@@ -194,11 +194,15 @@ def bases():
     return out
 
 
-def probe_text():
+def probe_text(raw=False):
+    """The probe sources. `raw` keeps the string literals: the case names
+    live in them, and stripping first left the operator scan nothing to
+    read."""
     text = ""
     for path in PROBES:
         if os.path.exists(path):
-            text += strip(open(path, encoding="utf-8").read())
+            body = open(path, encoding="utf-8").read()
+            text += body if raw else strip(body)
     return text
 
 
@@ -304,7 +308,7 @@ def operator_cases(text):
     """{(probe class name, token)} named by the case-name convention
     <Class>.operator<token>[.detail], read from the case-name literals."""
     out = set()
-    for hit in re.finditer(r'"([A-Za-z_]\w*)\.operator([^"]*?)(?:\.[a-z_0-9]+)*"', text):
+    for hit in re.finditer(r'"([A-Za-z_]\w*)\.operator([^"]*?)(?:\.[A-Za-z_0-9]+)*"', text):
         out.add((hit.group(1), re.sub(r"\s+", "", hit.group(2))))
     return out
 
@@ -331,7 +335,7 @@ def main():
             reached.add((owner, method))
 
     alias = aliases(set(decl))
-    named_ops = operator_cases(text)
+    named_ops = operator_cases(probe_text(raw=True))
     reached_ops = set()
     for probe_name, token in named_ops:
         owner = alias.get(probe_name)

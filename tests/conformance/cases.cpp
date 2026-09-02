@@ -433,10 +433,10 @@ static void TestCString()
     Line("CString.SetAt.result", getset);
 
     CString cat = CString(_T("foo")) + CString(_T("bar"));
-    Line("CString.operatorPlus", cat);
-    LineBool("CString.operatorEq.true", CString(_T("x")) == CString(_T("x")));
-    LineBool("CString.operatorEq.false", CString(_T("x")) == CString(_T("y")));
-    LineBool("CString.operatorNe", CString(_T("x")) != CString(_T("y")));
+    Line("CString.operator+", cat);
+    LineBool("CString.operator==.true", CString(_T("x")) == CString(_T("x")));
+    LineBool("CString.operator==.false", CString(_T("x")) == CString(_T("y")));
+    LineBool("CString.operator!=", CString(_T("x")) != CString(_T("y")));
 
     CString buf;
     TCHAR* p = buf.GetBuffer(32);
@@ -461,17 +461,17 @@ static void TestCString()
     Line("CString.TrimRight.set", trimRightSet);
 
     CString idx = _T("index");
-    LineInt("CString.operatorIndex2", idx[2]);
+    LineInt("CString.operator[].2", idx[2]);
 
     CString plusEqStr = _T("foo");
     plusEqStr += CString(_T("bar"));
-    Line("CString.operatorPlusEqString", plusEqStr);
+    Line("CString.operator+=.string", plusEqStr);
     CString plusEqChar = _T("foo");
     plusEqChar += _T('!');
-    Line("CString.operatorPlusEqChar", plusEqChar);
+    Line("CString.operator+=.char", plusEqChar);
 
-    LineBool("CString.operatorLess.true", CString(_T("a")) < CString(_T("b")));
-    LineBool("CString.operatorLess.false", CString(_T("b")) < CString(_T("a")));
+    LineBool("CString.operator<.true", CString(_T("a")) < CString(_T("b")));
+    LineBool("CString.operator<.false", CString(_T("b")) < CString(_T("a")));
 
     CString fmtHex; fmtHex.Format(_T("%08X"), 0xDEADu);
     Line("CString.Format.hex", fmtHex);
@@ -959,7 +959,7 @@ static void TestCArrayTemplate()
     arr.Add(2);
     arr.Add(3);
     LineInt("CArray_int.GetCount", arr.GetCount());
-    LineInt("CArray_int.operatorIndex1", arr[1]);
+    LineInt("CArray.operator[].1", arr[1]);
     arr[1] = 42;
     LineInt("CArray_int.AfterAssignIndex1", arr[1]);
     arr.InsertAt(0, 100);
@@ -1129,7 +1129,7 @@ static void TestCArrayTemplateEdges()
     writeThrough.ElementAt(0) = 55;
     LineInt("CArray_int.ElementAt.write_through", writeThrough.GetAt(0));
     writeThrough[1] = 66;
-    LineInt("CArray_int.operator_index.write_through", writeThrough.GetAt(1));
+    LineInt("CArray.operator[].write_through", writeThrough.GetAt(1));
     LineInt("CArray_int.GetCount.minus.GetSize", static_cast<long long>(writeThrough.GetCount() - writeThrough.GetSize()));
 }
 
@@ -1236,7 +1236,7 @@ static void TestCStringArrayEdges()
     writeThrough.ElementAt(0) = _T("A");
     Line("CStringArray.ElementAt.write_through", writeThrough.GetAt(0));
     writeThrough[1] = _T("B");
-    Line("CStringArray.operator_index.write_through", writeThrough.GetAt(1));
+    Line("CStringArray.operator[].write_through", writeThrough.GetAt(1));
     LineInt("CStringArray.GetCount.minus.GetSize", static_cast<long long>(writeThrough.GetCount() - writeThrough.GetSize()));
 }
 
@@ -1336,7 +1336,7 @@ static void TestCPtrArrayEdges()
     writeThrough.ElementAt(0) = PtrVal(55);
     LineInt("CPtrArray.ElementAt.write_through", reinterpret_cast<intptr_t>(writeThrough.GetAt(0)));
     writeThrough[1] = PtrVal(66);
-    LineInt("CPtrArray.operator_index.write_through", reinterpret_cast<intptr_t>(writeThrough.GetAt(1)));
+    LineInt("CPtrArray.operator[].write_through", reinterpret_cast<intptr_t>(writeThrough.GetAt(1)));
     LineInt("CPtrArray.GetCount.minus.GetSize", static_cast<long long>(writeThrough.GetCount() - writeThrough.GetSize()));
 }
 
@@ -1409,7 +1409,7 @@ static void TestCByteArrayEdges()
     writeThrough.ElementAt(0) = 55;
     LineInt("CByteArray.ElementAt.write_through", writeThrough.GetAt(0));
     writeThrough[0] = 66;
-    LineInt("CByteArray.operator_index.write_through", writeThrough.GetAt(0));
+    LineInt("CByteArray.operator[].write_through", writeThrough.GetAt(0));
 }
 
 static void TestCListTemplate()
@@ -1896,9 +1896,9 @@ static void TestCPointCSize()
     Line("CPoint.SetPoint", PointStr(setPt));
     Line("CPoint.ctor.default", PointStr(CPoint()));
 
-    LineBool("CPoint.operatorEq.true", p == CPoint(10, 20));
-    LineBool("CPoint.operatorEq.false", p == q);
-    LineBool("CPoint.operatorNe", p != q);
+    LineBool("CPoint.operator==.true", p == CPoint(10, 20));
+    LineBool("CPoint.operator==.false", p == q);
+    LineBool("CPoint.operator!=", p != q);
 
     CPoint plusEq = p;
     plusEq += sz;
@@ -1925,9 +1925,9 @@ static void TestCPointCSize()
     Line("CSize.plus", SizeStr(sz + CSize(1, 2)));
     Line("CSize.minus", SizeStr(sz - CSize(1, 2)));
     Line("CSize.unaryMinus", SizeStr(-sz));
-    LineBool("CSize.operatorEq.true", sz == CSize(5, 7));
-    LineBool("CSize.operatorEq.false", sz == CSize(5, 8));
-    LineBool("CSize.operatorNe", sz != CSize(5, 8));
+    LineBool("CSize.operator==.true", sz == CSize(5, 7));
+    LineBool("CSize.operator==.false", sz == CSize(5, 8));
+    LineBool("CSize.operator!=", sz != CSize(5, 8));
     CSize plusEqSz = sz;
     plusEqSz += CSize(1, 2);
     Line("CSize.plusEquals", SizeStr(plusEqSz));
@@ -2030,42 +2030,42 @@ static void TestCRectMethods()
     LineBool("CRect.SubtractRect.contained.result", dst.SubtractRect(&a, &a) != FALSE);
     Line("CRect.SubtractRect.contained", RectStr(dst));
 
-    LineBool("CRect.operatorEq.true", a == CRect(0, 0, 10, 10));
-    LineBool("CRect.operatorNe", a != b);
-    Line("CRect.operatorPlus.point", RectStr(a + CPoint(3, 4)));
-    Line("CRect.operatorPlus.size", RectStr(a + CSize(3, 4)));
-    Line("CRect.operatorMinus.point", RectStr(a - CPoint(3, 4)));
-    Line("CRect.operatorMinus.size", RectStr(a - CSize(3, 4)));
+    LineBool("CRect.operator==.true", a == CRect(0, 0, 10, 10));
+    LineBool("CRect.operator!=", a != b);
+    Line("CRect.operator+.point", RectStr(a + CPoint(3, 4)));
+    Line("CRect.operator+.size", RectStr(a + CSize(3, 4)));
+    Line("CRect.operator-.point", RectStr(a - CPoint(3, 4)));
+    Line("CRect.operator-.size", RectStr(a - CSize(3, 4)));
     CRect inflateBy(1, 2, 3, 4);
-    Line("CRect.operatorPlus.rect", RectStr(a + &inflateBy));
-    Line("CRect.operatorMinus.rect", RectStr(a.operator-(&inflateBy)));
+    Line("CRect.operator+.rect", RectStr(a + &inflateBy));
+    Line("CRect.operator-.rect", RectStr(a.operator-(&inflateBy)));
 
-    Line("CRect.operatorAnd", RectStr(a & b));
-    Line("CRect.operatorOr", RectStr(a | b));
+    Line("CRect.operator&", RectStr(a & b));
+    Line("CRect.operator|", RectStr(a | b));
     CRect andEq = a;
     andEq &= b;
-    Line("CRect.operatorAndEquals", RectStr(andEq));
+    Line("CRect.operator&=", RectStr(andEq));
     CRect orEq = a;
     orEq |= b;
-    Line("CRect.operatorOrEquals", RectStr(orEq));
+    Line("CRect.operator|=", RectStr(orEq));
     CRect plusEq = a;
     plusEq += CPoint(1, 1);
-    Line("CRect.operatorPlusEquals.point", RectStr(plusEq));
+    Line("CRect.operator+=.point", RectStr(plusEq));
     CRect plusEqSz = a;
     plusEqSz += CSize(1, 1);
-    Line("CRect.operatorPlusEquals.size", RectStr(plusEqSz));
+    Line("CRect.operator+=.size", RectStr(plusEqSz));
     CRect plusEqRc = a;
     plusEqRc += &inflateBy;
-    Line("CRect.operatorPlusEquals.rect", RectStr(plusEqRc));
+    Line("CRect.operator+=.rect", RectStr(plusEqRc));
     CRect minusEq = a;
     minusEq -= CSize(1, 1);
-    Line("CRect.operatorMinusEquals.size", RectStr(minusEq));
+    Line("CRect.operator-=.size", RectStr(minusEq));
     CRect minusEqPt = a;
     minusEqPt -= CPoint(1, 1);
-    Line("CRect.operatorMinusEquals.point", RectStr(minusEqPt));
+    Line("CRect.operator-=.point", RectStr(minusEqPt));
     CRect minusEqRc = a;
     minusEqRc -= &inflateBy;
-    Line("CRect.operatorMinusEquals.rect", RectStr(minusEqRc));
+    Line("CRect.operator-=.rect", RectStr(minusEqRc));
 
     CRect conv(1, 2, 3, 4);
     LPRECT asPtr = conv;
@@ -2083,10 +2083,10 @@ static void TestTime()
     LineInt("CTime.GetDayOfWeek", t1.GetDayOfWeek());
 
     CTime t2(2026, 7, 20, 14, 30, 45);
-    LineBool("CTime.operatorLess.true", t1 < t2);
-    LineBool("CTime.operatorLess.false", t2 < t1);
-    LineBool("CTime.operatorEq.true", t1 == t1);
-    LineBool("CTime.operatorEq.false", t1 == t2);
+    LineBool("CTime.operator<.true", t1 < t2);
+    LineBool("CTime.operator<.false", t2 < t1);
+    LineBool("CTime.operator==.true", t1 == t1);
+    LineBool("CTime.operator==.false", t1 == t2);
 
     CTimeSpan diff = t2 - t1;
     LineInt("CTimeSpan.FromDiff.GetTotalSeconds", static_cast<long long>(diff.GetTotalSeconds()));
@@ -2117,8 +2117,8 @@ static void TestTime()
     CTimeSpan spanB(0, 0, 30, 0);
     CTimeSpan spanSum = spanA + spanB;
     CTimeSpan spanDiff = spanA - spanB;
-    LineInt("CTimeSpan.operatorPlus.GetTotalSeconds", static_cast<long long>(spanSum.GetTotalSeconds()));
-    LineInt("CTimeSpan.operatorMinus.GetTotalSeconds", static_cast<long long>(spanDiff.GetTotalSeconds()));
+    LineInt("CTimeSpan.operator+.GetTotalSeconds", static_cast<long long>(spanSum.GetTotalSeconds()));
+    LineInt("CTimeSpan.operator-.GetTotalSeconds", static_cast<long long>(spanDiff.GetTotalSeconds()));
 
     CTime t2000(2000, 1, 1, 0, 0, 0);
     LineInt("CTime.2000.GetDayOfWeek", t2000.GetDayOfWeek());
@@ -5115,7 +5115,7 @@ static void TestAliasingAndIdentity()
         map[_T("idx")] = 7;
         int viaIndex = 0;
         map.Lookup(_T("idx"), viaIndex);
-        LineInt("Aliasing.CMap.operator_index.write_through", viaIndex);
+        LineInt("Aliasing.CMap.operator[].write_through", viaIndex);
     }
 
     {
@@ -5140,7 +5140,7 @@ static void TestAliasingAndIdentity()
         values.ElementAt(1) = 5;
         LineInt("Aliasing.CArray.ElementAt.write_through", values.GetAt(1));
         values[2] = 9;
-        LineInt("Aliasing.CArray.operator_index.write_through", values.GetAt(2));
+        LineInt("Aliasing.CArray.operator[].write_through", values.GetAt(2));
     }
 
     {
