@@ -94,33 +94,37 @@ ECObject* EAfxDynamicDownCast(ECRuntimeClass* pClass, ECObject* pObject)
     return nullptr;
 }
 
-BOOL ECException::GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pnHelpContext) const
+namespace mfc_detail
+{
+BOOL ReportCause(LPTSTR lpszError, UINT nMaxError, UINT* pnHelpContext, LPCTSTR lpszCause)
 {
     if (pnHelpContext) *pnHelpContext = 0;
-    if (lpszError && nMaxError) lpszError[0] = _T('\0');
-    return FALSE;
+    if (!lpszError || nMaxError == 0) return FALSE;
+    if (!lpszCause || !*lpszCause)
+    {
+        lpszError[0] = _T('\0');
+        return FALSE;
+    }
+    const size_t n = std::min<size_t>(nMaxError - 1, std::char_traits<TCHAR>::length(lpszCause));
+    std::char_traits<TCHAR>::copy(lpszError, lpszCause, n);
+    lpszError[n] = _T('\0');
+    return TRUE;
+}
 }
 
 BOOL ECNotSupportedException::GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pnHelpContext) const
 {
-    if (pnHelpContext) *pnHelpContext = 0;
-    if (!lpszError || nMaxError == 0) return FALSE;
-    LPCTSTR msg = _T("Unsupported operation.");
-    size_t n = std::min<size_t>(nMaxError - 1, std::char_traits<TCHAR>::length(msg));
-    std::char_traits<TCHAR>::copy(lpszError, msg, n);
-    lpszError[n] = _T('\0');
-    return TRUE;
+    return mfc_detail::ReportCause(lpszError, nMaxError, pnHelpContext, nullptr);
+}
+
+BOOL ECArchiveException::GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pnHelpContext) const
+{
+    return mfc_detail::ReportCause(lpszError, nMaxError, pnHelpContext, nullptr);
 }
 
 BOOL ECMemoryException::GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pnHelpContext) const
 {
-    if (pnHelpContext) *pnHelpContext = 0;
-    if (!lpszError || nMaxError == 0) return FALSE;
-    LPCTSTR msg = _T("Out of memory.");
-    size_t n = std::min<size_t>(nMaxError - 1, std::char_traits<TCHAR>::length(msg));
-    std::char_traits<TCHAR>::copy(lpszError, msg, n);
-    lpszError[n] = _T('\0');
-    return TRUE;
+    return mfc_detail::ReportCause(lpszError, nMaxError, pnHelpContext, nullptr);
 }
 
 BOOL ECFileException::GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pnHelpContext) const

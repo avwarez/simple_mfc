@@ -48,6 +48,7 @@
 #include <cstring>
 #include <random>
 #include <sstream>
+#include <type_traits>
 #include <sys/stat.h>
 #include <string>
 #include <thread>
@@ -4535,6 +4536,112 @@ static int RunHolder(const char* path, UINT flags, const char* goFile)
     return 0;
 }
 
+template <class Ex>
+static void ProbeExceptionBase(const char* name)
+{
+    const std::string tag = std::string(name) + ".";
+    LineBool((tag + "is_abstract").c_str(), std::is_abstract<Ex>::value);
+    LineBool((tag + "default_constructible").c_str(), std::is_default_constructible<Ex>::value);
+
+    if constexpr (!std::is_abstract<Ex>::value && std::is_default_constructible<Ex>::value)
+    {
+        Ex e;
+        TCHAR buf[64];
+        for (TCHAR& c : buf) c = _T('#');
+        buf[63] = _T('\0');
+        UINT help = 12345;
+        const BOOL ok = e.GetErrorMessage(buf, 63, &help);
+        LineBool((tag + "GetErrorMessage.returns_true").c_str(), ok != FALSE);
+        LineBool((tag + "GetErrorMessage.wrote_terminator").c_str(), buf[0] == _T('\0'));
+        Line((tag + "GetErrorMessage.text").c_str(), buf);
+        LineInt((tag + "GetErrorMessage.help_context").c_str(), help);
+        LineBool((tag + "GetErrorMessage.null_buffer").c_str(), e.GetErrorMessage(nullptr, 0) != FALSE);
+    }
+}
+
+static void TestExceptionBaseMessages()
+{
+    ProbeExceptionBase<CException>("CException");
+    ProbeExceptionBase<CSimpleException>("CSimpleException");
+    ProbeExceptionBase<CNotSupportedException>("CNotSupportedException");
+    ProbeExceptionBase<CMemoryException>("CMemoryException");
+    ProbeExceptionBase<CArchiveException>("CArchiveException");
+
+    CArchiveException* archiveEx = new CArchiveException(CArchiveException::endOfFile);
+    TCHAR abuf[128];
+    for (TCHAR& c : abuf) c = _T('#');
+    abuf[127] = _T('\0');
+    LineBool("CArchiveException.with_cause.GetErrorMessage.returns_true",
+             archiveEx->GetErrorMessage(abuf, 127) != FALSE);
+    Line("CArchiveException.with_cause.GetErrorMessage.text", abuf);
+    archiveEx->Delete();
+
+    CNotSupportedException nse;
+    TCHAR tiny[4];
+    for (TCHAR& c : tiny) c = _T('#');
+    const BOOL tinyOk = nse.GetErrorMessage(tiny, 4);
+    LineBool("CNotSupportedException.GetErrorMessage.tiny_returns_true", tinyOk != FALSE);
+    Line("CNotSupportedException.GetErrorMessage.tiny_bytes", Hex(tiny, sizeof(tiny)));
+}
+
+static void TestCStringAppendAndRemove()
+{
+    CString s(_T("abc"));
+    s.Append(_T("def"));
+    Line("CString.Append.whole", s);
+    LineInt("CString.Append.length", s.GetLength());
+
+    s.Append(_T("XYZ"), 2);
+    Line("CString.Append.counted", s);
+
+    s.Append(_T(""));
+    Line("CString.Append.empty_source", s);
+
+    CString fromEmpty;
+    fromEmpty.Append(_T("first"));
+    Line("CString.Append.onto_empty", fromEmpty);
+
+    CString counted(_T("ab"));
+    counted.Append(_T("cdef"), 0);
+    Line("CString.Append.zero_count", counted);
+    LineInt("CString.Append.zero_count_length", counted.GetLength());
+
+    CString self(_T("xy"));
+    self.Append(self);
+    Line("CString.Append.self", self);
+
+    CString withNulls(_T("a\0b"), 3);
+    withNulls.Append(_T("c"));
+    LineInt("CString.Append.past_embedded_null.length", withNulls.GetLength());
+    Line("CString.Append.past_embedded_null.hex", Hex(withNulls.GetString(), 4 * sizeof(TCHAR)));
+
+    CString r(_T("banana"));
+    LineInt("CString.Remove.count", r.Remove(_T('a')));
+    Line("CString.Remove.result", r);
+
+    CString absent(_T("banana"));
+    LineInt("CString.Remove.absent_count", absent.Remove(_T('z')));
+    Line("CString.Remove.absent_result", absent);
+
+    CString all(_T("aaaa"));
+    LineInt("CString.Remove.everything_count", all.Remove(_T('a')));
+    Line("CString.Remove.everything_result", all);
+    LineBool("CString.Remove.everything_is_empty", all.IsEmpty() != FALSE);
+
+    CString empty;
+    LineInt("CString.Remove.from_empty", empty.Remove(_T('a')));
+
+    CString shared(_T("hello"));
+    CString copy(shared);
+    LineInt("CString.Remove.on_shared_count", shared.Remove(_T('l')));
+    Line("CString.Remove.on_shared_result", shared);
+    Line("CString.Remove.on_shared_other_untouched", copy);
+
+    CString nul(_T("a\0b"), 3);
+    LineInt("CString.Remove.embedded_null_count", nul.Remove(_T('\0')));
+    LineInt("CString.Remove.embedded_null_length", nul.GetLength());
+}
+
 static void RunSharingScenario(const CString& path, const CString& dir, const char* label,
                                UINT holderFlags, UINT secondFlags)
 {
@@ -5176,8 +5283,10 @@ int main(int argc, char** argv)
     TestCRuntimeClass();
     TestExceptions();
     TestExceptionGaps();
+    TestExceptionBaseMessages();
     TestCString();
     TestCStringGaps();
+    TestCStringAppendAndRemove();
     TestNarrowWideConversion();
     TestConversionBestFitTable();
     TestNonBMP();

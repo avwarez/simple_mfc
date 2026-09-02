@@ -220,7 +220,7 @@ def balanced(text, i):
     return -1
 
 
-def calls(text, classes):
+def calls(text, alias):
     """(class, method) pairs the probes make, plus names seen unattributed.
 
     Three shapes are attributed to a class; everything else falls back to the
@@ -235,23 +235,22 @@ def calls(text, classes):
                              had been comparing it against MFC all along.
       CClass::Method(...)    static or qualified call.
     """
-    mfc = {c[1:]: c for c in classes}
     var_type = {}
     for hit in re.finditer(r"\b(C[A-Za-z_]\w*)\s*(?:<[^;{}()]*>)?\s+(\*\s*)?([A-Za-z_]\w*)\s*[;=({\[]", text):
-        if hit.group(1) in mfc:
-            var_type.setdefault(hit.group(3), set()).add(mfc[hit.group(1)])
+        if hit.group(1) in alias:
+            var_type.setdefault(hit.group(3), set()).add(alias[hit.group(1)])
 
     attributed, by_name = set(), set()
 
     for hit in re.finditer(r"\b(C[A-Za-z_]\w*)\s*(?:<[^;{}()]*>)?\s*\(", text):
-        if hit.group(1) not in mfc:
+        if hit.group(1) not in alias:
             continue
         close = balanced(text, hit.end() - 1)
         if close < 0:
             continue
         tail = re.match(r"\s*\.\s*([A-Za-z_]\w*)\s*\(", text[close:])
         if tail:
-            attributed.add((mfc[hit.group(1)], tail.group(1)))
+            attributed.add((alias[hit.group(1)], tail.group(1)))
 
     for hit in re.finditer(r"\b([A-Za-z_]\w*)\s*(?:\.|->)\s*([A-Za-z_]\w*)\s*\(", text):
         candidates = var_type.get(hit.group(1))
@@ -265,8 +264,8 @@ def calls(text, classes):
         by_name.add(hit.group(1))
 
     for hit in re.finditer(r"\b(C[A-Za-z_]\w*)\s*::\s*([A-Za-z_]\w*)", text):
-        if hit.group(1) in mfc:
-            attributed.add((mfc[hit.group(1)], hit.group(2)))
+        if hit.group(1) in alias:
+            attributed.add((alias[hit.group(1)], hit.group(2)))
 
     for hit in re.finditer(r"(?<![A-Za-z0-9_.>:])([A-Za-z_]\w*)\s*\(", text):
         by_name.add(hit.group(1))
@@ -308,7 +307,7 @@ def operator_cases(text):
     """{(probe class name, token)} named by the case-name convention
     <Class>.operator<token>[.detail], read from the case-name literals."""
     out = set()
-    for hit in re.finditer(r'"([A-Za-z_]\w*)\.operator([^"]*?)(?:\.[A-Za-z_0-9]+)*"', text):
+    for hit in re.finditer(r'"([A-Za-z_]\w*)\.operator([^"]*?)(?:\.[A-Za-z_0-9]+)*\.?"', text):
         out.add((hit.group(1), re.sub(r"\s+", "", hit.group(2))))
     return out
 
@@ -317,7 +316,8 @@ def main():
     decl = declared()
     text = probe_text()
     base = bases()
-    attributed, by_name = calls(text, set(decl))
+    alias = aliases(set(decl))
+    attributed, by_name = calls(text, alias)
 
     def declares(cls, method):
         seen = set()
@@ -334,7 +334,6 @@ def main():
         if owner:
             reached.add((owner, method))
 
-    alias = aliases(set(decl))
     named_ops = operator_cases(probe_text(raw=True))
     reached_ops = set()
     for probe_name, token in named_ops:

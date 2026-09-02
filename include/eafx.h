@@ -1276,7 +1276,7 @@ struct hash<ECStringT<Ch, Tr>>
 class ECException : public ECObject
 {
 public:
-    virtual BOOL GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pnHelpContext = nullptr) const;
+    virtual BOOL GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pnHelpContext = nullptr) const = 0;
 
     EDECLARE_DYNAMIC(ECException)
 public:
@@ -1542,6 +1542,7 @@ public:
     explicit ECArchiveException(int cause = ECArchiveException::none, LPCTSTR lpszArchiveName = nullptr);
     int m_cause;
     ECString m_strFileName;
+    BOOL GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pnHelpContext = nullptr) const override;
 };
 
 #include "eatltime.h"
