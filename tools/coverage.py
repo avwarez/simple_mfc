@@ -424,7 +424,7 @@ def main():
         print("\noperatori senza un caso che li nomini:")
         for cls in sorted(op_gaps):
             print("  %-24s %s" % (cls, " ".join(op_gaps[cls])))
-    return 0 if (gaps or op_gaps) else 1
+    return 1 if (gaps or op_gaps) else 0
 
 
 if __name__ == "__main__":

@@ -40,7 +40,7 @@ ECString ECTimeSpan::Format(const char* pszFormat) const
 
 ECString ECTimeSpan::Format(const TCHAR* pszFormat) const
 {
-    long long span = m_span < 0 ? -m_span : m_span;
+    const long long span = m_span;
     ECString result;
     for (const TCHAR* p = pszFormat; p && *p; ++p) {
         if (*p != _T('%')) {
