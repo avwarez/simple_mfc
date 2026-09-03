@@ -117,9 +117,11 @@ BOOL ECNotSupportedException::GetErrorMessage(LPTSTR lpszError, UINT nMaxError, 
     return mfc_detail::ReportCause(lpszError, nMaxError, pnHelpContext, nullptr);
 }
 
-BOOL ECArchiveException::GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pnHelpContext) const
+BOOL ECArchiveException::GetErrorMessage(LPTSTR, UINT, UINT* pnHelpContext) const
 {
-    return mfc_detail::ReportCause(lpszError, nMaxError, pnHelpContext, nullptr);
+    const UINT kArchiveHelpBase = 0xF1B0;
+    if (pnHelpContext) *pnHelpContext = kArchiveHelpBase + static_cast<UINT>(m_cause);
+    return FALSE;
 }
 
 BOOL ECMemoryException::GetErrorMessage(LPTSTR lpszError, UINT nMaxError, UINT* pnHelpContext) const

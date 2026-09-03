@@ -4582,6 +4582,20 @@ static void TestExceptionBaseMessages()
     ProbeExceptionBase<CArchiveException>("CArchiveException");
 
     CArchiveException* archiveEx = new CArchiveException(CArchiveException::endOfFile);
+    for (int cause = 0; cause <= 8; ++cause)
+    {
+        CArchiveException* each = new CArchiveException(cause);
+        TCHAR probe[8];
+        for (TCHAR& c : probe) c = _T('#');
+        UINT eachHelp = 0;
+        const BOOL eachOk = each->GetErrorMessage(probe, 8, &eachHelp);
+        const std::string causeTag = "CArchiveException.cause" + std::to_string(cause) + ".";
+        LineBool((causeTag + "returns_true").c_str(), eachOk != FALSE);
+        LineInt((causeTag + "help_context").c_str(), eachHelp);
+        LineBool((causeTag + "buffer_untouched").c_str(), probe[0] == _T('#'));
+        each->Delete();
+    }
+
     TCHAR abuf[128];
     for (TCHAR& c : abuf) c = _T('#');
     abuf[127] = _T('\0');
@@ -4654,6 +4668,126 @@ static void TestCStringAppendAndRemove()
     CString nul(_T("a\0b"), 3);
     LineInt("CString.Remove.embedded_null_count", nul.Remove(_T('\0')));
     LineInt("CString.Remove.embedded_null_length", nul.GetLength());
+}
+
+static void TestOperatorSweep()
+{
+    const CPoint p1(10, 20);
+    const CSize sz(3, 4);
+    LineInt("CPoint.operator+.size.x", (p1 + sz).x);
+    LineInt("CPoint.operator+.size.y", (p1 + sz).y);
+    LineInt("CPoint.operator+.point.x", (p1 + CPoint(1, 2)).x);
+    LineInt("CPoint.operator-.size.x", (p1 - sz).x);
+    LineInt("CPoint.operator-.point.cx", (p1 - CPoint(1, 2)).cx);
+    LineInt("CPoint.operator-.point.cy", (p1 - CPoint(1, 2)).cy);
+    CPoint mutablePoint(10, 20);
+    mutablePoint += sz;
+    LineInt("CPoint.operator+=.size.x", mutablePoint.x);
+    mutablePoint -= sz;
+    LineInt("CPoint.operator-=.size.x", mutablePoint.x);
+    mutablePoint += CPoint(5, 5);
+    LineInt("CPoint.operator+=.point.y", mutablePoint.y);
+    mutablePoint -= CPoint(5, 5);
+    LineInt("CPoint.operator-=.point.y", mutablePoint.y);
+
+    LineInt("CSize.operator+.size.cx", (sz + CSize(1, 1)).cx);
+    LineInt("CSize.operator-.size.cy", (sz - CSize(1, 1)).cy);
+    LineInt("CSize.operator+.point.x", (sz + CPoint(1, 1)).x);
+    LineInt("CSize.operator-.point.y", (sz - CPoint(1, 1)).y);
+    CSize mutableSize(3, 4);
+    mutableSize += CSize(2, 2);
+    LineInt("CSize.operator+=.cx", mutableSize.cx);
+    mutableSize -= CSize(2, 2);
+    LineInt("CSize.operator-=.cx", mutableSize.cx);
+
+    const CString a(_T("abc"));
+    const CString b(_T("abd"));
+    LineBool("CString.operator<=.less", (a <= b) != false);
+    LineBool("CString.operator<=.equal", (a <= CString(_T("abc"))) != false);
+    LineBool("CString.operator>.greater", (b > a) != false);
+    LineBool("CString.operator>=.equal", (a >= CString(_T("abc"))) != false);
+    CString assigned;
+    assigned = _T("literal");
+    Line("CString.operator=.literal", assigned);
+    assigned = a;
+    Line("CString.operator=.string", assigned);
+    LPCTSTR raw = a;
+    LineBool("CString.operatorPCXSTR.same_pointer", raw == a.GetString());
+    Line("CString.operatorPCXSTR.text", raw);
+
+    const CTime t1(2020, 5, 17, 10, 30, 0);
+    const CTime t2(2020, 5, 17, 10, 30, 1);
+    const CTimeSpan oneSecond(0, 0, 0, 1);
+    LineBool("CTime.operator!=", (t1 != t2) != false);
+    LineBool("CTime.operator<=.equal", (t1 <= CTime(2020, 5, 17, 10, 30, 0)) != false);
+    LineBool("CTime.operator>.true", (t2 > t1) != false);
+    LineBool("CTime.operator>=.equal", (t1 >= CTime(2020, 5, 17, 10, 30, 0)) != false);
+    LineBool("CTime.operator+.span_is_t2", ((t1 + oneSecond) == t2) != false);
+    LineInt("CTime.operator-.time.seconds", static_cast<long long>((t2 - t1).GetTotalSeconds()));
+
+    const CTimeSpan twoSeconds(0, 0, 0, 2);
+    LineBool("CTimeSpan.operator==.true", (oneSecond == CTimeSpan(0, 0, 0, 1)) != false);
+    LineBool("CTimeSpan.operator!=.true", (oneSecond != twoSeconds) != false);
+    LineBool("CTimeSpan.operator<.true", (oneSecond < twoSeconds) != false);
+    LineBool("CTimeSpan.operator<=.equal", (oneSecond <= CTimeSpan(0, 0, 0, 1)) != false);
+    LineBool("CTimeSpan.operator>.true", (twoSeconds > oneSecond) != false);
+    LineBool("CTimeSpan.operator>=.equal", (oneSecond >= CTimeSpan(0, 0, 0, 1)) != false);
+
+    CMap<int, int, int, int> map;
+    map[7] = 42;
+    LineInt("CMap.operator[].read_back", map[7]);
+    LineInt("CMap.operator[].inserts_on_miss_count", static_cast<long long>(map.GetCount()));
+
+    CTypedPtrArray<CPtrArray, int*> typed;
+    int one = 1;
+    typed.Add(&one);
+    LineBool("CTypedPtrArray.operator[].returns_element", typed[0] == &one);
+
+    CSimpleArray<int> simpleA;
+    simpleA.Add(5);
+    simpleA.Add(6);
+    CSimpleArray<int> simpleB;
+    simpleB = simpleA;
+    LineInt("CSimpleArray.operator=.size", simpleB.GetSize());
+    LineInt("CSimpleArray.operator[].element", simpleB[1]);
+
+    CTempBuffer<int> temp(4);
+    int* rawBuffer = temp;
+    rawBuffer[0] = 11;
+    temp[1] = 22;
+    LineInt("CTempBuffer.operatorT*.write_through", temp[0]);
+    LineInt("CTempBuffer.operator[].element", temp[1]);
+
+    CFile closedFile;
+    LineBool("CFile.operatorHANDLE.closed_is_null", static_cast<HANDLE>(closedFile) == nullptr);
+
+    CEvent event(FALSE, FALSE);
+    LineBool("CSyncObject.operatorHANDLE.is_null", static_cast<HANDLE>(event) == nullptr);
+
+    const CString archivePath = TempDir() + CString(_T("simple_mfc_ops.bin"));
+    {
+        CFile out;
+        out.Open(archivePath, CFile::modeCreate | CFile::modeWrite | CFile::shareDenyNone);
+        CArchive ar(&out, CArchive::store);
+        ar << static_cast<DWORD>(0xDEADBEEF);
+        ar << CString(_T("archived"));
+        ar.Close();
+        SafeClose(out);
+    }
+    {
+        CFile in;
+        in.Open(archivePath, CFile::modeRead | CFile::shareDenyNone);
+        CArchive ar(&in, CArchive::load);
+        DWORD number = 0;
+        CString text;
+        ar >> number;
+        ar >> text;
+        LineInt("CArchive.operator<<.dword_round_trip", number);
+        Line("CArchive.operator>>.string_round_trip", text);
+        ar.Close();
+        SafeClose(in);
+    }
+    SafeRemoveFile(archivePath);
 }
 
 static void RunSharingScenario(const CString& path, const CString& dir, const char* label,
@@ -5069,7 +5203,7 @@ static void TestDebugOnly()
             DumpBuffer buf;
             CDumpContext dc = buf.Context();
             dc << w;
-            Line(("CDumpContext.insert.LPCTSTR." + std::to_string(i)).c_str(), buf.Take());
+            Line(("CDumpContext.operator<<.LPCTSTR." + std::to_string(i)).c_str(), buf.Take());
             ++i;
         }
     }
@@ -5081,7 +5215,7 @@ static void TestDebugOnly()
             DumpBuffer buf;
             CDumpContext dc = buf.Context();
             dc << n;
-            Line(("CDumpContext.insert.LPCSTR." + std::to_string(i)).c_str(), buf.Take());
+            Line(("CDumpContext.operator<<.LPCSTR." + std::to_string(i)).c_str(), buf.Take());
             ++i;
         }
     }
@@ -5093,7 +5227,7 @@ static void TestDebugOnly()
             DumpBuffer buf;
             CDumpContext dc = buf.Context();
             dc << v;
-            Line(("CDumpContext.insert.int." + std::to_string(i)).c_str(), buf.Take());
+            Line(("CDumpContext.operator<<.int." + std::to_string(i)).c_str(), buf.Take());
             ++i;
         }
     }
@@ -5105,7 +5239,7 @@ static void TestDebugOnly()
             DumpBuffer buf;
             CDumpContext dc = buf.Context();
             dc << v;
-            Line(("CDumpContext.insert.uint." + std::to_string(i)).c_str(), buf.Take());
+            Line(("CDumpContext.operator<<.uint." + std::to_string(i)).c_str(), buf.Take());
             ++i;
         }
     }
@@ -5117,7 +5251,7 @@ static void TestDebugOnly()
             DumpBuffer buf;
             CDumpContext dc = buf.Context();
             dc << v;
-            Line(("CDumpContext.insert.long." + std::to_string(i)).c_str(), buf.Take());
+            Line(("CDumpContext.operator<<.long." + std::to_string(i)).c_str(), buf.Take());
             ++i;
         }
     }
@@ -5129,7 +5263,7 @@ static void TestDebugOnly()
             DumpBuffer buf;
             CDumpContext dc = buf.Context();
             dc << v;
-            Line(("CDumpContext.insert.double." + std::to_string(i)).c_str(), buf.Take());
+            Line(("CDumpContext.operator<<.double." + std::to_string(i)).c_str(), buf.Take());
             ++i;
         }
     }
@@ -5138,7 +5272,7 @@ static void TestDebugOnly()
         CDumpContext dc = buf.Context();
         int local = 0;
         dc << static_cast<const void*>(&local);
-        LineBool("CDumpContext.insert.void_pointer.non_empty", !buf.Take().empty());
+        LineBool("CDumpContext.operator<<.void_pointer.non_empty", !buf.Take().empty());
     }
     {
         DumpSubject subject;
@@ -5146,17 +5280,17 @@ static void TestDebugOnly()
         DumpBuffer byRef;
         CDumpContext dcRef = byRef.Context();
         dcRef << subject;
-        LineBool("CDumpContext.insert.CObject_ref.non_empty", !byRef.Take().empty());
+        LineBool("CDumpContext.operator<<.CObject_ref.non_empty", !byRef.Take().empty());
 
         DumpBuffer byPtr;
         CDumpContext dcPtr = byPtr.Context();
         dcPtr << &subject;
-        LineBool("CDumpContext.insert.CObject_ptr.non_empty", !byPtr.Take().empty());
+        LineBool("CDumpContext.operator<<.CObject_ptr.non_empty", !byPtr.Take().empty());
 
         DumpBuffer nul;
         CDumpContext dcNul = nul.Context();
         dcNul << static_cast<const CObject*>(nullptr);
-        Line("CDumpContext.insert.CObject_null.text", nul.Take());
+        Line("CDumpContext.operator<<.CObject_null.text", nul.Take());
     }
 }
 #endif
@@ -5339,6 +5473,7 @@ int main(int argc, char** argv)
     TestCTypedPtrArray();
     TestCPointCSize();
     TestCRectMethods();
+    TestOperatorSweep();
     TestTime();
     TestCTempBuffer();
     TestCSimpleArray();
