@@ -225,7 +225,7 @@ def balanced(text, i):
     return -1
 
 
-def calls(text, alias):
+def calls(text, alias, subclasses):
     """(class, method) pairs the probes make, plus names seen unattributed.
 
     Three shapes are attributed to a class; everything else falls back to the
@@ -241,13 +241,13 @@ def calls(text, alias):
       CClass::Method(...)    static or qualified call.
     """
     var_type = {}
-    for hit in re.finditer(r"\b(C[A-Za-z_]\w*)\s*(?:<[^;{}()]*>)?(?:\s*\*\s*|\s+)([A-Za-z_]\w*)\s*[;=({\[]", text):
+    for hit in re.finditer(r"\b([A-Za-z_]\w*)\s*(?:<[^;{}()]*>)?(?:\s*\*\s*|\s+)([A-Za-z_]\w*)\s*[;=({\[]", text):
         if hit.group(1) in alias:
             var_type.setdefault(hit.group(2), set()).add(alias[hit.group(1)])
 
     attributed, by_name = set(), set()
 
-    for hit in re.finditer(r"\b(C[A-Za-z_]\w*)\s*(?:<[^;{}()]*>)?\s*\(", text):
+    for hit in re.finditer(r"\b([A-Za-z_]\w*)\s*(?:<[^;{}()]*>)?\s*\(", text):
         if hit.group(1) not in alias:
             continue
         close = balanced(text, hit.end() - 1)
@@ -268,14 +268,38 @@ def calls(text, alias):
     for hit in re.finditer(r"[)\]]\s*(?:\.|->)\s*([A-Za-z_]\w*)\s*\(", text):
         by_name.add(hit.group(1))
 
-    for hit in re.finditer(r"\b(C[A-Za-z_]\w*)\s*::\s*([A-Za-z_]\w*)", text):
+    for hit in re.finditer(r"\b([A-Za-z_]\w*)\s*::\s*([A-Za-z_]\w*)", text):
         if hit.group(1) in alias:
             attributed.add((alias[hit.group(1)], hit.group(2)))
 
     for hit in re.finditer(r"(?<![A-Za-z0-9_.>:])([A-Za-z_]\w*)\s*\(", text):
         by_name.add(hit.group(1))
 
+    for name, owner in subclasses.items():
+        body = subclass_body(text, name)
+        for hit in re.finditer(r"(?<![A-Za-z0-9_.>:])([A-Za-z_]\w*)\s*\(", body):
+            attributed.add((owner, hit.group(1)))
+
     return attributed, by_name
+
+
+def subclass_body(text, name):
+    """The braces of a class defined in the probes, so an unqualified call
+    inside it can be credited to the base it overrides."""
+    hit = re.search(r"\bclass\s+" + re.escape(name) + r"\b[^{;]*\{", text)
+    if not hit:
+        return ""
+    depth, i = 0, hit.end() - 1
+    start = i
+    while i < len(text):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start:i]
+        i += 1
+    return ""
 
 
 def aliases(classes):
@@ -308,6 +332,21 @@ def aliases(classes):
     return out
 
 
+def probe_subclasses(text, alias):
+    """Test classes defined in the probes, mapped to the library class they
+    derive from. Without this, a call on a probe's own subclass -- which is
+    the only way to reach a protected overridable like OnReceive -- cannot be
+    attributed to the class that declares it."""
+    out = {}
+    for hit in re.finditer(r"\bclass\s+([A-Za-z_]\w*)\s*(?:final\s*)?:\s*(?:public|protected|private)?\s*([A-Za-z_]\w*)", text):
+        parent = hit.group(2)
+        if parent in alias:
+            out[hit.group(1)] = alias[parent]
+        elif parent in out:
+            out[hit.group(1)] = out[parent]
+    return out
+
+
 def operator_cases(text):
     """{(probe class name, token)} named by the case-name convention
     <Class>.operator<token>[.detail], read from the case-name literals."""
@@ -322,7 +361,9 @@ def main():
     text = probe_text()
     base = bases()
     alias = aliases(set(decl))
-    attributed, by_name = calls(text, alias)
+    subclasses = probe_subclasses(text, alias)
+    alias.update(subclasses)
+    attributed, by_name = calls(text, alias, subclasses)
 
     def declares(cls, method):
         seen = set()
@@ -355,8 +396,6 @@ def main():
             total += 1
             if (cls, method) in reached:
                 exact += 1
-            elif method in by_name:
-                loose += 1
             else:
                 missing.append(method)
         if missing:
@@ -375,7 +414,6 @@ def main():
     print("classi:                        %d" % len(decl))
     print("metodi con nome dichiarati:    %d  (piu' %d operatori/conversioni, invocati per sintassi)" % (total, ops))
     print("raggiunti, chiamata attribuita: %d  (%.1f%%)" % (exact, 100.0 * exact / total))
-    print("raggiunti solo per nome:        %d" % loose)
     print("non raggiunti:                  %d" % sum(len(v) for v in gaps.values()))
     print("operatori con un caso proprio:  %d su %d" % (op_total - sum(len(v) for v in op_gaps.values()), op_total))
     if gaps:

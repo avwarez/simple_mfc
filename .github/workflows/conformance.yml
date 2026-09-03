@@ -6,6 +6,8 @@
 # case. A method whose result differs is a conformance bug; a method this
 # branch does not implement simply has no case and is reported as skipped.
 #
+#   coverage a member declared but never called by a case is a hole the
+#            comparison cannot see: tools/coverage.py fails the run on one.
 #   windows  the real comparison: both probes on the same machine, no
 #            exclusions, every difference is a real difference. It also
 #            publishes real MFC's output as a recording.
@@ -20,6 +22,16 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Cheap and first: a member with no case is a hole in every other job's
+  # answer, and finding it needs neither a compiler nor real MFC.
+  coverage:
+    name: every declared member has a case
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tools/coverage.py
+
   windows:
     name: native vs real MFC (Windows)
     runs-on: windows-latest

@@ -4670,6 +4670,24 @@ static void TestCStringAppendAndRemove()
     LineInt("CString.Remove.embedded_null_length", nul.GetLength());
 }
 
+static void TestCTimeSpanFormat()
+{
+    const CTimeSpan span(1, 2, 3, 4);
+    Line("CTimeSpan.Format.all_fields", span.Format(_T("%D d %H h %M m %S s")));
+    Line("CTimeSpan.Format.percent", span.Format(_T("100%%")));
+    Line("CTimeSpan.Format.plain_text", span.Format(_T("no specifiers")));
+    Line("CTimeSpan.Format.empty", span.Format(_T("")));
+
+    const CTimeSpan zero(0, 0, 0, 0);
+    Line("CTimeSpan.Format.zero", zero.Format(_T("%D:%H:%M:%S")));
+
+    const CTimeSpan negative(0, 0, 0, -90);
+    Line("CTimeSpan.Format.negative", negative.Format(_T("%D:%H:%M:%S")));
+
+    const CTimeSpan wide(400, 25, 61, 61);
+    Line("CTimeSpan.Format.overflowing_fields", wide.Format(_T("%D:%H:%M:%S")));
+}
+
 static void TestOperatorSweep()
 {
     const CPoint p1(10, 20);
@@ -4754,9 +4772,9 @@ static void TestOperatorSweep()
     CTempBuffer<int> temp(4);
     int* rawBuffer = temp;
     rawBuffer[0] = 11;
-    temp[1] = 22;
-    LineInt("CTempBuffer.operatorT*.write_through", temp[0]);
-    LineInt("CTempBuffer.operator[].element", temp[1]);
+    temp[static_cast<size_t>(1)] = 22;
+    LineInt("CTempBuffer.operatorT*.write_through", temp[static_cast<size_t>(0)]);
+    LineInt("CTempBuffer.operator[].element", temp[static_cast<size_t>(1)]);
 
     CFile closedFile;
     LineBool("CFile.operatorHANDLE.closed_is_null", static_cast<HANDLE>(closedFile) == nullptr);
@@ -5475,6 +5493,7 @@ int main(int argc, char** argv)
     TestCRectMethods();
     TestOperatorSweep();
     TestTime();
+    TestCTimeSpanFormat();
     TestCTempBuffer();
     TestCSimpleArray();
     TestCRBMap();
